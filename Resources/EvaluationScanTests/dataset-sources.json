@@ -1,0 +1,62 @@
+[
+  {
+    "file": "eval-real-01-desk.jpg",
+    "query": "cluttered,desk,laptop,books",
+    "label": "桌面-电脑书杯",
+    "source": "https://loremflickr.com/960/1280/cluttered,desk,laptop,books"
+  },
+  {
+    "file": "eval-real-02-bedroom.jpg",
+    "query": "messy,bedroom,clothes",
+    "label": "卧室-衣物杂乱",
+    "source": "https://loremflickr.com/960/1280/messy,bedroom,clothes"
+  },
+  {
+    "file": "eval-real-03-kitchen.jpg",
+    "query": "messy,kitchen,dishes,counter",
+    "label": "厨房-餐具台面",
+    "source": "https://loremflickr.com/960/1280/messy,kitchen,dishes,counter"
+  },
+  {
+    "file": "eval-real-04-bookshelf.jpg",
+    "query": "bookshelf,books,desk,clutter",
+    "label": "书架-书本资料",
+    "source": "https://loremflickr.com/960/1280/bookshelf,books,desk,clutter"
+  },
+  {
+    "file": "eval-real-05-closet.jpg",
+    "query": "closet,clothes,storage",
+    "label": "衣柜-衣物收纳",
+    "source": "https://loremflickr.com/960/1280/closet,clothes,storage"
+  },
+  {
+    "file": "eval-real-06-laundry.jpg",
+    "query": "laundry,pile,clothes,room",
+    "label": "洗衣堆-衣物",
+    "source": "https://loremflickr.com/960/1280/laundry,pile,clothes,room"
+  },
+  {
+    "file": "eval-real-07-garage.jpg",
+    "query": "garage,tools,clutter",
+    "label": "车库-工具杂物",
+    "source": "https://loremflickr.com/960/1280/garage,tools,clutter"
+  },
+  {
+    "file": "eval-real-08-toys.jpg",
+    "query": "toy,room,mess,storage",
+    "label": "玩具区-玩具杂物",
+    "source": "https://loremflickr.com/960/1280/toy,room,mess,storage"
+  },
+  {
+    "file": "eval-real-09-office.jpg",
+    "query": "office,desk,stationery,clutter",
+    "label": "办公桌-文具电子",
+    "source": "https://loremflickr.com/960/1280/office,desk,stationery,clutter"
+  },
+  {
+    "file": "eval-real-10-boxes.jpg",
+    "query": "storage,boxes,room,clutter",
+    "label": "收纳箱-杂物房",
+    "source": "https://loremflickr.com/960/1280/storage,boxes,room,clutter"
+  }
+]

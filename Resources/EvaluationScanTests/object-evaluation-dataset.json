@@ -1,0 +1,54 @@
+[
+  {
+    "id": "external-cluttered-study-pexels",
+    "file": "/Users/qszjlzz/Desktop/移动应用比赛/灵爪收纳/Resources/ExternalScanTests/external-cluttered-study-pexels.jpg",
+    "objects": [
+      { "label": "laptop", "category": "electronics", "nameTokens": ["电脑"], "box": { "x": 0.00, "y": 0.00, "width": 0.45, "height": 0.39 } },
+      { "label": "tablet", "category": "electronics", "nameTokens": ["手机", "电脑", "平板"], "box": { "x": 0.41, "y": 0.34, "width": 0.17, "height": 0.35 } },
+      { "label": "pen", "category": "stationery", "nameTokens": ["笔"], "box": { "x": 0.69, "y": 0.30, "width": 0.17, "height": 0.12 } },
+      { "label": "books", "category": "books", "nameTokens": ["书本"], "box": { "x": 0.67, "y": 0.58, "width": 0.33, "height": 0.42 } }
+    ]
+  },
+  {
+    "id": "external-messy-desk-note",
+    "file": "/Users/qszjlzz/Desktop/移动应用比赛/灵爪收纳/Resources/ExternalScanTests/external-messy-desk-note.png",
+    "objects": [
+      { "label": "laptop", "category": "electronics", "nameTokens": ["电脑"], "box": { "x": 0.38, "y": 0.30, "width": 0.34, "height": 0.31 } },
+      { "label": "phone", "category": "electronics", "nameTokens": ["手机"], "box": { "x": 0.43, "y": 0.59, "width": 0.14, "height": 0.10 } },
+      { "label": "cup", "category": "tools", "nameTokens": ["杯子"], "box": { "x": 0.55, "y": 0.57, "width": 0.13, "height": 0.23 } },
+      { "label": "book stack", "category": "books", "nameTokens": ["书本"], "box": { "x": 0.68, "y": 0.59, "width": 0.32, "height": 0.31 } }
+    ]
+  },
+  {
+    "id": "eval-real-02-kitchen-counter",
+    "file": "/Users/qszjlzz/Desktop/移动应用比赛/灵爪收纳/Resources/EvaluationScanTests/eval-real-02-kitchen-counter.jpg",
+    "objects": [
+      { "label": "blue cup", "category": "tools", "nameTokens": ["杯子"], "box": { "x": 0.05, "y": 0.19, "width": 0.11, "height": 0.22 } },
+      { "label": "green bowl", "category": "tools", "nameTokens": ["碗具"], "box": { "x": 0.15, "y": 0.17, "width": 0.28, "height": 0.19 } },
+      { "label": "white cup", "category": "tools", "nameTokens": ["杯子"], "box": { "x": 0.43, "y": 0.31, "width": 0.15, "height": 0.25 } },
+      { "label": "blue bottle", "category": "tools", "nameTokens": ["瓶罐"], "box": { "x": 0.79, "y": 0.22, "width": 0.09, "height": 0.35 } }
+    ]
+  },
+  {
+    "id": "eval-real-07-garage-drill",
+    "file": "/Users/qszjlzz/Desktop/移动应用比赛/灵爪收纳/Resources/EvaluationScanTests/eval-real-07-garage.jpg",
+    "objects": [
+      { "label": "blue cordless drill", "category": "tools", "nameTokens": ["工具", "电钻"], "box": { "x": 0.07, "y": 0.28, "width": 0.93, "height": 0.65 } }
+    ]
+  },
+  {
+    "id": "eval-real-04-bookshelf",
+    "file": "/Users/qszjlzz/Desktop/移动应用比赛/灵爪收纳/Resources/EvaluationScanTests/eval-real-04-bookshelf.jpg",
+    "objects": [
+      { "label": "CRT television", "category": "electronics", "nameTokens": ["电视"], "box": { "x": 0.25, "y": 0.49, "width": 0.47, "height": 0.25 } },
+      { "label": "bookshelf books", "category": "books", "nameTokens": ["书本"], "box": { "x": 0.00, "y": 0.13, "width": 0.42, "height": 0.30 } }
+    ]
+  },
+  {
+    "id": "eval-real-05-closet",
+    "file": "/Users/qszjlzz/Desktop/移动应用比赛/灵爪收纳/Resources/EvaluationScanTests/eval-real-05-closet.jpg",
+    "objects": [
+      { "label": "hanging clothes", "category": "clothes", "nameTokens": ["衣物", "外套"], "box": { "x": 0.64, "y": 0.37, "width": 0.35, "height": 0.47 } }
+    ]
+  }
+]

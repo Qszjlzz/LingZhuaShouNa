@@ -1,0 +1,108 @@
+[
+  {
+    "id": "external-cluttered-study-pexels",
+    "file": "/Users/qszjlzz/Desktop/移动应用比赛/灵爪收纳/Resources/ExternalScanTests/external-cluttered-study-pexels.jpg",
+    "label": "学习桌/办公桌",
+    "expected": [
+      "electronics",
+      "books",
+      "tools"
+    ],
+    "source": "bundled external photo"
+  },
+  {
+    "id": "external-messy-desk-note",
+    "file": "/Users/qszjlzz/Desktop/移动应用比赛/灵爪收纳/Resources/ExternalScanTests/external-messy-desk-note.png",
+    "label": "杂乱书桌",
+    "expected": [
+      "electronics",
+      "books"
+    ],
+    "source": "bundled external photo"
+  },
+  {
+    "id": "external-trash-room-imweb",
+    "file": "/Users/qszjlzz/Desktop/移动应用比赛/灵爪收纳/Resources/ExternalScanTests/external-trash-room-imweb.jpg",
+    "label": "杂乱房间/杂物堆",
+    "expected": [
+      "toys",
+      "tools",
+      "trash"
+    ],
+    "source": "bundled external photo"
+  },
+  {
+    "id": "eval-editthispic-01-before",
+    "file": "/Users/qszjlzz/Desktop/移动应用比赛/灵爪收纳/Resources/EvaluationScanTests/eval-editthispic-01-before.jpg",
+    "label": "杂乱客厅/桌面 before",
+    "expected": [
+      "books",
+      "tools",
+      "toys",
+      "trash"
+    ],
+    "source": "https://editthispic.com/edit/remove-clutter-from-photo"
+  },
+  {
+    "id": "eval-editthispic-02-before",
+    "file": "/Users/qszjlzz/Desktop/移动应用比赛/灵爪收纳/Resources/EvaluationScanTests/eval-editthispic-02-before.jpg",
+    "label": "杂乱厨房/台面 before",
+    "expected": [
+      "tools",
+      "trash"
+    ],
+    "source": "https://editthispic.com/edit/remove-clutter-from-photo"
+  },
+  {
+    "id": "eval-editthispic-03-before",
+    "file": "/Users/qszjlzz/Desktop/移动应用比赛/灵爪收纳/Resources/EvaluationScanTests/eval-editthispic-03-before.jpg",
+    "label": "杂乱空间 before",
+    "expected": [
+      "books",
+      "tools",
+      "toys",
+      "trash"
+    ],
+    "source": "https://editthispic.com/edit/remove-clutter-from-photo"
+  },
+  {
+    "id": "eval-real-02-kitchen-counter",
+    "file": "/Users/qszjlzz/Desktop/移动应用比赛/灵爪收纳/Resources/EvaluationScanTests/eval-real-02-kitchen-counter.jpg",
+    "label": "厨房台面/餐具杂物",
+    "expected": [
+      "tools",
+      "trash"
+    ],
+    "source": "https://www.mamawildandfree.com/blog/tag/motherhood"
+  },
+  {
+    "id": "eval-real-04-bookshelf",
+    "file": "/Users/qszjlzz/Desktop/移动应用比赛/灵爪收纳/Resources/EvaluationScanTests/eval-real-04-bookshelf.jpg",
+    "label": "书架/电子/资料",
+    "expected": [
+      "books",
+      "electronics"
+    ],
+    "source": "https://loremflickr.com/960/1280/bookshelf,books,desk,clutter"
+  },
+  {
+    "id": "eval-real-05-closet",
+    "file": "/Users/qszjlzz/Desktop/移动应用比赛/灵爪收纳/Resources/EvaluationScanTests/eval-real-05-closet.jpg",
+    "label": "衣柜/收纳盒",
+    "expected": [
+      "clothes",
+      "tools"
+    ],
+    "source": "https://loremflickr.com/960/1280/closet,clothes,storage"
+  },
+  {
+    "id": "eval-real-07-garage",
+    "file": "/Users/qszjlzz/Desktop/移动应用比赛/灵爪收纳/Resources/EvaluationScanTests/eval-real-07-garage.jpg",
+    "label": "工具/车库杂物",
+    "expected": [
+      "tools",
+      "electronics"
+    ],
+    "source": "https://loremflickr.com/960/1280/garage,tools,clutter"
+  }
+]

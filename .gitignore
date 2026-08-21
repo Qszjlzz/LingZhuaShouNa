@@ -1,0 +1,39 @@
+# Xcode and Apple build output
+DerivedData/
+.derivedData/
+build/
+*.xcresult/
+*.xcactivitylog
+*.xcuserstate
+xcuserdata/
+
+# Local machine metadata
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Python and Core ML experimentation environments
+.venv-yolo/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+app-analysis/yolo-python-v1/
+*.pt
+
+# Generated or temporary ML output
+*.mlmodelc/
+*.tmp
+*.cache
+
+# Local credentials and app state
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+
+# Unreferenced local presentation/source exports
+a8cdb40dca5bc04cacabdb4ce433760e.png
+smart paw-汇报.pptx
+灵爪收纳.docx

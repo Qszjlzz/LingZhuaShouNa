@@ -1,0 +1,804 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 46;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		092A9540A2DA35E897D8AD47 /* SmartPawModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F5A81A449657E82DF57C3B6 /* SmartPawModels.swift */; };
+		107B60DD19983C79EC7F0E75 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8A3D85099B1D340186011524 /* Assets.xcassets */; };
+		12D272E1C2950AEFDC13B6C7 /* ExecutionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB28193BBB9B3C44A35EDDCC /* ExecutionView.swift */; };
+		2768E5B474296674A7E9741E /* DemoData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 951706FD27A8E1F313974B14 /* DemoData.swift */; };
+		3B4B8271649377E358BAE36B /* CaptureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E614106111B22798A8FAA12B /* CaptureView.swift */; };
+		43B6962E08C3488E0C042EAC /* AppDependencies.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4C3517B7A6B57B5A410478C /* AppDependencies.swift */; };
+		477E8C29209851285CC3BC59 /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFC96400E16D4206128FF942 /* ProfileView.swift */; };
+		5EB08BC073F6B87DF771768B /* SmartPawTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 864209287E7CCB09CB544233 /* SmartPawTests.swift */; };
+		6012CF5A6E8BA96BC32654E6 /* yolo11n-seg.mlpackage in Resources */ = {isa = PBXBuildFile; fileRef = 9C01C60111DE6F6AB8CB99BA /* yolo11n-seg.mlpackage */; };
+		653D4BFA3B6E6C0023555979 /* KeychainCredentialStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 232ED368E5900174F40FF844 /* KeychainCredentialStore.swift */; };
+		73F96798555FBD21FC3246B6 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9E7A2E588639E0840D1E7BD8 /* Foundation.framework */; };
+		7A87E26C01D121EDF9F350D1 /* SmartPawServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0124065F43217D86371CB89 /* SmartPawServices.swift */; };
+		7F7D28D4C63C494FC0BB0EB8 /* edge_sam_encoder.mlpackage in Resources */ = {isa = PBXBuildFile; fileRef = F7FFA6D52482B7DAD8A77F7B /* edge_sam_encoder.mlpackage */; };
+		8AB3AC63B88C92468262F197 /* external-trash-room-imweb.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 9DA825EAE1381DE5C97F6107 /* external-trash-room-imweb.jpg */; };
+		9105EE8ADBC4EA93F30BFA1B /* DeepLabV3Int8LUT.mlmodel in Resources */ = {isa = PBXBuildFile; fileRef = 3B98D768CB2265C78291D540 /* DeepLabV3Int8LUT.mlmodel */; };
+		92275BDD78104181D2F0CD26 /* SmartPawApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58EDAF196CC70CBDF3CF9DC2 /* SmartPawApp.swift */; };
+		A0E000000000000000000001 /* yoloe-11s-seg.mlpackage in Resources */ = {isa = PBXBuildFile; fileRef = A0E000000000000000000002 /* yoloe-11s-seg.mlpackage */; };
+		A0E000000000000000000003 /* yolov8s-worldv2.mlpackage in Resources */ = {isa = PBXBuildFile; fileRef = A0E000000000000000000004 /* yolov8s-worldv2.mlpackage */; };
+		A0E000000000000000000005 /* yoloe-context-seg.mlpackage in Resources */ = {isa = PBXBuildFile; fileRef = A0E000000000000000000006 /* yoloe-context-seg.mlpackage */; };
+		A11000000000000000000001 /* RecognitionResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = A12000000000000000000001 /* RecognitionResult.swift */; };
+		A11000000000000000000002 /* MobileCLIPRecognitionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A12000000000000000000002 /* MobileCLIPRecognitionService.swift */; };
+		A1FAD299803EB78A7089873F /* ImageDecoding.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C8CAF629E6F83A34613990B /* ImageDecoding.swift */; };
+		A5B6694A3D4F93F640D5168D /* edge_sam_decoder.mlpackage in Resources */ = {isa = PBXBuildFile; fileRef = E079203E98D6EA82F534BC43 /* edge_sam_decoder.mlpackage */; };
+		ACAE33FF11F3DDEBF555DDC2 /* external-messy-desk-note.png in Resources */ = {isa = PBXBuildFile; fileRef = 0129B4B7A8FC9DF181334704 /* external-messy-desk-note.png */; };
+		AD38DC9CA21CBD44DD64C3AD /* yolo11n-seg-640.mlpackage in Resources */ = {isa = PBXBuildFile; fileRef = 58BCE126BC6772ACFF7F8E72 /* yolo11n-seg-640.mlpackage */; };
+		B11000000000000000000001 /* MobileCLIPTextRecognitionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B12000000000000000000001 /* MobileCLIPTextRecognitionService.swift */; };
+		B11000000000000000000002 /* CLIPTokenizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B12000000000000000000002 /* CLIPTokenizer.swift */; };
+		B11000000000000000000003 /* GPT2ByteEncoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = B12000000000000000000003 /* GPT2ByteEncoder.swift */; };
+		B11000000000000000000004 /* TokenizerUtils.swift in Sources */ = {isa = PBXBuildFile; fileRef = B12000000000000000000004 /* TokenizerUtils.swift */; };
+		B11000000000000000000005 /* clip-vocab.json in Resources */ = {isa = PBXBuildFile; fileRef = B12000000000000000000005 /* clip-vocab.json */; };
+		B11000000000000000000006 /* clip-merges.txt in Resources */ = {isa = PBXBuildFile; fileRef = B12000000000000000000006 /* clip-merges.txt */; };
+		B11000000000000000000007 /* mobileclip_s0_image.mlpackage in Resources */ = {isa = PBXBuildFile; fileRef = B12000000000000000000007 /* mobileclip_s0_image.mlpackage */; };
+		B11000000000000000000008 /* mobileclip_s0_text.mlpackage in Resources */ = {isa = PBXBuildFile; fileRef = B12000000000000000000008 /* mobileclip_s0_text.mlpackage */; };
+		B11000000000000000000009 /* category_embeddings.json in Resources */ = {isa = PBXBuildFile; fileRef = B12000000000000000000009 /* category_embeddings.json */; };
+		B11000000000000000000010 /* RecognitionViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B12000000000000000000010 /* RecognitionViewModel.swift */; };
+		BBC3E894CE0C768648C96DF5 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A335BF6F1730E6236BEF42E7 /* RootView.swift */; };
+		BE6779B8D14D4A28C612F05C /* EdgeSAMSegmentationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62AB7C21645033ADF9B3D3F8 /* EdgeSAMSegmentationService.swift */; };
+		C11000000000000000000001 /* eval-editthispic-01-before.jpg in Resources */ = {isa = PBXBuildFile; fileRef = C12000000000000000000001 /* eval-editthispic-01-before.jpg */; };
+		C11000000000000000000002 /* eval-editthispic-02-before.jpg in Resources */ = {isa = PBXBuildFile; fileRef = C12000000000000000000002 /* eval-editthispic-02-before.jpg */; };
+		C11000000000000000000003 /* eval-editthispic-03-before.jpg in Resources */ = {isa = PBXBuildFile; fileRef = C12000000000000000000003 /* eval-editthispic-03-before.jpg */; };
+		D064B9E097F4921A6D68570C /* PlanningView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0CB345B8C2AA139115B7734E /* PlanningView.swift */; };
+		D1310AADEC944E0B28550C5B /* external-cluttered-study-pexels.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 3A717E4CFAEB1525CBCD6DA9 /* external-cluttered-study-pexels.jpg */; };
+		D26753ED568F7AA01257B2AA /* CatalogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58C1A75BE3DC04684CF3A44E /* CatalogView.swift */; };
+		DED1A492FB95802E6F23D3AA /* SmartPawStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99DA934D2B7252BC7F291DC9 /* SmartPawStyle.swift */; };
+		DF1C0F04B75A84AA918E5A3E /* ARMaskOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7115601BAC9DEC390661AA62 /* ARMaskOverlay.swift */; };
+		EA85D8D566820D9114C89181 /* CommunityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4392AA4974725EFB2C94A3CB /* CommunityView.swift */; };
+		F34F01ECE62BC520A00ECBD5 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9E7A2E588639E0840D1E7BD8 /* Foundation.framework */; };
+		FBC15514A2C6C4C0011BC009 /* AppViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECBD0487DCD50AC08D1B45EE /* AppViewModel.swift */; };
+		FC808BE996ABD92A93720592 /* SpaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 139687BC0B7D299C286564C5 /* SpaceView.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		60FAC83C5467EE6EAF544955 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 717F76BFE729C10F367148C1 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = F0B8A38093602E4E8C23367A;
+			remoteInfo = SmartPaw;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		0129B4B7A8FC9DF181334704 /* external-messy-desk-note.png */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = image.png; path = "external-messy-desk-note.png"; sourceTree = "<group>"; };
+		09ED6F58A952E7F1FF27ED67 /* SmartPaw.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SmartPaw.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		0CB345B8C2AA139115B7734E /* PlanningView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PlanningView.swift; sourceTree = "<group>"; };
+		139687BC0B7D299C286564C5 /* SpaceView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SpaceView.swift; sourceTree = "<group>"; };
+		232ED368E5900174F40FF844 /* KeychainCredentialStore.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = KeychainCredentialStore.swift; sourceTree = "<group>"; };
+		3A717E4CFAEB1525CBCD6DA9 /* external-cluttered-study-pexels.jpg */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = image.jpeg; path = "external-cluttered-study-pexels.jpg"; sourceTree = "<group>"; };
+		3B98D768CB2265C78291D540 /* DeepLabV3Int8LUT.mlmodel */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = file.mlmodel; path = DeepLabV3Int8LUT.mlmodel; sourceTree = "<group>"; };
+		4392AA4974725EFB2C94A3CB /* CommunityView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CommunityView.swift; sourceTree = "<group>"; };
+		58BCE126BC6772ACFF7F8E72 /* yolo11n-seg-640.mlpackage */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.mlpackage; path = "yolo11n-seg-640.mlpackage"; sourceTree = "<group>"; };
+		58C1A75BE3DC04684CF3A44E /* CatalogView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CatalogView.swift; sourceTree = "<group>"; };
+		58EDAF196CC70CBDF3CF9DC2 /* SmartPawApp.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SmartPawApp.swift; sourceTree = "<group>"; };
+		5F5A81A449657E82DF57C3B6 /* SmartPawModels.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SmartPawModels.swift; sourceTree = "<group>"; };
+		62AB7C21645033ADF9B3D3F8 /* EdgeSAMSegmentationService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = EdgeSAMSegmentationService.swift; sourceTree = "<group>"; };
+		7115601BAC9DEC390661AA62 /* ARMaskOverlay.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ARMaskOverlay.swift; sourceTree = "<group>"; };
+		864209287E7CCB09CB544233 /* SmartPawTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SmartPawTests.swift; sourceTree = "<group>"; };
+		8A3D85099B1D340186011524 /* Assets.xcassets */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		951706FD27A8E1F313974B14 /* DemoData.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = DemoData.swift; sourceTree = "<group>"; };
+		99DA934D2B7252BC7F291DC9 /* SmartPawStyle.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SmartPawStyle.swift; sourceTree = "<group>"; };
+		9C01C60111DE6F6AB8CB99BA /* yolo11n-seg.mlpackage */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.mlpackage; path = "yolo11n-seg.mlpackage"; sourceTree = "<group>"; };
+		9C8CAF629E6F83A34613990B /* ImageDecoding.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ImageDecoding.swift; sourceTree = "<group>"; };
+		9DA825EAE1381DE5C97F6107 /* external-trash-room-imweb.jpg */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = image.jpeg; path = "external-trash-room-imweb.jpg"; sourceTree = "<group>"; };
+		9E7A2E588639E0840D1E7BD8 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
+		A0E000000000000000000002 /* yoloe-11s-seg.mlpackage */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.mlpackage; path = "yoloe-11s-seg.mlpackage"; sourceTree = "<group>"; };
+		A0E000000000000000000004 /* yolov8s-worldv2.mlpackage */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.mlpackage; path = "yolov8s-worldv2.mlpackage"; sourceTree = "<group>"; };
+		A0E000000000000000000006 /* yoloe-context-seg.mlpackage */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.mlpackage; path = "yoloe-context-seg.mlpackage"; sourceTree = "<group>"; };
+		A12000000000000000000001 /* RecognitionResult.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = RecognitionResult.swift; sourceTree = "<group>"; };
+		A12000000000000000000002 /* MobileCLIPRecognitionService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MobileCLIPRecognitionService.swift; sourceTree = "<group>"; };
+		A335BF6F1730E6236BEF42E7 /* RootView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		AFC96400E16D4206128FF942 /* ProfileView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
+		B12000000000000000000001 /* MobileCLIPTextRecognitionService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MobileCLIPTextRecognitionService.swift; sourceTree = "<group>"; };
+		B12000000000000000000002 /* CLIPTokenizer.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CLIPTokenizer.swift; sourceTree = "<group>"; };
+		B12000000000000000000003 /* GPT2ByteEncoder.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = GPT2ByteEncoder.swift; sourceTree = "<group>"; };
+		B12000000000000000000004 /* TokenizerUtils.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TokenizerUtils.swift; sourceTree = "<group>"; };
+		B12000000000000000000005 /* clip-vocab.json */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.json; path = "clip-vocab.json"; sourceTree = "<group>"; };
+		B12000000000000000000006 /* clip-merges.txt */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text; path = "clip-merges.txt"; sourceTree = "<group>"; };
+		B12000000000000000000007 /* mobileclip_s0_image.mlpackage */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.mlpackage; path = mobileclip_s0_image.mlpackage; sourceTree = "<group>"; };
+		B12000000000000000000008 /* mobileclip_s0_text.mlpackage */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.mlpackage; path = mobileclip_s0_text.mlpackage; sourceTree = "<group>"; };
+		B12000000000000000000009 /* category_embeddings.json */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.json; path = category_embeddings.json; sourceTree = "<group>"; };
+		B12000000000000000000010 /* RecognitionViewModel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = RecognitionViewModel.swift; sourceTree = "<group>"; };
+		B4C3517B7A6B57B5A410478C /* AppDependencies.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AppDependencies.swift; sourceTree = "<group>"; };
+		C12000000000000000000001 /* eval-editthispic-01-before.jpg */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = image.jpeg; path = "eval-editthispic-01-before.jpg"; sourceTree = "<group>"; };
+		C12000000000000000000002 /* eval-editthispic-02-before.jpg */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = image.jpeg; path = "eval-editthispic-02-before.jpg"; sourceTree = "<group>"; };
+		C12000000000000000000003 /* eval-editthispic-03-before.jpg */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = image.jpeg; path = "eval-editthispic-03-before.jpg"; sourceTree = "<group>"; };
+		CB28193BBB9B3C44A35EDDCC /* ExecutionView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ExecutionView.swift; sourceTree = "<group>"; };
+		DF3EA01076A0957C5D11D3B4 /* SmartPawTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SmartPawTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		E0124065F43217D86371CB89 /* SmartPawServices.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SmartPawServices.swift; sourceTree = "<group>"; };
+		E079203E98D6EA82F534BC43 /* edge_sam_decoder.mlpackage */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.mlpackage; name = edge_sam_decoder.mlpackage; path = decoder/edge_sam_decoder.mlpackage; sourceTree = "<group>"; };
+		E614106111B22798A8FAA12B /* CaptureView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CaptureView.swift; sourceTree = "<group>"; };
+		ECBD0487DCD50AC08D1B45EE /* AppViewModel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AppViewModel.swift; sourceTree = "<group>"; };
+		F7FFA6D52482B7DAD8A77F7B /* edge_sam_encoder.mlpackage */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.mlpackage; name = edge_sam_encoder.mlpackage; path = encoder/edge_sam_encoder.mlpackage; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		85EC8CBE16A0E691170F4222 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				73F96798555FBD21FC3246B6 /* Foundation.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A369DC3FCBFEECDB632620B4 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F34F01ECE62BC520A00ECBD5 /* Foundation.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		099BB482176BAC1F531EEA87 /* Planning */ = {
+			isa = PBXGroup;
+			children = (
+				0CB345B8C2AA139115B7734E /* PlanningView.swift */,
+			);
+			path = Planning;
+			sourceTree = "<group>";
+		};
+		0F13121608D7C1E42C168D63 /* ExternalScanTests */ = {
+			isa = PBXGroup;
+			children = (
+				3A717E4CFAEB1525CBCD6DA9 /* external-cluttered-study-pexels.jpg */,
+				0129B4B7A8FC9DF181334704 /* external-messy-desk-note.png */,
+				9DA825EAE1381DE5C97F6107 /* external-trash-room-imweb.jpg */,
+			);
+			path = ExternalScanTests;
+			sourceTree = "<group>";
+		};
+		1C3A78AB68ADAC6B791F9A47 /* Catalog */ = {
+			isa = PBXGroup;
+			children = (
+				58C1A75BE3DC04684CF3A44E /* CatalogView.swift */,
+			);
+			path = Catalog;
+			sourceTree = "<group>";
+		};
+		36690D9192130F6A6D63C48D /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				73F55012B350C573AFE747FA /* iOS */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		4143047A145F8F2141168227 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				7115601BAC9DEC390661AA62 /* ARMaskOverlay.swift */,
+				B4C3517B7A6B57B5A410478C /* AppDependencies.swift */,
+				ECBD0487DCD50AC08D1B45EE /* AppViewModel.swift */,
+				9C8CAF629E6F83A34613990B /* ImageDecoding.swift */,
+				232ED368E5900174F40FF844 /* KeychainCredentialStore.swift */,
+				A335BF6F1730E6236BEF42E7 /* RootView.swift */,
+				58EDAF196CC70CBDF3CF9DC2 /* SmartPawApp.swift */,
+				99DA934D2B7252BC7F291DC9 /* SmartPawStyle.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		4A13813865636E3F87B27ABD /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				3B98D768CB2265C78291D540 /* DeepLabV3Int8LUT.mlmodel */,
+				58BCE126BC6772ACFF7F8E72 /* yolo11n-seg-640.mlpackage */,
+				9C01C60111DE6F6AB8CB99BA /* yolo11n-seg.mlpackage */,
+				A0E000000000000000000002 /* yoloe-11s-seg.mlpackage */,
+				A0E000000000000000000006 /* yoloe-context-seg.mlpackage */,
+				A0E000000000000000000004 /* yolov8s-worldv2.mlpackage */,
+				B0DD08E59129222AF03B4DD6 /* EdgeSAM */,
+				B12000000000000000000007 /* mobileclip_s0_image.mlpackage */,
+				B12000000000000000000008 /* mobileclip_s0_text.mlpackage */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		73F55012B350C573AFE747FA /* iOS */ = {
+			isa = PBXGroup;
+			children = (
+				9E7A2E588639E0840D1E7BD8 /* Foundation.framework */,
+			);
+			name = iOS;
+			sourceTree = "<group>";
+		};
+		7797F477DCDB087DA1387E52 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				8A3D85099B1D340186011524 /* Assets.xcassets */,
+				B12000000000000000000009 /* category_embeddings.json */,
+				0F13121608D7C1E42C168D63 /* ExternalScanTests */,
+				C13000000000000000000001 /* EvaluationScanTests */,
+				B30000000000000000000001 /* MobileCLIPTokenizer */,
+				4A13813865636E3F87B27ABD /* Models */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		838CAC72F775EDBAB06E8356 /* Execution */ = {
+			isa = PBXGroup;
+			children = (
+				CB28193BBB9B3C44A35EDDCC /* ExecutionView.swift */,
+			);
+			path = Execution;
+			sourceTree = "<group>";
+		};
+		8D50BEC44369039C87BCEF8E = {
+			isa = PBXGroup;
+			children = (
+				A8A0C7E53E170223428D428C /* Products */,
+				36690D9192130F6A6D63C48D /* Frameworks */,
+				4143047A145F8F2141168227 /* App */,
+				8DE72B6E8ADEF9D6AF7E4B22 /* Models */,
+				ED3F61A861ECDF90A8322403 /* Services */,
+				AA3CDEC459BBD92FDA9AB46E /* Features */,
+				7797F477DCDB087DA1387E52 /* Resources */,
+				EB0DA45820CF875085FF3B45 /* SmartPawTests */,
+			);
+			sourceTree = "<group>";
+		};
+		8DE72B6E8ADEF9D6AF7E4B22 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				5F5A81A449657E82DF57C3B6 /* SmartPawModels.swift */,
+				A12000000000000000000001 /* RecognitionResult.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		A8A0C7E53E170223428D428C /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				09ED6F58A952E7F1FF27ED67 /* SmartPaw.app */,
+				DF3EA01076A0957C5D11D3B4 /* SmartPawTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		A9C03150D549B75991E174C7 /* Community */ = {
+			isa = PBXGroup;
+			children = (
+				4392AA4974725EFB2C94A3CB /* CommunityView.swift */,
+			);
+			path = Community;
+			sourceTree = "<group>";
+		};
+		AA3CDEC459BBD92FDA9AB46E /* Features */ = {
+			isa = PBXGroup;
+			children = (
+				DBCCC6377FFFB5FD1849E617 /* Capture */,
+				1C3A78AB68ADAC6B791F9A47 /* Catalog */,
+				A9C03150D549B75991E174C7 /* Community */,
+				838CAC72F775EDBAB06E8356 /* Execution */,
+				099BB482176BAC1F531EEA87 /* Planning */,
+				CA96C21089C09A8ABB092314 /* Profile */,
+				EBFB10F4A75C205101DAEB8F /* Space */,
+			);
+			path = Features;
+			sourceTree = "<group>";
+		};
+		B0DD08E59129222AF03B4DD6 /* EdgeSAM */ = {
+			isa = PBXGroup;
+			children = (
+				F7FFA6D52482B7DAD8A77F7B /* edge_sam_encoder.mlpackage */,
+				E079203E98D6EA82F534BC43 /* edge_sam_decoder.mlpackage */,
+			);
+			path = EdgeSAM;
+			sourceTree = "<group>";
+		};
+		B20000000000000000000001 /* MobileCLIP */ = {
+			isa = PBXGroup;
+			children = (
+				B12000000000000000000001 /* MobileCLIPTextRecognitionService.swift */,
+				B12000000000000000000002 /* CLIPTokenizer.swift */,
+				B12000000000000000000003 /* GPT2ByteEncoder.swift */,
+				B12000000000000000000004 /* TokenizerUtils.swift */,
+				B12000000000000000000010 /* RecognitionViewModel.swift */,
+			);
+			path = MobileCLIP;
+			sourceTree = "<group>";
+		};
+		B30000000000000000000001 /* MobileCLIPTokenizer */ = {
+			isa = PBXGroup;
+			children = (
+				B12000000000000000000005 /* clip-vocab.json */,
+				B12000000000000000000006 /* clip-merges.txt */,
+			);
+			path = MobileCLIPTokenizer;
+			sourceTree = "<group>";
+		};
+		C13000000000000000000001 /* EvaluationScanTests */ = {
+			isa = PBXGroup;
+			children = (
+				C12000000000000000000001 /* eval-editthispic-01-before.jpg */,
+				C12000000000000000000002 /* eval-editthispic-02-before.jpg */,
+				C12000000000000000000003 /* eval-editthispic-03-before.jpg */,
+			);
+			path = EvaluationScanTests;
+			sourceTree = "<group>";
+		};
+		CA96C21089C09A8ABB092314 /* Profile */ = {
+			isa = PBXGroup;
+			children = (
+				AFC96400E16D4206128FF942 /* ProfileView.swift */,
+			);
+			path = Profile;
+			sourceTree = "<group>";
+		};
+		DBCCC6377FFFB5FD1849E617 /* Capture */ = {
+			isa = PBXGroup;
+			children = (
+				E614106111B22798A8FAA12B /* CaptureView.swift */,
+			);
+			path = Capture;
+			sourceTree = "<group>";
+		};
+		EB0DA45820CF875085FF3B45 /* SmartPawTests */ = {
+			isa = PBXGroup;
+			children = (
+				864209287E7CCB09CB544233 /* SmartPawTests.swift */,
+			);
+			path = SmartPawTests;
+			sourceTree = "<group>";
+		};
+		EBFB10F4A75C205101DAEB8F /* Space */ = {
+			isa = PBXGroup;
+			children = (
+				139687BC0B7D299C286564C5 /* SpaceView.swift */,
+			);
+			path = Space;
+			sourceTree = "<group>";
+		};
+		ED3F61A861ECDF90A8322403 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				951706FD27A8E1F313974B14 /* DemoData.swift */,
+				E0124065F43217D86371CB89 /* SmartPawServices.swift */,
+				62AB7C21645033ADF9B3D3F8 /* EdgeSAMSegmentationService.swift */,
+				A12000000000000000000002 /* MobileCLIPRecognitionService.swift */,
+				B20000000000000000000001 /* MobileCLIP */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		F0B8A38093602E4E8C23367A /* SmartPaw */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = CC2A939CF038B9413992E683 /* Build configuration list for PBXNativeTarget "SmartPaw" */;
+			buildPhases = (
+				186D2E321568AB4702507ED1 /* Sources */,
+				A369DC3FCBFEECDB632620B4 /* Frameworks */,
+				9D0B5B243F6EC4979036A8F5 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = SmartPaw;
+			productName = SmartPaw;
+			productReference = 09ED6F58A952E7F1FF27ED67 /* SmartPaw.app */;
+			productType = "com.apple.product-type.application";
+		};
+		F0D8D66CE524D315C0B66930 /* SmartPawTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B67C9CC45D020713EE9CC9A9 /* Build configuration list for PBXNativeTarget "SmartPawTests" */;
+			buildPhases = (
+				526F90252BC59000F759DE22 /* Sources */,
+				85EC8CBE16A0E691170F4222 /* Frameworks */,
+				3A7D8BE31A884BEFA72A8B4B /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				FE7853A81983FA61ED9B3AA2 /* PBXTargetDependency */,
+			);
+			name = SmartPawTests;
+			productName = SmartPawTests;
+			productReference = DF3EA01076A0957C5D11D3B4 /* SmartPawTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		717F76BFE729C10F367148C1 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				LastSwiftUpdateCheck = 1640;
+				LastUpgradeCheck = 1640;
+				TargetAttributes = {
+					F0B8A38093602E4E8C23367A = {
+						DevelopmentTeam = 46484446VW;
+						ProvisioningStyle = Automatic;
+					};
+					F0D8D66CE524D315C0B66930 = {
+						DevelopmentTeam = 3S323K52DX;
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 163E87FC89D65084CF379A12 /* Build configuration list for PBXProject "SmartPaw" */;
+			compatibilityVersion = "Xcode 3.2";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 8D50BEC44369039C87BCEF8E;
+			productRefGroup = A8A0C7E53E170223428D428C /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				F0B8A38093602E4E8C23367A /* SmartPaw */,
+				F0D8D66CE524D315C0B66930 /* SmartPawTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		3A7D8BE31A884BEFA72A8B4B /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		9D0B5B243F6EC4979036A8F5 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				107B60DD19983C79EC7F0E75 /* Assets.xcassets in Resources */,
+				D1310AADEC944E0B28550C5B /* external-cluttered-study-pexels.jpg in Resources */,
+				ACAE33FF11F3DDEBF555DDC2 /* external-messy-desk-note.png in Resources */,
+				8AB3AC63B88C92468262F197 /* external-trash-room-imweb.jpg in Resources */,
+				C11000000000000000000001 /* eval-editthispic-01-before.jpg in Resources */,
+				C11000000000000000000002 /* eval-editthispic-02-before.jpg in Resources */,
+				C11000000000000000000003 /* eval-editthispic-03-before.jpg in Resources */,
+				9105EE8ADBC4EA93F30BFA1B /* DeepLabV3Int8LUT.mlmodel in Resources */,
+				AD38DC9CA21CBD44DD64C3AD /* yolo11n-seg-640.mlpackage in Resources */,
+				6012CF5A6E8BA96BC32654E6 /* yolo11n-seg.mlpackage in Resources */,
+				A0E000000000000000000001 /* yoloe-11s-seg.mlpackage in Resources */,
+				A0E000000000000000000005 /* yoloe-context-seg.mlpackage in Resources */,
+				A0E000000000000000000003 /* yolov8s-worldv2.mlpackage in Resources */,
+				7F7D28D4C63C494FC0BB0EB8 /* edge_sam_encoder.mlpackage in Resources */,
+				A5B6694A3D4F93F640D5168D /* edge_sam_decoder.mlpackage in Resources */,
+				B11000000000000000000005 /* clip-vocab.json in Resources */,
+				B11000000000000000000006 /* clip-merges.txt in Resources */,
+				B11000000000000000000007 /* mobileclip_s0_image.mlpackage in Resources */,
+				B11000000000000000000008 /* mobileclip_s0_text.mlpackage in Resources */,
+				B11000000000000000000009 /* category_embeddings.json in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		186D2E321568AB4702507ED1 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				DF1C0F04B75A84AA918E5A3E /* ARMaskOverlay.swift in Sources */,
+				43B6962E08C3488E0C042EAC /* AppDependencies.swift in Sources */,
+				FBC15514A2C6C4C0011BC009 /* AppViewModel.swift in Sources */,
+				A1FAD299803EB78A7089873F /* ImageDecoding.swift in Sources */,
+				653D4BFA3B6E6C0023555979 /* KeychainCredentialStore.swift in Sources */,
+				BBC3E894CE0C768648C96DF5 /* RootView.swift in Sources */,
+				92275BDD78104181D2F0CD26 /* SmartPawApp.swift in Sources */,
+				DED1A492FB95802E6F23D3AA /* SmartPawStyle.swift in Sources */,
+				092A9540A2DA35E897D8AD47 /* SmartPawModels.swift in Sources */,
+				A11000000000000000000001 /* RecognitionResult.swift in Sources */,
+				2768E5B474296674A7E9741E /* DemoData.swift in Sources */,
+				7A87E26C01D121EDF9F350D1 /* SmartPawServices.swift in Sources */,
+				3B4B8271649377E358BAE36B /* CaptureView.swift in Sources */,
+				D26753ED568F7AA01257B2AA /* CatalogView.swift in Sources */,
+				EA85D8D566820D9114C89181 /* CommunityView.swift in Sources */,
+				12D272E1C2950AEFDC13B6C7 /* ExecutionView.swift in Sources */,
+				D064B9E097F4921A6D68570C /* PlanningView.swift in Sources */,
+				477E8C29209851285CC3BC59 /* ProfileView.swift in Sources */,
+				FC808BE996ABD92A93720592 /* SpaceView.swift in Sources */,
+				BE6779B8D14D4A28C612F05C /* EdgeSAMSegmentationService.swift in Sources */,
+				A11000000000000000000002 /* MobileCLIPRecognitionService.swift in Sources */,
+				B11000000000000000000001 /* MobileCLIPTextRecognitionService.swift in Sources */,
+				B11000000000000000000002 /* CLIPTokenizer.swift in Sources */,
+				B11000000000000000000003 /* GPT2ByteEncoder.swift in Sources */,
+				B11000000000000000000004 /* TokenizerUtils.swift in Sources */,
+				B11000000000000000000010 /* RecognitionViewModel.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		526F90252BC59000F759DE22 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5EB08BC073F6B87DF771768B /* SmartPawTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		FE7853A81983FA61ED9B3AA2 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = SmartPaw;
+			target = F0B8A38093602E4E8C23367A /* SmartPaw */;
+			targetProxy = 60FAC83C5467EE6EAF544955 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		A442921A7359CF171C9ECC6E /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				"CODE_SIGNING_ALLOWED[sdk=iphonesimulator*]" = NO;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 46484446VW;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "灵爪收纳";
+				INFOPLIST_KEY_CFBundleName = SmartPaw;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_NSCameraUsageDescription = "用于扫描杂乱空间并生成收纳规划。";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "用于保存或选择收纳前后对比图片。";
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @loader_path/Frameworks";
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.qszjlzz.smartpaw;
+				PRODUCT_MODULE_NAME = SmartPaw;
+				PRODUCT_NAME = SmartPaw;
+				SDKROOT = iphoneos;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		AD21048EA5D51F6125F9DDA1 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Owholemodule";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		BEB02A0D20C41E79D63455E2 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				"CODE_SIGNING_ALLOWED[sdk=iphonesimulator*]" = NO;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 3S323K52DX;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @loader_path/Frameworks";
+				PRODUCT_BUNDLE_IDENTIFIER = com.qszjlzz.smartpaw.tests;
+				PRODUCT_MODULE_NAME = SmartPawTests;
+				PRODUCT_NAME = SmartPawTests;
+				SDKROOT = iphoneos;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/SmartPaw.app/SmartPaw";
+				TEST_TARGET_NAME = SmartPaw;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		E77164550823A466C83FE67C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				"CODE_SIGNING_ALLOWED[sdk=iphonesimulator*]" = NO;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 46484446VW;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "灵爪收纳";
+				INFOPLIST_KEY_CFBundleName = SmartPaw;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_NSCameraUsageDescription = "用于扫描杂乱空间并生成收纳规划。";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "用于保存或选择收纳前后对比图片。";
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @loader_path/Frameworks";
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.qszjlzz.smartpaw;
+				PRODUCT_MODULE_NAME = SmartPaw;
+				PRODUCT_NAME = SmartPaw;
+				SDKROOT = iphoneos;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		F31F800AA212D24F1B6CDD9E /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		F3327B0FEBB7C85F15B04C70 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				"CODE_SIGNING_ALLOWED[sdk=iphonesimulator*]" = NO;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 3S323K52DX;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @loader_path/Frameworks";
+				PRODUCT_BUNDLE_IDENTIFIER = com.qszjlzz.smartpaw.tests;
+				PRODUCT_MODULE_NAME = SmartPawTests;
+				PRODUCT_NAME = SmartPawTests;
+				SDKROOT = iphoneos;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/SmartPaw.app/SmartPaw";
+				TEST_TARGET_NAME = SmartPaw;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		163E87FC89D65084CF379A12 /* Build configuration list for PBXProject "SmartPaw" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F31F800AA212D24F1B6CDD9E /* Debug */,
+				AD21048EA5D51F6125F9DDA1 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		B67C9CC45D020713EE9CC9A9 /* Build configuration list for PBXNativeTarget "SmartPawTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				BEB02A0D20C41E79D63455E2 /* Release */,
+				F3327B0FEBB7C85F15B04C70 /* Debug */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		CC2A939CF038B9413992E683 /* Build configuration list for PBXNativeTarget "SmartPaw" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E77164550823A466C83FE67C /* Release */,
+				A442921A7359CF171C9ECC6E /* Debug */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 717F76BFE729C10F367148C1 /* Project object */;
+}
