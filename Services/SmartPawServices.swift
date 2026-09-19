@@ -24,13 +24,15 @@ struct AppStateSnapshot: Codable, Equatable {
     var spaces: [StorageSpace]
     var achievements: [Achievement]
     var communityCases: [CommunityCase]
+    var communityComments: [UUID: [CommunityComment]]
     var scheduleItems: [ScheduleItem]
     var llmSettings: LLMSettings
 
-    init(spaces: [StorageSpace], achievements: [Achievement], communityCases: [CommunityCase], scheduleItems: [ScheduleItem] = [], llmSettings: LLMSettings = .default) {
+    init(spaces: [StorageSpace], achievements: [Achievement], communityCases: [CommunityCase], communityComments: [UUID: [CommunityComment]] = [:], scheduleItems: [ScheduleItem] = [], llmSettings: LLMSettings = .default) {
         self.spaces = spaces
         self.achievements = achievements
         self.communityCases = communityCases
+        self.communityComments = communityComments
         self.scheduleItems = scheduleItems
         self.llmSettings = llmSettings
     }
@@ -39,6 +41,7 @@ struct AppStateSnapshot: Codable, Equatable {
         case spaces
         case achievements
         case communityCases
+        case communityComments
         case scheduleItems
         case llmSettings
     }
@@ -48,6 +51,7 @@ struct AppStateSnapshot: Codable, Equatable {
         spaces = try container.decode([StorageSpace].self, forKey: .spaces)
         achievements = try container.decode([Achievement].self, forKey: .achievements)
         communityCases = try container.decode([CommunityCase].self, forKey: .communityCases)
+        communityComments = try container.decodeIfPresent([UUID: [CommunityComment]].self, forKey: .communityComments) ?? [:]
         scheduleItems = try container.decodeIfPresent([ScheduleItem].self, forKey: .scheduleItems) ?? DemoData.scheduleItems
         llmSettings = try container.decodeIfPresent(LLMSettings.self, forKey: .llmSettings) ?? .default
     }

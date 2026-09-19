@@ -582,6 +582,45 @@ final class SmartPawTests: XCTestCase {
     }
 
     @MainActor
+    func testSelectingSpaceClearsScanContextAndRestoresPlanZones() {
+        let viewModel = AppViewModel(dependencies: .test)
+        let secondSpaceID = viewModel.spaces[1].id
+        viewModel.scannedItems = DemoData.detectedItems
+        viewModel.capturedImage = UIImage.smartPawTestImage()
+        viewModel.referenceImage = UIImage.smartPawTestImage()
+
+        viewModel.selectSpace(secondSpaceID)
+
+        XCTAssertTrue(viewModel.scannedItems.isEmpty)
+        XCTAssertNil(viewModel.capturedImage)
+        XCTAssertNil(viewModel.referenceImage)
+        XCTAssertTrue(viewModel.selectedExecutionZones.isEmpty)
+    }
+
+    @MainActor
+    func testReplicatingCommunityCaseSelectsAllSourceItemsBeforePlanning() {
+        let viewModel = AppViewModel(dependencies: .test)
+        let sourceItems = DemoData.detectedItems.map { item in
+            var copied = item
+            copied.isSelected = false
+            return copied
+        }
+        let communityCase = CommunityCase(
+            title: "待复刻方案",
+            author: "测试作者",
+            style: .hiddenClean,
+            likes: 0,
+            tags: [],
+            items: sourceItems
+        )
+
+        viewModel.replicate(communityCase)
+
+        XCTAssertNotNil(viewModel.activePlan)
+        XCTAssertTrue(viewModel.scannedItems.allSatisfy(\.isSelected))
+    }
+
+    @MainActor
     func testScheduleItemsCanBeToggledAndPersistedInMemory() {
         let viewModel = AppViewModel(dependencies: .test)
         let firstID = viewModel.scheduleItems[0].id
@@ -627,6 +666,23 @@ final class SmartPawTests: XCTestCase {
         XCTAssertEqual(viewModel.communityCases.first(where: { $0.id == communityCase.id })?.likes, initialLikes + 1)
         viewModel.toggleCommunityFavorite(communityCase.id)
         XCTAssertTrue(viewModel.favoriteCommunityCaseIDs.contains(communityCase.id))
+    }
+
+    @MainActor
+    func testCommunityCommentsAndFollowsMutateRealState() {
+        let viewModel = AppViewModel(dependencies: .test)
+        let communityCase = viewModel.communityCases[0]
+
+        viewModel.addCommunityComment(to: communityCase.id, body: "这套方案很适合我的桌面。")
+        XCTAssertEqual(viewModel.commentCount(for: communityCase.id), 1)
+        XCTAssertEqual(viewModel.comments(for: communityCase.id).first?.body, "这套方案很适合我的桌面。")
+
+        let comment = viewModel.comments(for: communityCase.id)[0]
+        viewModel.toggleCommunityCommentLike(comment.id, in: communityCase.id)
+        XCTAssertEqual(viewModel.comments(for: communityCase.id).first?.likes, 1)
+
+        viewModel.toggleCommunityFollow(author: communityCase.author)
+        XCTAssertTrue(viewModel.followedCommunityAuthors.contains(communityCase.author))
     }
 
     @MainActor

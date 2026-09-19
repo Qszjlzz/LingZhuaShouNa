@@ -2,6 +2,20 @@ import Foundation
 import UIKit
 import UserNotifications
 
+private enum ChatError: LocalizedError {
+    case notConfigured
+    case httpFailure
+    case invalidResponse
+
+    var errorDescription: String? {
+        switch self {
+        case .notConfigured: return "尚未配置可用的 AI API，请先在设置中保存 Endpoint、API Key 和模型。"
+        case .httpFailure: return "AI 服务请求失败，请检查 API Key、网络或 Endpoint。"
+        case .invalidResponse: return "AI 返回内容无法解析，请检查模型和接口格式。"
+        }
+    }
+}
+
 enum AppTab: Hashable {
     case space
     case catalog
@@ -12,11 +26,15 @@ enum AppTab: Hashable {
 
 @MainActor
 final class AppViewModel: ObservableObject {
+    @Published private(set) var language: AppLanguage
+    @Published private(set) var hasSelectedLanguage: Bool
     @Published private(set) var spaces: [StorageSpace]
     @Published private(set) var achievements: [Achievement]
     @Published private(set) var communityCases: [CommunityCase]
+    @Published private(set) var communityComments: [UUID: [CommunityComment]]
     @Published private(set) var likedCommunityCaseIDs: Set<UUID>
     @Published private(set) var favoriteCommunityCaseIDs: Set<UUID>
+    @Published private(set) var followedCommunityAuthors: Set<String>
     @Published private(set) var scheduleItems: [ScheduleItem]
     @Published var selectedTab: AppTab = .space
     @Published var selectedSpaceID: UUID?
@@ -42,10 +60,18 @@ final class AppViewModel: ObservableObject {
 
     private static let communityLikesKey = "SmartPaw.community.likedCaseIDs"
     private static let communityFavoritesKey = "SmartPaw.community.favoriteCaseIDs"
+    private static let communityFollowsKey = "SmartPaw.community.followedAuthors"
+    private static let languageKey = "SmartPaw.appLanguage"
     private var activeScanID: UUID?
 
     init(dependencies: AppDependencies) {
         self.dependencies = dependencies
+        let storedLanguage = UserDefaults.standard.string(forKey: Self.languageKey)
+            .flatMap(AppLanguage.init(rawValue:))
+        // New installs start in Chinese so the first-run picker is readable
+        // before the user makes a language choice.
+        language = storedLanguage ?? .chinese
+        hasSelectedLanguage = storedLanguage != nil
         let snapshot: AppStateSnapshot
         let loadErrorMessage: String?
         do {
@@ -81,6 +107,7 @@ final class AppViewModel: ObservableObject {
             sanitized.afterAssetName = AppSampleAssets.replacingLegacyVideoAsset(item.afterAssetName)
             return sanitized
         }
+        communityComments = snapshot.communityComments
         scheduleItems = snapshot.scheduleItems.isEmpty ? DemoData.scheduleItems : snapshot.scheduleItems
         var restoredLLMSettings = snapshot.llmSettings
         let legacyAPIKey = restoredLLMSettings.apiKey
@@ -92,7 +119,9 @@ final class AppViewModel: ObservableObject {
             && !dependencies.credentialStore.saveAPIKey(legacyAPIKey)
         likedCommunityCaseIDs = Self.loadCommunityIDs(forKey: Self.communityLikesKey)
         favoriteCommunityCaseIDs = Self.loadCommunityIDs(forKey: Self.communityFavoritesKey)
+        followedCommunityAuthors = Set(UserDefaults.standard.stringArray(forKey: Self.communityFollowsKey) ?? [])
         selectedSpaceID = spaces.first?.id
+        selectedExecutionZones = Set(spaces.first?.activePlan?.steps.map(\.zone) ?? [])
         message = credentialMigrationFailed
             ? "旧版 API Key 无法迁移到系统钥匙串，原数据文件已保留。"
             : loadErrorMessage
@@ -186,7 +215,52 @@ final class AppViewModel: ObservableObject {
     }
 
     func selectSpace(_ id: UUID) {
+        guard spaces.contains(where: { $0.id == id }) else { return }
         selectedSpaceID = id
+        scannedItems = []
+        capturedImage = nil
+        referenceImage = nil
+        selectedExecutionZones = Set(spaces.first(where: { $0.id == id })?.activePlan?.steps.map(\.zone) ?? [])
+    }
+
+    func addSpace(name: String) -> UUID? {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let space = StorageSpace(
+            name: trimmed,
+            subtitle: "等待首次扫描",
+            beforeImageName: "",
+            afterImageName: "",
+            detectedItems: []
+        )
+        spaces.append(space)
+        selectedSpaceID = space.id
+        persist()
+        return space.id
+    }
+
+    func renameSpace(_ id: UUID, name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let index = spaces.firstIndex(where: { $0.id == id }) else { return }
+        spaces[index].name = trimmed
+        persist()
+    }
+
+    func deleteSpace(_ id: UUID) {
+        guard spaces.count > 1, let index = spaces.firstIndex(where: { $0.id == id }) else {
+            message = "至少保留一个空间。"
+            return
+        }
+        spaces.remove(at: index)
+        if selectedSpaceID == id { selectSpace(spaces[0].id) }
+        persist()
+    }
+
+    func replaceScannedItems(_ items: [DetectedItem]) {
+        scannedItems = items
+        guard let selectedSpaceID, let index = spaces.firstIndex(where: { $0.id == selectedSpaceID }) else { return }
+        spaces[index].detectedItems = items
+        persist()
     }
 
     func scanImage(_ image: UIImage) async {
@@ -325,7 +399,7 @@ final class AppViewModel: ObservableObject {
         selectedExecutionZones = Set(executionZoneOptions)
     }
 
-    func addManualItem(name: String, category: ItemCategory) {
+    func addManualItem(name: String, category: ItemCategory, forScan: Bool = false) {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedName.isEmpty,
               let selectedSpaceID,
@@ -334,7 +408,7 @@ final class AppViewModel: ObservableObject {
 
         let item = DetectedItem(name: trimmedName, category: category, confidence: 1)
         spaces[index].detectedItems.insert(item, at: 0)
-        if !scannedItems.isEmpty {
+        if forScan {
             scannedItems.insert(item, at: 0)
         }
         message = "已添加「\(trimmedName)」到 \(spaces[index].name)。"
@@ -344,6 +418,8 @@ final class AppViewModel: ObservableObject {
     func removeCatalogItem(_ itemID: UUID) {
         for index in spaces.indices {
             spaces[index].detectedItems.removeAll { $0.id == itemID }
+            spaces[index].activePlan = removingItemReference(itemID, from: spaces[index].activePlan)
+            spaces[index].completedPlans = spaces[index].completedPlans.compactMap { removingItemReference(itemID, from: $0) }
         }
         scannedItems.removeAll { $0.id == itemID }
         persist()
@@ -442,7 +518,8 @@ final class AppViewModel: ObservableObject {
         guard let selectedSpaceID,
               let spaceIndex = spaces.firstIndex(where: { $0.id == selectedSpaceID }),
               var plan = spaces[spaceIndex].activePlan,
-              let stepIndex = plan.steps.firstIndex(where: { $0.id == stepID })
+              let stepIndex = plan.steps.firstIndex(where: { $0.id == stepID }),
+              plan.steps[stepIndex].status == .active
         else { return }
 
         plan.steps[stepIndex].status = .done
@@ -487,6 +564,16 @@ final class AppViewModel: ObservableObject {
             return
         }
 
+        if communityCases.contains(where: {
+            $0.author == "我"
+                && $0.title == "\(space.name) \(plan.timeBudget.title)整理"
+                && $0.beforeImageName == space.beforeImageName
+                && $0.afterImageName == space.afterImageName
+        }) {
+            message = "这次成果已经分享到社区。"
+            return
+        }
+
         let tags = Array(Set(space.detectedItems.map(\.category.rawValue))).prefix(4)
         let newCase = CommunityCase(
             title: "\(space.name) \(plan.timeBudget.title)整理",
@@ -514,7 +601,12 @@ final class AppViewModel: ObservableObject {
     func replicate(_ communityCase: CommunityCase) {
         selectedStyle = communityCase.style
         selectedTimeBudget = .ten
-        scannedItems = communityCase.items.isEmpty ? selectedSpace.detectedItems : communityCase.items
+        let sourceItems = communityCase.items.isEmpty ? selectedSpace.detectedItems : communityCase.items
+        scannedItems = sourceItems.map { item in
+            var selectedItem = item
+            selectedItem.isSelected = true
+            return selectedItem
+        }
         makePlanFromScan()
         message = "已复刻「\(communityCase.title)」的整理风格。"
     }
@@ -538,6 +630,43 @@ final class AppViewModel: ObservableObject {
         persistCommunityReactions()
     }
 
+    func comments(for caseID: UUID) -> [CommunityComment] {
+        (communityComments[caseID] ?? []).sorted { $0.createdAt < $1.createdAt }
+    }
+
+    func commentCount(for caseID: UUID) -> Int {
+        communityComments[caseID]?.count ?? 0
+    }
+
+    func addCommunityComment(to caseID: UUID, body: String) {
+        let trimmedBody = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedBody.isEmpty,
+              communityCases.contains(where: { $0.id == caseID })
+        else { return }
+        let comment = CommunityComment(caseID: caseID, body: trimmedBody)
+        communityComments[caseID, default: []].append(comment)
+        persist()
+        message = "评论已发布。"
+    }
+
+    func toggleCommunityCommentLike(_ commentID: UUID, in caseID: UUID) {
+        guard var comments = communityComments[caseID],
+              let index = comments.firstIndex(where: { $0.id == commentID })
+        else { return }
+        comments[index].likes = comments[index].likes == 0 ? 1 : 0
+        communityComments[caseID] = comments
+        persist()
+    }
+
+    func toggleCommunityFollow(author: String) {
+        let trimmedAuthor = author.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedAuthor.isEmpty, trimmedAuthor != "我" else { return }
+        if followedCommunityAuthors.remove(trimmedAuthor) == nil {
+            followedCommunityAuthors.insert(trimmedAuthor)
+        }
+        UserDefaults.standard.set(Array(followedCommunityAuthors), forKey: Self.communityFollowsKey)
+    }
+
     func resetDemo() {
         if !dependencies.credentialStore.deleteAPIKey() {
             #if DEBUG
@@ -559,8 +688,10 @@ final class AppViewModel: ObservableObject {
         spaces = snapshot.spaces
         achievements = snapshot.achievements
         communityCases = snapshot.communityCases
+        communityComments = snapshot.communityComments
         likedCommunityCaseIDs = []
         favoriteCommunityCaseIDs = []
+        followedCommunityAuthors = []
         scheduleItems = snapshot.scheduleItems
         llmSettings = snapshot.llmSettings
         selectedSpaceID = spaces.first?.id
@@ -576,6 +707,7 @@ final class AppViewModel: ObservableObject {
         selectedExecutionZones = []
         latestUnlockedAchievement = nil
         persistCommunityReactions()
+        UserDefaults.standard.removeObject(forKey: Self.communityFollowsKey)
         persist()
         Task {
             for id in oldScheduleIDs {
@@ -593,6 +725,12 @@ final class AppViewModel: ObservableObject {
 
     func clearMessage() {
         message = nil
+    }
+
+    func setLanguage(_ language: AppLanguage) {
+        self.language = language
+        hasSelectedLanguage = true
+        UserDefaults.standard.set(language.rawValue, forKey: Self.languageKey)
     }
 
     func showMessage(_ text: String) {
@@ -663,6 +801,57 @@ final class AppViewModel: ObservableObject {
         } catch {
             llmConnectionState = .failure(connectionErrorMessage(for: error))
         }
+    }
+
+    func sendChatMessage(message: String, history: [[String: String]]) async throws -> String {
+        guard llmSettings.canRequest else { throw ChatError.notConfigured }
+        guard let url = URL(string: llmSettings.endpoint.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+            throw ChatError.invalidResponse
+        }
+        var input: [[String: Any]] = []
+        let context = currentChatContext()
+        input.append(["role": "system", "content": "你是灵爪收纳助手。请基于当前扫描和空间信息，用简洁、具体、可执行的中文回答。\n\(context)"])
+        for item in history.prefix(12) {
+            guard let role = item["role"], let text = item["text"], !text.isEmpty else { continue }
+            input.append(["role": role == "assistant" ? "assistant" : "user", "content": text])
+        }
+        input.append(["role": "user", "content": message])
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 45
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(llmSettings.apiKey)", forHTTPHeaderField: "Authorization")
+        request.httpBody = try JSONSerialization.data(withJSONObject: [
+            "model": llmSettings.model,
+            "input": input,
+            "max_output_tokens": 500
+        ])
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw ChatError.httpFailure
+        }
+        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw ChatError.invalidResponse
+        }
+        if let text = object["output_text"] as? String, !text.isEmpty { return text }
+        if let output = object["output"] as? [[String: Any]] {
+            for item in output {
+                if let content = item["content"] as? [[String: Any]] {
+                    for part in content where part["type"] as? String == "output_text" {
+                        if let text = part["text"] as? String, !text.isEmpty { return text }
+                    }
+                }
+            }
+        }
+        throw ChatError.invalidResponse
+    }
+
+    private func currentChatContext() -> String {
+        let space = spaces.first(where: { $0.id == selectedSpaceID })
+        let items = (scannedItems.isEmpty ? space?.detectedItems ?? [] : scannedItems)
+            .filter(\.isSelected).map { "\($0.name)(\($0.category.rawValue))" }.joined(separator: "、")
+        return "空间：\(space?.name ?? "未选择空间")；扫描物品：\(items.isEmpty ? "暂无" : items)；风格：\(selectedStyle.rawValue)；时间预算：\(selectedTimeBudget.title)"
     }
 
     func llmValidationError(for settings: LLMSettings) -> String? {
@@ -882,6 +1071,7 @@ final class AppViewModel: ObservableObject {
     private func finishActivePlan(in index: Int, plan: StoragePlan) {
         spaces[index].completedPlans.insert(plan, at: 0)
         spaces[index].activePlan = nil
+        spaces[index].lastOrganizedAt = plan.completedAt ?? Date()
         if !achievements.contains(where: { $0.title == "凌乱终结者" }) {
             let achievement = Achievement(title: "凌乱终结者", subtitle: "完成一次完整收纳闭环", iconName: "sparkles")
             achievements.insert(achievement, at: 0)
@@ -936,7 +1126,7 @@ final class AppViewModel: ObservableObject {
     private func persist() {
         do {
             try dependencies.storageStore.saveState(
-                AppStateSnapshot(spaces: spaces, achievements: achievements, communityCases: communityCases, scheduleItems: scheduleItems, llmSettings: llmSettings)
+                AppStateSnapshot(spaces: spaces, achievements: achievements, communityCases: communityCases, communityComments: communityComments, scheduleItems: scheduleItems, llmSettings: llmSettings)
             )
         } catch {
             message = "保存失败：\(error.localizedDescription)"
@@ -946,6 +1136,16 @@ final class AppViewModel: ObservableObject {
     private func persistCommunityReactions() {
         UserDefaults.standard.set(likedCommunityCaseIDs.map(\.uuidString), forKey: Self.communityLikesKey)
         UserDefaults.standard.set(favoriteCommunityCaseIDs.map(\.uuidString), forKey: Self.communityFavoritesKey)
+    }
+
+    private func removingItemReference(_ itemID: UUID, from plan: StoragePlan?) -> StoragePlan? {
+        guard var plan else { return nil }
+        plan.steps = plan.steps.map { step in
+            var updated = step
+            updated.itemIDs.removeAll { $0 == itemID }
+            return updated
+        }
+        return plan
     }
 
     private static func loadCommunityIDs(forKey key: String) -> Set<UUID> {

@@ -9,11 +9,8 @@
 /* Begin PBXBuildFile section */
 		092A9540A2DA35E897D8AD47 /* SmartPawModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F5A81A449657E82DF57C3B6 /* SmartPawModels.swift */; };
 		107B60DD19983C79EC7F0E75 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8A3D85099B1D340186011524 /* Assets.xcassets */; };
-		12D272E1C2950AEFDC13B6C7 /* ExecutionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB28193BBB9B3C44A35EDDCC /* ExecutionView.swift */; };
 		2768E5B474296674A7E9741E /* DemoData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 951706FD27A8E1F313974B14 /* DemoData.swift */; };
-		3B4B8271649377E358BAE36B /* CaptureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E614106111B22798A8FAA12B /* CaptureView.swift */; };
 		43B6962E08C3488E0C042EAC /* AppDependencies.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4C3517B7A6B57B5A410478C /* AppDependencies.swift */; };
-		477E8C29209851285CC3BC59 /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFC96400E16D4206128FF942 /* ProfileView.swift */; };
 		5EB08BC073F6B87DF771768B /* SmartPawTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 864209287E7CCB09CB544233 /* SmartPawTests.swift */; };
 		6012CF5A6E8BA96BC32654E6 /* yolo11n-seg.mlpackage in Resources */ = {isa = PBXBuildFile; fileRef = 9C01C60111DE6F6AB8CB99BA /* yolo11n-seg.mlpackage */; };
 		653D4BFA3B6E6C0023555979 /* KeychainCredentialStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 232ED368E5900174F40FF844 /* KeychainCredentialStore.swift */; };
@@ -43,19 +40,18 @@
 		B11000000000000000000009 /* category_embeddings.json in Resources */ = {isa = PBXBuildFile; fileRef = B12000000000000000000009 /* category_embeddings.json */; };
 		B11000000000000000000010 /* RecognitionViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B12000000000000000000010 /* RecognitionViewModel.swift */; };
 		BBC3E894CE0C768648C96DF5 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A335BF6F1730E6236BEF42E7 /* RootView.swift */; };
+		A0E000000000000000000015 /* AppLanguage.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0E000000000000000000016 /* AppLanguage.swift */; };
+		C20000000000000000000003 /* CurrentFigmaMakeWebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000004 /* CurrentFigmaMakeWebView.swift */; };
+		A0E000000000000000000017 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = A0E000000000000000000018 /* Localizable.strings */; };
+		C20000000000000000000001 /* FigmaMakeCurrentWeb in Resources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000002 /* FigmaMakeCurrentWeb */; };
 		BE6779B8D14D4A28C612F05C /* EdgeSAMSegmentationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62AB7C21645033ADF9B3D3F8 /* EdgeSAMSegmentationService.swift */; };
 		C11000000000000000000001 /* eval-editthispic-01-before.jpg in Resources */ = {isa = PBXBuildFile; fileRef = C12000000000000000000001 /* eval-editthispic-01-before.jpg */; };
 		C11000000000000000000002 /* eval-editthispic-02-before.jpg in Resources */ = {isa = PBXBuildFile; fileRef = C12000000000000000000002 /* eval-editthispic-02-before.jpg */; };
 		C11000000000000000000003 /* eval-editthispic-03-before.jpg in Resources */ = {isa = PBXBuildFile; fileRef = C12000000000000000000003 /* eval-editthispic-03-before.jpg */; };
-		D064B9E097F4921A6D68570C /* PlanningView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0CB345B8C2AA139115B7734E /* PlanningView.swift */; };
 		D1310AADEC944E0B28550C5B /* external-cluttered-study-pexels.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 3A717E4CFAEB1525CBCD6DA9 /* external-cluttered-study-pexels.jpg */; };
-		D26753ED568F7AA01257B2AA /* CatalogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58C1A75BE3DC04684CF3A44E /* CatalogView.swift */; };
-		DED1A492FB95802E6F23D3AA /* SmartPawStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99DA934D2B7252BC7F291DC9 /* SmartPawStyle.swift */; };
 		DF1C0F04B75A84AA918E5A3E /* ARMaskOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7115601BAC9DEC390661AA62 /* ARMaskOverlay.swift */; };
-		EA85D8D566820D9114C89181 /* CommunityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4392AA4974725EFB2C94A3CB /* CommunityView.swift */; };
 		F34F01ECE62BC520A00ECBD5 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9E7A2E588639E0840D1E7BD8 /* Foundation.framework */; };
 		FBC15514A2C6C4C0011BC009 /* AppViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECBD0487DCD50AC08D1B45EE /* AppViewModel.swift */; };
-		FC808BE996ABD92A93720592 /* SpaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 139687BC0B7D299C286564C5 /* SpaceView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -71,14 +67,10 @@
 /* Begin PBXFileReference section */
 		0129B4B7A8FC9DF181334704 /* external-messy-desk-note.png */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = image.png; path = "external-messy-desk-note.png"; sourceTree = "<group>"; };
 		09ED6F58A952E7F1FF27ED67 /* SmartPaw.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SmartPaw.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		0CB345B8C2AA139115B7734E /* PlanningView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PlanningView.swift; sourceTree = "<group>"; };
-		139687BC0B7D299C286564C5 /* SpaceView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SpaceView.swift; sourceTree = "<group>"; };
 		232ED368E5900174F40FF844 /* KeychainCredentialStore.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = KeychainCredentialStore.swift; sourceTree = "<group>"; };
 		3A717E4CFAEB1525CBCD6DA9 /* external-cluttered-study-pexels.jpg */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = image.jpeg; path = "external-cluttered-study-pexels.jpg"; sourceTree = "<group>"; };
 		3B98D768CB2265C78291D540 /* DeepLabV3Int8LUT.mlmodel */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = file.mlmodel; path = DeepLabV3Int8LUT.mlmodel; sourceTree = "<group>"; };
-		4392AA4974725EFB2C94A3CB /* CommunityView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CommunityView.swift; sourceTree = "<group>"; };
 		58BCE126BC6772ACFF7F8E72 /* yolo11n-seg-640.mlpackage */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.mlpackage; path = "yolo11n-seg-640.mlpackage"; sourceTree = "<group>"; };
-		58C1A75BE3DC04684CF3A44E /* CatalogView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CatalogView.swift; sourceTree = "<group>"; };
 		58EDAF196CC70CBDF3CF9DC2 /* SmartPawApp.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SmartPawApp.swift; sourceTree = "<group>"; };
 		5F5A81A449657E82DF57C3B6 /* SmartPawModels.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SmartPawModels.swift; sourceTree = "<group>"; };
 		62AB7C21645033ADF9B3D3F8 /* EdgeSAMSegmentationService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = EdgeSAMSegmentationService.swift; sourceTree = "<group>"; };
@@ -86,7 +78,6 @@
 		864209287E7CCB09CB544233 /* SmartPawTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SmartPawTests.swift; sourceTree = "<group>"; };
 		8A3D85099B1D340186011524 /* Assets.xcassets */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		951706FD27A8E1F313974B14 /* DemoData.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = DemoData.swift; sourceTree = "<group>"; };
-		99DA934D2B7252BC7F291DC9 /* SmartPawStyle.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SmartPawStyle.swift; sourceTree = "<group>"; };
 		9C01C60111DE6F6AB8CB99BA /* yolo11n-seg.mlpackage */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.mlpackage; path = "yolo11n-seg.mlpackage"; sourceTree = "<group>"; };
 		9C8CAF629E6F83A34613990B /* ImageDecoding.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ImageDecoding.swift; sourceTree = "<group>"; };
 		9DA825EAE1381DE5C97F6107 /* external-trash-room-imweb.jpg */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = image.jpeg; path = "external-trash-room-imweb.jpg"; sourceTree = "<group>"; };
@@ -97,7 +88,11 @@
 		A12000000000000000000001 /* RecognitionResult.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = RecognitionResult.swift; sourceTree = "<group>"; };
 		A12000000000000000000002 /* MobileCLIPRecognitionService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MobileCLIPRecognitionService.swift; sourceTree = "<group>"; };
 		A335BF6F1730E6236BEF42E7 /* RootView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
-		AFC96400E16D4206128FF942 /* ProfileView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
+		A0E000000000000000000016 /* AppLanguage.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AppLanguage.swift; sourceTree = "<group>"; };
+		C20000000000000000000004 /* CurrentFigmaMakeWebView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CurrentFigmaMakeWebView.swift; sourceTree = "<group>"; };
+		A0E000000000000000000019 /* en.lproj/Localizable.strings */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
+		A0E000000000000000000020 /* zh-Hans.lproj/Localizable.strings */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text; path = zh-Hans.lproj/Localizable.strings; sourceTree = "<group>"; };
+		C20000000000000000000002 /* FigmaMakeCurrentWeb */ = {isa = PBXFileReference; lastKnownFileType = folder; path = FigmaMakeCurrentWeb; sourceTree = "<group>"; };
 		B12000000000000000000001 /* MobileCLIPTextRecognitionService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MobileCLIPTextRecognitionService.swift; sourceTree = "<group>"; };
 		B12000000000000000000002 /* CLIPTokenizer.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CLIPTokenizer.swift; sourceTree = "<group>"; };
 		B12000000000000000000003 /* GPT2ByteEncoder.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = GPT2ByteEncoder.swift; sourceTree = "<group>"; };
@@ -112,11 +107,9 @@
 		C12000000000000000000001 /* eval-editthispic-01-before.jpg */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = image.jpeg; path = "eval-editthispic-01-before.jpg"; sourceTree = "<group>"; };
 		C12000000000000000000002 /* eval-editthispic-02-before.jpg */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = image.jpeg; path = "eval-editthispic-02-before.jpg"; sourceTree = "<group>"; };
 		C12000000000000000000003 /* eval-editthispic-03-before.jpg */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = image.jpeg; path = "eval-editthispic-03-before.jpg"; sourceTree = "<group>"; };
-		CB28193BBB9B3C44A35EDDCC /* ExecutionView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ExecutionView.swift; sourceTree = "<group>"; };
 		DF3EA01076A0957C5D11D3B4 /* SmartPawTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SmartPawTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		E0124065F43217D86371CB89 /* SmartPawServices.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SmartPawServices.swift; sourceTree = "<group>"; };
 		E079203E98D6EA82F534BC43 /* edge_sam_decoder.mlpackage */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.mlpackage; name = edge_sam_decoder.mlpackage; path = decoder/edge_sam_decoder.mlpackage; sourceTree = "<group>"; };
-		E614106111B22798A8FAA12B /* CaptureView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CaptureView.swift; sourceTree = "<group>"; };
 		ECBD0487DCD50AC08D1B45EE /* AppViewModel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AppViewModel.swift; sourceTree = "<group>"; };
 		F7FFA6D52482B7DAD8A77F7B /* edge_sam_encoder.mlpackage */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.mlpackage; name = edge_sam_encoder.mlpackage; path = encoder/edge_sam_encoder.mlpackage; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -141,14 +134,6 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		099BB482176BAC1F531EEA87 /* Planning */ = {
-			isa = PBXGroup;
-			children = (
-				0CB345B8C2AA139115B7734E /* PlanningView.swift */,
-			);
-			path = Planning;
-			sourceTree = "<group>";
-		};
 		0F13121608D7C1E42C168D63 /* ExternalScanTests */ = {
 			isa = PBXGroup;
 			children = (
@@ -157,14 +142,6 @@
 				9DA825EAE1381DE5C97F6107 /* external-trash-room-imweb.jpg */,
 			);
 			path = ExternalScanTests;
-			sourceTree = "<group>";
-		};
-		1C3A78AB68ADAC6B791F9A47 /* Catalog */ = {
-			isa = PBXGroup;
-			children = (
-				58C1A75BE3DC04684CF3A44E /* CatalogView.swift */,
-			);
-			path = Catalog;
 			sourceTree = "<group>";
 		};
 		36690D9192130F6A6D63C48D /* Frameworks */ = {
@@ -184,8 +161,9 @@
 				9C8CAF629E6F83A34613990B /* ImageDecoding.swift */,
 				232ED368E5900174F40FF844 /* KeychainCredentialStore.swift */,
 				A335BF6F1730E6236BEF42E7 /* RootView.swift */,
+				C20000000000000000000004 /* CurrentFigmaMakeWebView.swift */,
+				A0E000000000000000000016 /* AppLanguage.swift */,
 				58EDAF196CC70CBDF3CF9DC2 /* SmartPawApp.swift */,
-				99DA934D2B7252BC7F291DC9 /* SmartPawStyle.swift */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -218,6 +196,7 @@
 			isa = PBXGroup;
 			children = (
 				8A3D85099B1D340186011524 /* Assets.xcassets */,
+				C20000000000000000000002 /* FigmaMakeCurrentWeb */,
 				B12000000000000000000009 /* category_embeddings.json */,
 				0F13121608D7C1E42C168D63 /* ExternalScanTests */,
 				C13000000000000000000001 /* EvaluationScanTests */,
@@ -227,12 +206,12 @@
 			path = Resources;
 			sourceTree = "<group>";
 		};
-		838CAC72F775EDBAB06E8356 /* Execution */ = {
+		A0E000000000000000000021 /* Localization */ = {
 			isa = PBXGroup;
 			children = (
-				CB28193BBB9B3C44A35EDDCC /* ExecutionView.swift */,
+				A0E000000000000000000018 /* Localizable.strings */,
 			);
-			path = Execution;
+			path = Localization;
 			sourceTree = "<group>";
 		};
 		8D50BEC44369039C87BCEF8E = {
@@ -243,8 +222,8 @@
 				4143047A145F8F2141168227 /* App */,
 				8DE72B6E8ADEF9D6AF7E4B22 /* Models */,
 				ED3F61A861ECDF90A8322403 /* Services */,
-				AA3CDEC459BBD92FDA9AB46E /* Features */,
 				7797F477DCDB087DA1387E52 /* Resources */,
+				A0E000000000000000000021 /* Localization */,
 				EB0DA45820CF875085FF3B45 /* SmartPawTests */,
 			);
 			sourceTree = "<group>";
@@ -265,28 +244,6 @@
 				DF3EA01076A0957C5D11D3B4 /* SmartPawTests.xctest */,
 			);
 			name = Products;
-			sourceTree = "<group>";
-		};
-		A9C03150D549B75991E174C7 /* Community */ = {
-			isa = PBXGroup;
-			children = (
-				4392AA4974725EFB2C94A3CB /* CommunityView.swift */,
-			);
-			path = Community;
-			sourceTree = "<group>";
-		};
-		AA3CDEC459BBD92FDA9AB46E /* Features */ = {
-			isa = PBXGroup;
-			children = (
-				DBCCC6377FFFB5FD1849E617 /* Capture */,
-				1C3A78AB68ADAC6B791F9A47 /* Catalog */,
-				A9C03150D549B75991E174C7 /* Community */,
-				838CAC72F775EDBAB06E8356 /* Execution */,
-				099BB482176BAC1F531EEA87 /* Planning */,
-				CA96C21089C09A8ABB092314 /* Profile */,
-				EBFB10F4A75C205101DAEB8F /* Space */,
-			);
-			path = Features;
 			sourceTree = "<group>";
 		};
 		B0DD08E59129222AF03B4DD6 /* EdgeSAM */ = {
@@ -329,36 +286,12 @@
 			path = EvaluationScanTests;
 			sourceTree = "<group>";
 		};
-		CA96C21089C09A8ABB092314 /* Profile */ = {
-			isa = PBXGroup;
-			children = (
-				AFC96400E16D4206128FF942 /* ProfileView.swift */,
-			);
-			path = Profile;
-			sourceTree = "<group>";
-		};
-		DBCCC6377FFFB5FD1849E617 /* Capture */ = {
-			isa = PBXGroup;
-			children = (
-				E614106111B22798A8FAA12B /* CaptureView.swift */,
-			);
-			path = Capture;
-			sourceTree = "<group>";
-		};
 		EB0DA45820CF875085FF3B45 /* SmartPawTests */ = {
 			isa = PBXGroup;
 			children = (
 				864209287E7CCB09CB544233 /* SmartPawTests.swift */,
 			);
 			path = SmartPawTests;
-			sourceTree = "<group>";
-		};
-		EBFB10F4A75C205101DAEB8F /* Space */ = {
-			isa = PBXGroup;
-			children = (
-				139687BC0B7D299C286564C5 /* SpaceView.swift */,
-			);
-			path = Space;
 			sourceTree = "<group>";
 		};
 		ED3F61A861ECDF90A8322403 /* Services */ = {
@@ -374,6 +307,18 @@
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
+
+/* Begin PBXVariantGroup section */
+		A0E000000000000000000018 /* Localizable.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				A0E000000000000000000019 /* en.lproj/Localizable.strings */,
+				A0E000000000000000000020 /* zh-Hans.lproj/Localizable.strings */,
+			);
+			name = Localizable.strings;
+			sourceTree = "<group>";
+		};
+/* End PBXVariantGroup section */
 
 /* Begin PBXNativeTarget section */
 		F0B8A38093602E4E8C23367A /* SmartPaw */ = {
@@ -462,6 +407,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				107B60DD19983C79EC7F0E75 /* Assets.xcassets in Resources */,
+				C20000000000000000000001 /* FigmaMakeCurrentWeb in Resources */,
+				A0E000000000000000000017 /* Localizable.strings in Resources */,
 				D1310AADEC944E0B28550C5B /* external-cluttered-study-pexels.jpg in Resources */,
 				ACAE33FF11F3DDEBF555DDC2 /* external-messy-desk-note.png in Resources */,
 				8AB3AC63B88C92468262F197 /* external-trash-room-imweb.jpg in Resources */,
@@ -492,24 +439,18 @@
 			buildActionMask = 2147483647;
 			files = (
 				DF1C0F04B75A84AA918E5A3E /* ARMaskOverlay.swift in Sources */,
+				C20000000000000000000003 /* CurrentFigmaMakeWebView.swift in Sources */,
 				43B6962E08C3488E0C042EAC /* AppDependencies.swift in Sources */,
 				FBC15514A2C6C4C0011BC009 /* AppViewModel.swift in Sources */,
 				A1FAD299803EB78A7089873F /* ImageDecoding.swift in Sources */,
 				653D4BFA3B6E6C0023555979 /* KeychainCredentialStore.swift in Sources */,
 				BBC3E894CE0C768648C96DF5 /* RootView.swift in Sources */,
+				A0E000000000000000000015 /* AppLanguage.swift in Sources */,
 				92275BDD78104181D2F0CD26 /* SmartPawApp.swift in Sources */,
-				DED1A492FB95802E6F23D3AA /* SmartPawStyle.swift in Sources */,
 				092A9540A2DA35E897D8AD47 /* SmartPawModels.swift in Sources */,
 				A11000000000000000000001 /* RecognitionResult.swift in Sources */,
 				2768E5B474296674A7E9741E /* DemoData.swift in Sources */,
 				7A87E26C01D121EDF9F350D1 /* SmartPawServices.swift in Sources */,
-				3B4B8271649377E358BAE36B /* CaptureView.swift in Sources */,
-				D26753ED568F7AA01257B2AA /* CatalogView.swift in Sources */,
-				EA85D8D566820D9114C89181 /* CommunityView.swift in Sources */,
-				12D272E1C2950AEFDC13B6C7 /* ExecutionView.swift in Sources */,
-				D064B9E097F4921A6D68570C /* PlanningView.swift in Sources */,
-				477E8C29209851285CC3BC59 /* ProfileView.swift in Sources */,
-				FC808BE996ABD92A93720592 /* SpaceView.swift in Sources */,
 				BE6779B8D14D4A28C612F05C /* EdgeSAMSegmentationService.swift in Sources */,
 				A11000000000000000000002 /* MobileCLIPRecognitionService.swift in Sources */,
 				B11000000000000000000001 /* MobileCLIPTextRecognitionService.swift in Sources */,
@@ -552,7 +493,7 @@
 				DEVELOPMENT_TEAM = 46484446VW;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = "灵爪收纳";
+				INFOPLIST_KEY_CFBundleDisplayName = "Smart Paw";
 				INFOPLIST_KEY_CFBundleName = SmartPaw;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				INFOPLIST_KEY_NSCameraUsageDescription = "用于扫描杂乱空间并生成收纳规划。";
@@ -662,7 +603,7 @@
 				DEVELOPMENT_TEAM = 46484446VW;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = "灵爪收纳";
+				INFOPLIST_KEY_CFBundleDisplayName = "Smart Paw";
 				INFOPLIST_KEY_CFBundleName = SmartPaw;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				INFOPLIST_KEY_NSCameraUsageDescription = "用于扫描杂乱空间并生成收纳规划。";

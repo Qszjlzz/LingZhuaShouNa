@@ -272,11 +272,13 @@ struct StorageSpace: Identifiable, Codable, Equatable {
     var afterAssetName: String?
     /// True only after the user captures or imports an after photo for this exact space.
     var hasVerifiedComparison: Bool
+    /// The last time this space was refreshed by a completed organization flow.
+    var lastOrganizedAt: Date?
     var detectedItems: [DetectedItem]
     var activePlan: StoragePlan?
     var completedPlans: [StoragePlan]
 
-    init(id: UUID = UUID(), name: String, subtitle: String, beforeImageName: String, afterImageName: String, beforeAssetName: String? = nil, afterAssetName: String? = nil, hasVerifiedComparison: Bool = false, detectedItems: [DetectedItem], activePlan: StoragePlan? = nil, completedPlans: [StoragePlan] = []) {
+    init(id: UUID = UUID(), name: String, subtitle: String, beforeImageName: String, afterImageName: String, beforeAssetName: String? = nil, afterAssetName: String? = nil, hasVerifiedComparison: Bool = false, lastOrganizedAt: Date? = nil, detectedItems: [DetectedItem], activePlan: StoragePlan? = nil, completedPlans: [StoragePlan] = []) {
         self.id = id
         self.name = name
         self.subtitle = subtitle
@@ -285,6 +287,7 @@ struct StorageSpace: Identifiable, Codable, Equatable {
         self.beforeAssetName = beforeAssetName
         self.afterAssetName = afterAssetName
         self.hasVerifiedComparison = hasVerifiedComparison
+        self.lastOrganizedAt = lastOrganizedAt
         self.detectedItems = detectedItems
         self.activePlan = activePlan
         self.completedPlans = completedPlans
@@ -299,6 +302,7 @@ struct StorageSpace: Identifiable, Codable, Equatable {
         case beforeAssetName
         case afterAssetName
         case hasVerifiedComparison
+        case lastOrganizedAt
         case detectedItems
         case activePlan
         case completedPlans
@@ -314,6 +318,7 @@ struct StorageSpace: Identifiable, Codable, Equatable {
         beforeAssetName = try container.decodeIfPresent(String.self, forKey: .beforeAssetName)
         afterAssetName = try container.decodeIfPresent(String.self, forKey: .afterAssetName)
         hasVerifiedComparison = try container.decodeIfPresent(Bool.self, forKey: .hasVerifiedComparison) ?? false
+        lastOrganizedAt = try container.decodeIfPresent(Date.self, forKey: .lastOrganizedAt)
         detectedItems = try container.decode([DetectedItem].self, forKey: .detectedItems)
         activePlan = try container.decodeIfPresent(StoragePlan.self, forKey: .activePlan)
         completedPlans = try container.decode([StoragePlan].self, forKey: .completedPlans)
@@ -396,6 +401,24 @@ struct CommunityCase: Identifiable, Codable, Equatable {
         durationText = try container.decodeIfPresent(String.self, forKey: .durationText) ?? "10 分钟"
         difficultyText = try container.decodeIfPresent(String.self, forKey: .difficultyText) ?? "低压力"
         items = try container.decode([DetectedItem].self, forKey: .items)
+    }
+}
+
+struct CommunityComment: Identifiable, Codable, Equatable {
+    let id: UUID
+    let caseID: UUID
+    var author: String
+    var body: String
+    var createdAt: Date
+    var likes: Int
+
+    init(id: UUID = UUID(), caseID: UUID, author: String = "我", body: String, createdAt: Date = Date(), likes: Int = 0) {
+        self.id = id
+        self.caseID = caseID
+        self.author = author
+        self.body = body
+        self.createdAt = createdAt
+        self.likes = likes
     }
 }
 

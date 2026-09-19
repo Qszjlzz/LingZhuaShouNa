@@ -56,6 +56,7 @@ enum DemoData {
             afterImageName: "demo-after",
             beforeAssetName: AppSampleAssets.messyDesk,
             afterAssetName: AppSampleAssets.clutteredStudy,
+            lastOrganizedAt: Date(timeIntervalSinceNow: -3600),
             detectedItems: detectedItems
             ,
             completedPlans: [completedPlan]
@@ -67,6 +68,7 @@ enum DemoData {
             afterImageName: "demo-after",
             beforeAssetName: AppSampleAssets.clutteredRoom,
             afterAssetName: AppSampleAssets.clutteredStudy,
+            lastOrganizedAt: Date(timeIntervalSinceNow: -26 * 24 * 60 * 60),
             detectedItems: Array(detectedItems.prefix(5))
         )
     ]
@@ -92,6 +94,6 @@ enum DemoData {
     ]
 
     static var snapshot: AppStateSnapshot {
-        AppStateSnapshot(spaces: spaces, achievements: achievements, communityCases: communityCases, scheduleItems: scheduleItems)
+        AppStateSnapshot(spaces: spaces, achievements: achievements, communityCases: communityCases, communityComments: [:], scheduleItems: scheduleItems)
     }
 }

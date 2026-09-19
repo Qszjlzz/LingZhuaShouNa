@@ -12,6 +12,55 @@
 
 灵爪收纳已经从“SwiftUI 页面入口 + DemoData”推进到“真实图片/视频帧识别 + 用户确认 + 本地规划 + 分步执行 + raster mask 引导 + 成果沉淀”的可演示原型。
 
+## 2026-08-22 Make 前端扫描入口复核
+
+- Make 原生 SwiftUI 首页的中央相机按钮继续打开完整 `CaptureView`，没有替换为截图或简化演示页。
+- 修正相机按钮打开和关闭时的 `viewModel.selectedTab` 同步，确保 `CaptureView` 正常启动和停止相机；扫描算法、模型资源和确认页链路未被 UI 改版移除。
+- 使用 iPhone 16 iOS 18.5 Simulator 重跑 6 个扫描回归测试：YOLO 独立照片实例 mask、实时扫描候选、书架图书 mask、DeepLab 兜底、扫描失败清理和并发扫描结果顺序，结果为 6/6 通过。
+- 当前能力边界仍以真实帧基线为准：通用 COCO YOLO11n-seg 对细小物体和高杂乱场景仍可能漏检，真机相机/ARKit/RoomPlan 仍需真机验证。
+
+## 2026-08-21 本轮流程补齐
+
+本轮针对“真正完成一次整理闭环”补齐了以下状态和入口：
+
+- 识别确认页现在可以编辑整理目标、重点区域、风格和时间预算，并直接生成本地可执行方案；低置信度提示来自实际候选，不再显示固定的“镜子后方/光线不足”文案。
+- 无识别结果时仍可在确认页手动补充物品，并参与方案生成。
+- 执行页改为读取 AppViewModel 中的最新计划，步骤完成后会立即推进；区域选择会过滤实际显示的步骤。
+- 空间详情的“查看全部”打开真实物品列表；空间首页可切换已有空间，并显示当前空间的真实物品数和计划进度。
+- 社区评论、评论点赞、作者关注和收藏帖子都已接入本地 JSON/UserDefaults 持久化；个人中心新增“已保存的帖子”列表，可查看并一键复刻。
+- 删除物品时会清理活动计划和历史计划中的 itemIDs 引用；重复分享同一完成记录不会生成重复社区案例。
+- 新增 testCommunityCommentsAndFollowsMutateRealState，验证评论、评论点赞和关注状态的业务变更。
+
+## 2026-08-21 本轮真实状态收口
+
+在上述闭环基础上又修正了一批会让界面显示静态演示数据或复用错误上下文的问题：
+
+- 识别确认页可编辑识别物品的名称、分类、建议归位区和是否纳入本次整理；盲点标签使用真实候选物品名，不再固定写“镜子后方”。
+- 切换空间时清理扫描图片、识别候选、参考图和执行区域，避免把上一个空间的结果生成到当前空间；社区复刻会强制选中来源物品后再生成计划。
+- 执行页在持久化计划重新打开且没有区域筛选时默认显示全部步骤。
+- 空间首页、空间详情和进度页改为使用真实物品数、计划进度、完成次数、空间名称和当前计划步骤；移除了固定 65% 进度、45 件物品、卫生间示例和静态活动记录。
+- 个人计划页的新增入口会创建真实日程；日程页使用当前月份、真实日期、真实计划和前后月份切换，不再固定显示 2026 年 5 月。
+- 新增 testSelectingSpaceClearsScanContextAndRestoresPlanZones、testReplicatingCommunityCaseSelectsAllSourceItemsBeforePlanning 两条业务回归测试。
+
+本轮最终构建：
+
+```bash
+xcodebuild -project SmartPaw.xcodeproj -scheme SmartPaw \
+  -destination 'generic/platform=iOS Simulator' \
+  -derivedDataPath /tmp/smartpaw-derived-functional3 \
+  build CODE_SIGNING_ALLOWED=NO
+```
+
+结果：`BUILD SUCCEEDED`。定向业务测试使用 iPhone 16 iOS 18.5 Simulator；测试目标完成构建和测试启动，但当前环境未生成可供 `xcresulttool` 读取的有效结果包，后续应在 Xcode/Test navigator 再确认测试报告。
+
+本轮验证：
+
+- xcodebuild -project SmartPaw.xcodeproj -scheme SmartPaw -destination 'generic/platform=iOS Simulator' -derivedDataPath /tmp/smartpaw-derived-final4 build CODE_SIGNING_ALLOWED=NO：BUILD SUCCEEDED。
+- 明确使用 DECE4A2E-103D-4BB6-9CA0-06F902AA8C7B 的 iPhone 16 iOS 18.5 Simulator，定向运行新增社区业务测试：TEST SUCCEEDED，1 个测试、0 个失败。
+- 同一环境完整测试套件执行 45 个测试，其中 5 个既有识别基线失败：外部图片 YOLO 召回/对象级评测 4 个断言，以及一个 AR hint 数值断言；没有失败指向本轮新增的流程代码。
+
+限制仍然存在：模拟器不能证明真机 ARKit/RoomPlan；完整测试中的识别基线失败需要单独修复，不能把本轮流程测试通过解释为识别模型验收通过。
+
 当前最强的成果是产品闭环和本地实例分割链路；当前最主要的风险是：识别模型仍是通用 COCO 模型、细小物体和高杂乱场景召回不稳定、真实 ARKit/RoomPlan 仍缺真机证据，以及最终提交包在 2026-08-21 的当前环境构建时出现 Core ML 模型编译失败。
 
 ## 项目位置与版本关系

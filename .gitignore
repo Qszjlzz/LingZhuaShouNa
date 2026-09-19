@@ -33,6 +33,12 @@ app-analysis/yolo-python-v1/
 *.pem
 *.p12
 
+# Local distributables and generated handoff exports
+*.ipa
+*.docx
+FigmaMakeCurrent/node_modules/
+SmartPaw-iOS16-export/
+
 # Unreferenced local presentation/source exports
 a8cdb40dca5bc04cacabdb4ce433760e.png
 smart paw-汇报.pptx
