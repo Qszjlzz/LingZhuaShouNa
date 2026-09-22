@@ -234,9 +234,9 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
     }
 
     private func loadBundle(in webView: WKWebView) {
-        guard let base = Bundle.main.url(forResource: "FigmaMakeCurrentWeb", withExtension: nil),
-              let cssURL = Bundle.main.urls(forResourcesWithExtension: "css", subdirectory: "FigmaMakeCurrentWeb/assets")?.first,
-              let jsURL = Bundle.main.urls(forResourcesWithExtension: "js", subdirectory: "FigmaMakeCurrentWeb/assets")?.first,
+        guard let base = Bundle.main.url(forResource: "FigmaMakeLatestWeb", withExtension: nil),
+              let cssURL = Bundle.main.urls(forResourcesWithExtension: "css", subdirectory: "FigmaMakeLatestWeb/assets")?.first,
+              let jsURL = Bundle.main.urls(forResourcesWithExtension: "js", subdirectory: "FigmaMakeLatestWeb/assets")?.first,
               let css = try? String(contentsOf: cssURL, encoding: .utf8),
               let js = try? String(contentsOf: jsURL, encoding: .utf8) else { return }
         webView.loadHTMLString("""

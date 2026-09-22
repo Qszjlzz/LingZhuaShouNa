@@ -1881,29 +1881,57 @@ struct OpenAICompatiblePlanningService: CloudPlanningService {
             throw CloudPlanningError.emptyPlan
         }
 
+        let trimmedEndpoint = endpoint
+        let model = settings.model.trimmingCharacters(in: .whitespacesAndNewlines)
+        let apiKeyValue = settings.apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        // OpenAI 官方走 /v1/responses；DeepSeek 等国产服务走 /chat/completions，两种请求体与响应结构不同。
+        let usesChatCompletions = trimmedEndpoint.lowercased().contains("/chat/completions")
+        // DeepSeek 当前仅支持纯文本输入，传图会直接被服务端拒绝。
+        let supportsVision = !trimmedEndpoint.lowercased().contains("deepseek")
+
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("Bearer \(settings.apiKey.trimmingCharacters(in: .whitespacesAndNewlines))", forHTTPHeaderField: "Authorization")
-        var content = [CloudInputContent(type: "input_text", text: prompt(for: plan, context: context), imageURL: nil)]
-        if let imageData = context.referenceImageData {
-            content.append(CloudInputContent(
-                type: "input_image",
-                text: nil,
-                imageURL: "data:image/jpeg;base64,\(imageData.base64EncodedString())"
+        request.setValue("Bearer \(apiKeyValue)", forHTTPHeaderField: "Authorization")
+
+        let promptText = prompt(for: plan, context: context)
+        if usesChatCompletions {
+            var parts: [[String: Any]] = [["type": "text", "text": promptText]]
+            if supportsVision, let imageData = context.referenceImageData {
+                parts.append([
+                    "type": "image_url",
+                    "image_url": ["url": "data:image/jpeg;base64,\(imageData.base64EncodedString())"],
+                ])
+            }
+            let payload: [String: Any] = [
+                "model": model,
+                "messages": [["role": "user", "content": parts]],
+                "temperature": 0.7,
+            ]
+            request.httpBody = try JSONSerialization.data(withJSONObject: payload)
+        } else {
+            var content = [CloudInputContent(type: "input_text", text: promptText, imageURL: nil)]
+            if let imageData = context.referenceImageData {
+                content.append(CloudInputContent(
+                    type: "input_image",
+                    text: nil,
+                    imageURL: "data:image/jpeg;base64,\(imageData.base64EncodedString())"
+                ))
+            }
+            request.httpBody = try JSONEncoder().encode(CloudPlanningRequest(
+                model: model,
+                input: [CloudInputMessage(role: "user", content: content)]
             ))
         }
-        request.httpBody = try JSONEncoder().encode(CloudPlanningRequest(
-            model: settings.model.trimmingCharacters(in: .whitespacesAndNewlines),
-            input: [CloudInputMessage(role: "user", content: content)]
-        ))
 
         let (data, response) = try await URLSession.shared.data(for: request)
         if let httpResponse = response as? HTTPURLResponse, !(200..<300).contains(httpResponse.statusCode) {
+            let serverText = String(data: data, encoding: .utf8) ?? ""
+            print("SMARTPAW_CLOUD_HTTP \(httpResponse.statusCode) \(serverText.prefix(300))")
             throw CloudPlanningError.invalidResponse
         }
 
-        let text = try responseText(from: data)
+        let text = try responseText(from: data, chatCompletions: usesChatCompletions)
         guard let jsonData = extractJSONObject(from: text).data(using: .utf8) else {
             throw CloudPlanningError.invalidResponse
         }
@@ -1953,7 +1981,21 @@ struct OpenAICompatiblePlanningService: CloudPlanningService {
         """
     }
 
-    private func responseText(from data: Data) throws -> String {
+    private func responseText(from data: Data, chatCompletions: Bool) throws -> String {
+        if chatCompletions {
+            guard
+                let envelope = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                let choices = envelope["choices"] as? [[String: Any]],
+                let message = choices.first?["message"] as? [String: Any],
+                let content = message["content"] as? String,
+                !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            else {
+                let raw = String(data: data, encoding: .utf8) ?? ""
+                print("SMARTPAW_CLOUD_PARSE_FAIL \(raw.prefix(300))")
+                throw CloudPlanningError.invalidResponse
+            }
+            return content
+        }
         let response = try JSONDecoder().decode(OpenAIResponsesEnvelope.self, from: data)
         if let direct = response.outputText, !direct.isEmpty {
             return direct

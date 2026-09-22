@@ -43,7 +43,7 @@
 		A0E000000000000000000015 /* AppLanguage.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0E000000000000000000016 /* AppLanguage.swift */; };
 		C20000000000000000000003 /* CurrentFigmaMakeWebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000004 /* CurrentFigmaMakeWebView.swift */; };
 		A0E000000000000000000017 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = A0E000000000000000000018 /* Localizable.strings */; };
-		C20000000000000000000001 /* FigmaMakeCurrentWeb in Resources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000002 /* FigmaMakeCurrentWeb */; };
+		C20000000000000000000001 /* FigmaMakeLatestWeb in Resources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000002 /* FigmaMakeLatestWeb */; };
 		BE6779B8D14D4A28C612F05C /* EdgeSAMSegmentationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62AB7C21645033ADF9B3D3F8 /* EdgeSAMSegmentationService.swift */; };
 		C11000000000000000000001 /* eval-editthispic-01-before.jpg in Resources */ = {isa = PBXBuildFile; fileRef = C12000000000000000000001 /* eval-editthispic-01-before.jpg */; };
 		C11000000000000000000002 /* eval-editthispic-02-before.jpg in Resources */ = {isa = PBXBuildFile; fileRef = C12000000000000000000002 /* eval-editthispic-02-before.jpg */; };
@@ -92,7 +92,7 @@
 		C20000000000000000000004 /* CurrentFigmaMakeWebView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CurrentFigmaMakeWebView.swift; sourceTree = "<group>"; };
 		A0E000000000000000000019 /* en.lproj/Localizable.strings */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
 		A0E000000000000000000020 /* zh-Hans.lproj/Localizable.strings */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text; path = zh-Hans.lproj/Localizable.strings; sourceTree = "<group>"; };
-		C20000000000000000000002 /* FigmaMakeCurrentWeb */ = {isa = PBXFileReference; lastKnownFileType = folder; path = FigmaMakeCurrentWeb; sourceTree = "<group>"; };
+		C20000000000000000000002 /* FigmaMakeLatestWeb */ = {isa = PBXFileReference; lastKnownFileType = folder; path = FigmaMakeLatestWeb; sourceTree = "<group>"; };
 		B12000000000000000000001 /* MobileCLIPTextRecognitionService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MobileCLIPTextRecognitionService.swift; sourceTree = "<group>"; };
 		B12000000000000000000002 /* CLIPTokenizer.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CLIPTokenizer.swift; sourceTree = "<group>"; };
 		B12000000000000000000003 /* GPT2ByteEncoder.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = GPT2ByteEncoder.swift; sourceTree = "<group>"; };
@@ -196,7 +196,7 @@
 			isa = PBXGroup;
 			children = (
 				8A3D85099B1D340186011524 /* Assets.xcassets */,
-				C20000000000000000000002 /* FigmaMakeCurrentWeb */,
+				C20000000000000000000002 /* FigmaMakeLatestWeb */,
 				B12000000000000000000009 /* category_embeddings.json */,
 				0F13121608D7C1E42C168D63 /* ExternalScanTests */,
 				C13000000000000000000001 /* EvaluationScanTests */,
@@ -407,7 +407,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				107B60DD19983C79EC7F0E75 /* Assets.xcassets in Resources */,
-				C20000000000000000000001 /* FigmaMakeCurrentWeb in Resources */,
+				C20000000000000000000001 /* FigmaMakeLatestWeb in Resources */,
 				A0E000000000000000000017 /* Localizable.strings in Resources */,
 				D1310AADEC944E0B28550C5B /* external-cluttered-study-pexels.jpg in Resources */,
 				ACAE33FF11F3DDEBF555DDC2 /* external-messy-desk-note.png in Resources */,

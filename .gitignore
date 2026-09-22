@@ -43,3 +43,13 @@ SmartPaw-iOS16-export/
 a8cdb40dca5bc04cacabdb4ce433760e.png
 smart paw-汇报.pptx
 灵爪收纳.docx
+
+# Node dependencies (huge, reinstall with npm/pnpm install)
+node_modules/
+
+# Web build output (runtime copy lives in Resources/FigmaMakeLatestWeb)
+FigmaMakeLatest/dist/
+
+# Local screenshots and scratch exports
+outputs/
+*.mp4
