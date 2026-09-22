@@ -1,47 +1,83 @@
-# 灵爪收纳
+# 灵爪收纳 SmartPaw 🐾
 
-灵爪收纳是一款面向个人空间整理的 iOS 原型，围绕以下流程工作：
+**拍照识别物品 → 自动生成收纳方案 → 跟踪整理进度** 的 iOS 应用。
 
-`空间采集 -> 物品识别 -> 用户确认 -> 方案生成 -> 分区执行 -> 完成记录`
+参加比赛：移动应用创新赛
 
-## 技术栈
+<div align="center">
+  <img src="docs/screenshots/home.png" width="280" alt="首页 - 空间地图" />
+  <!-- 更多截图：docs/screenshots/ -->
+</div>
 
-- iOS / Swift / SwiftUI
-- AVFoundation、Vision、ARKit、RoomPlan
-- Core ML：YOLO 实例分割、DeepLabV3、MobileCLIP、EdgeSAM 相关资源
-- 本地规则引擎生成整理方案，可选兼容 Responses API 的云端增强
+## 它能做什么
 
-## 打开工程
+1. **拍照识别**：对书桌、床边、储物角拍一张照片，本地 Core ML 模型自动分割并识别物品（手机、书本、杯子、充电线……），显示置信度
+2. **生成整理方案**：按「时间预算 + 整理风格 + 目标」生成可执行的分步方案；接入大模型（DeepSeek / OpenAI 兼容接口）后，方案会带上时间规划、工具清单和更细的动作指引
+3. **执行与追踪**：逐步勾选完成进度，整理前/后对比照归档到空间
+4. **更多**：物品分类管理、社区真实案例（点赞/收藏/关注/评论）、整理日历、成就徽章、AI 整理助手对话
 
-使用 Xcode 打开：
+## 技术架构
 
-`SmartPaw.xcodeproj`
-
-选择 `SmartPaw` Scheme 和 iPhone 模拟器或真实 iPhone 运行。真实相机、ARKit 和 RoomPlan 功能需要支持的真机及相机权限；模拟器主要用于界面、真实照片识别和流程演示。
-
-## 构建
-
-```bash
-xcodebuild \
-  -project SmartPaw.xcodeproj \
-  -scheme SmartPaw \
-  -destination 'platform=iOS Simulator,name=iPhone 16' \
-  build
+```mermaid
+flowchart LR
+    subgraph UI["React 网页 UI（Figma Make 导出）"]
+        A[空间 / 分类 / 社区 / 我的]
+    end
+    subgraph Native["原生 Swift 层"]
+        B["WKWebView 桥接<br/>webkit.messageHandlers.smartpaw"]
+        C[AppViewModel<br/>状态与业务流]
+        D["识别服务<br/>YOLO11n-seg + EdgeSAM<br/>+ MobileCLIP + DeepLabV3"]
+        E["方案生成<br/>本地规则引擎"]
+        F["云端润色<br/>OpenAI / DeepSeek 兼容"]
+        G["持久化<br/>JSON 快照 + Keychain"]
+    end
+    A <-- "nativeRequest / __smartPawReceive" --> B
+    B --> C
+    C --> D
+    C --> E
+    E --> F
+    C --> G
+    F --> H["LLM API<br/>Chat Completions / Responses 自动适配"]
 ```
 
-## 目录
+- **UI**：Figma Make 设计稿一键导出 React 页面，打包进 App 由 WKWebView 加载 —— 设计迭代不用重新编译原生层
+- **桥接**：17 个 `nativeRequest` 命令（数据读写、方案生成、社区互动、LLM 配置），网页与原生双向通信
+- **识别**：全本地推理，离线可用；多模型互补（通用分割 + 可提示分割 + 图文对齐）
+- **方案**：无网络/无 Key 时用本地规则引擎兜底，配置 Key 后自动升级为 LLM 生成
+- **安全**：API Key 只存系统钥匙串，不落明文
 
-- `App/`：应用入口、依赖和数据生命周期
-- `Features/`：空间、采集、分类、规划、执行、社区和个人中心
-- `Models/`：业务模型和识别结果
-- `Services/`：识别、分割、规划、存储和凭据服务
-- `Resources/`：Core ML 模型、测试素材和 Asset Catalog
-- `SmartPawTests/`：单元测试和识别评测
-- `docs/`：开发过程、验收基线和复盘材料
-- `HANDOFF.md`：当前开发交接、历史判断和下一步优先级
+## 快速开始
 
-## 当前边界
+```bash
+git clone https://github.com/Qszjlzz/LingZhuaShouNa.git
+cd LingZhuaShouNa
+open SmartPaw.xcodeproj   # Xcode 16.4+，iOS 16+ 模拟器直接 Cmd+R
+```
 
-项目是可演示原型，不应把有限真实图片评测结果外推为通用识别准确率。模拟器不能证明真机 ARKit/RoomPlan 的空间稳定性、延迟或发热。没有配置 API Key 时，App 使用本地规则引擎，不依赖云端服务。
+可选：接入云端 AI 方案 —— 在 App「我的 → AI 设置」里填入任意 OpenAI 兼容服务
+（如 DeepSeek：`https://api.deepseek.com/chat/completions` + `deepseek-chat`），
+内置「测试连接」按钮可即时验证。
 
-开始继续开发前，请先阅读 [HANDOFF.md](HANDOFF.md)。
+## 目录结构
+
+```
+├── App/                        # 原生层：WebView 壳、AppViewModel、Keychain
+├── Services/                   # 识别、方案生成、LLM 兼容层、持久化、示例数据
+├── FigmaMakeLatest/            # 网页 UI 源码（React + Vite，pnpm build）
+├── Resources/
+│   ├── FigmaMakeLatestWeb/     # 打包进 App 的 UI 构建产物
+│   └── Models/                 # Core ML 模型（YOLO / EdgeSAM / MobileCLIP …）
+├── Legacy/                     # 历史版本存档
+└── SmartPawTests/              # 单元测试（识别管线、方案质量对比等）
+```
+
+## 状态与计划
+
+- [x] 本地识别 + 规则方案 全链路可用
+- [x] 云端 LLM 方案（DeepSeek 实测通过）
+- [ ] 识别模型微调，提升复杂场景（杂物间）召回
+- [ ] 真机 AR 实景摆放
+
+---
+
+*个人项目，持续更新中 ✌️*
