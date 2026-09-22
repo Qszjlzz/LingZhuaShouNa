@@ -107,14 +107,32 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
             pendingRequestID = requestID
             capturePurpose = payload["purpose"] as? String ?? "scan"
             if payload["source"] as? String == "camera", UIImagePickerController.isSourceTypeAvailable(.camera) {
-                let picker = UIImagePickerController(); picker.sourceType = .camera; picker.delegate = self
-                topViewController()?.present(picker, animated: true)
+                presentCameraCapture()
             } else {
                 var config = PHPickerConfiguration(photoLibrary: .shared())
                 config.filter = .images; config.selectionLimit = capturePurpose == "scan" ? 6 : 1
                 let picker = PHPickerViewController(configuration: config); picker.delegate = self
                 topViewController()?.present(picker, animated: true)
             }
+        }
+
+        /// 直接用 App 内置取景框拍照，避免跳到系统相机破坏演示连贯性。
+        private func presentCameraCapture() {
+            let cameraView = CameraCaptureView(
+                onCapture: { [weak self] image in
+                    guard let self else { return }
+                    self.topViewController()?.dismiss(animated: true)
+                    self.consume(images: [image])
+                },
+                onCancel: { [weak self] in
+                    guard let self else { return }
+                    self.topViewController()?.dismiss(animated: true)
+                    self.cancelCapture()
+                }
+            )
+            let host = UIHostingController(rootView: cameraView)
+            host.modalPresentationStyle = .fullScreen
+            topViewController()?.present(host, animated: true)
         }
 
         func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
