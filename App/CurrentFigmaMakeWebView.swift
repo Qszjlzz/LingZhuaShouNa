@@ -58,6 +58,10 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
                 await viewModel.testLLMConnection(settings)
                 respond(requestID, data: ["state": String(describing: viewModel.llmConnectionState)])
             case "capture.open": openCapture(requestID: requestID, payload: payload)
+            case "camera.preview.start": await startInlinePreview(requestID: requestID, payload: payload)
+            case "camera.preview.frame": updateInlinePreviewFrame(payload: payload); respond(requestID, data: ["ok": true])
+            case "camera.preview.stop": CameraPreviewOverlay.shared.stop(); respond(requestID, data: ["ok": true])
+            case "camera.capture": await captureInline(requestID: requestID)
             case "space.select":
                 guard let id = uuid(payload["id"]) else { return fail(requestID, "空间 ID 无效") }
                 viewModel.selectSpace(id); respondWithState(requestID)
@@ -114,6 +118,33 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
                 let picker = PHPickerViewController(configuration: config); picker.delegate = self
                 topViewController()?.present(picker, animated: true)
             }
+        }
+
+        /// 网页拍摄页内联取景：把实时画面垫在 WebView 底下，页面不跳走。
+        private func startInlinePreview(requestID: String, payload: [String: Any]) async {
+            guard let webView else { return fail(requestID, "WebView 未就绪") }
+            var frame = CGRect(origin: .zero, size: webView.bounds.size)
+            if let x = payload["x"] as? Double, let y = payload["y"] as? Double,
+               let w = payload["width"] as? Double, let h = payload["height"] as? Double {
+                frame = CGRect(x: x, y: y, width: w, height: h)
+            }
+            let ok = await CameraPreviewOverlay.shared.start(in: webView, frame: frame)
+            respond(requestID, data: ["ok": ok])
+        }
+
+        private func updateInlinePreviewFrame(payload: [String: Any]) {
+            guard let x = payload["x"] as? Double, let y = payload["y"] as? Double,
+                  let w = payload["width"] as? Double, let h = payload["height"] as? Double else { return }
+            CameraPreviewOverlay.shared.updateFrame(CGRect(x: x, y: y, width: w, height: h))
+        }
+
+        /// 原地拍一张：不弹任何界面，拍完直接把图交给识别流程。
+        private func captureInline(requestID: String) async {
+            guard let image = await CameraPreviewOverlay.shared.capture() else {
+                return fail(requestID, "相机不可用")
+            }
+            pendingRequestID = requestID
+            consume(images: [image])
         }
 
         /// 直接用 App 内置取景框拍照，避免跳到系统相机破坏演示连贯性。

@@ -151,11 +151,14 @@ private final class PreviewUIView: UIView {
     }
 }
 
-private final class CameraController: NSObject, ObservableObject, AVCapturePhotoCaptureDelegate {
+final class CameraController: NSObject, ObservableObject, AVCapturePhotoCaptureDelegate {
     let session = AVCaptureSession()
     private let output = AVCapturePhotoOutput()
     private var completion: ((UIImage?) -> Void)?
     private var configured = false
+
+    /// 相机是否可用（模拟器 / 无权限时为 false，网页会据此降级）。
+    var isReady: Bool { configured }
 
     func start() async {
         switch AVCaptureDevice.authorizationStatus(for: .video) {

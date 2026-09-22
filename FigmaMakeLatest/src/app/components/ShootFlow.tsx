@@ -1294,21 +1294,89 @@ function CaptureStep({
   const [shutter, setShutter] = useState(false);
   const [liveImage, setLiveImage] = useState<string | null>(null);
   const recTimer = useRef<any>(null);
+  const previewRef = useRef<HTMLDivElement>(null);
+  // 原生实时画面已经垫在页面下方：此时让开占位图与背景，画面直接透上来。
+  const [liveFeed, setLiveFeed] = useState(false);
 
   const [nativeError, setNativeError] = useState<string | null>(null);
   const [capturing, setCapturing] = useState(false);
 
   const angleHint = ANGLE_HINTS[Math.min(shots.length, ANGLE_HINTS.length - 1)];
 
+  // 进出拍摄页时开关原生取景层；可用时（真机）画面内联显示，不可用时自动回退。
+  useEffect(() => {
+    let stopped = false;
+    const rectOf = () => {
+      const r = previewRef.current?.getBoundingClientRect();
+      return r
+        ? { x: r.x, y: r.y, width: r.width, height: r.height }
+        : { x: 0, y: 0, width: window.innerWidth, height: window.innerHeight };
+    };
+    (async () => {
+      try {
+        const res = await nativeRequest<{ ok: boolean }>("camera.preview.start", rectOf());
+        if (!stopped) setLiveFeed(res.ok === true);
+      } catch {
+        /* 没有原生层就沿用占位图 */
+      }
+    })();
+    const sync = () => {
+      void nativeRequest("camera.preview.frame", rectOf()).catch(() => {});
+    };
+    window.addEventListener("resize", sync);
+    return () => {
+      stopped = true;
+      window.removeEventListener("resize", sync);
+      void nativeRequest("camera.preview.stop", {}).catch(() => {});
+    };
+  }, []);
+
+  // 实时画面要透上来，得把预览区以上这条链路的背景临时改成透明，离开时还原。
+  useEffect(() => {
+    if (!liveFeed) return;
+    const chain: HTMLElement[] = [];
+    let node: HTMLElement | null = previewRef.current;
+    while (node) {
+      chain.push(node);
+      node = node.parentElement;
+    }
+    const saved = chain.map((el) => el.style.background);
+    const savedHtml = document.documentElement.style.background;
+    const savedBody = document.body.style.background;
+    chain.forEach((el) => {
+      el.style.background = "transparent";
+    });
+    document.documentElement.style.background = "transparent";
+    document.body.style.background = "transparent";
+    return () => {
+      chain.forEach((el, i) => {
+        el.style.background = saved[i];
+      });
+      document.documentElement.style.background = savedHtml;
+      document.body.style.background = savedBody;
+    };
+  }, [liveFeed]);
+
   const snapPhoto = async () => {
     setShutter(true);
     setTimeout(() => setShutter(false), 220);
     setCapturing(true); setNativeError(null);
     try {
-      const result = await nativeRequest<{ preview?: string; state: NativeState }>("capture.open", { source: "camera", purpose: "scan" });
-      if (!result.preview) return;
-      setLiveImage(result.preview);
-      setShots((arr) => [...arr, { id: `p${Date.now()}`, kind: "photo", src: result.preview!, label: ANGLE_HINTS[arr.length] || `拍摄 ${arr.length + 1}` }]);
+      let preview: string | undefined;
+      // 有实时画面就原地拍一张，全程不离开这个页面。
+      if (liveFeed) {
+        const shot = await nativeRequest<{ preview?: string; state: NativeState }>("camera.capture", {});
+        preview = shot.preview;
+      }
+      // 没有实时画面（模拟器 / 未授权）时退回原来的选图流程。
+      if (!preview) {
+        const result = await nativeRequest<{ preview?: string; state: NativeState }>("capture.open", { source: "camera", purpose: "scan" });
+        preview = result.preview;
+      }
+      if (!preview) return;
+      setShots((arr) => [...arr, { id: `p${Date.now()}`, kind: "photo", src: preview!, label: ANGLE_HINTS[arr.length] || `拍摄 ${arr.length + 1}` }]);
+      // 原地拍完保持实时画面（像系统相机一样），只在回退流程里定格显示照片。
+      if (!liveFeed) setLiveImage(preview);
     } catch (error) { if ((error as Error).message !== "已取消") setNativeError((error as Error).message); }
     finally { setCapturing(false); }
   };
@@ -1342,9 +1410,15 @@ function CaptureStep({
   const fmt = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 
   return (
-    <div className="relative h-full w-full overflow-hidden" style={{ backgroundColor: "#1a1411" }}>
-      {/* Live camera feed */}
-      <ImageWithFallback src={liveImage || ROOM_IMG} alt="Camera" className="h-full w-full object-cover" />
+    <div
+      ref={previewRef}
+      className="relative h-full w-full overflow-hidden"
+      style={{ backgroundColor: liveFeed ? "transparent" : "#1a1411" }}
+    >
+      {/* Live camera feed — 原生画面透出时不需要占位图 */}
+      {!liveFeed && (
+        <ImageWithFallback src={liveImage || ROOM_IMG} alt="Camera" className="h-full w-full object-cover" />
+      )}
 
       {/* subtle vignette */}
       <div
