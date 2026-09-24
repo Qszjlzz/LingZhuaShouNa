@@ -2,7 +2,7 @@
 
 **拍照识别物品 → 自动生成收纳方案 → 跟踪整理进度** 的 iOS 应用。
 
-参加比赛：移动应用创新赛
+中国高校计算机大赛 · 移动应用创新赛 —— 赛区一等奖
 
 <div align="center">
   <img src="docs/screenshots/home.png" width="280" alt="首页 - 空间地图" />
@@ -80,4 +80,4 @@ open SmartPaw.xcodeproj   # Xcode 16.4+，iOS 16+ 模拟器直接 Cmd+R
 
 ---
 
-*个人项目，持续更新中 ✌️*
+*持续更新中 ✌️*
