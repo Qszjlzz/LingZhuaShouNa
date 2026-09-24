@@ -51,7 +51,7 @@ export function PlanScreen({ onBack }: { onBack: () => void }) {
             style={{ backgroundColor: "rgba(255,255,255,0.9)", borderRadius: "999px" }}
           >
             <Sparkles size={14} color={ORANGE} />
-            <span style={{ color: COFFEE, fontSize: "12px" }}>AI Detected 3 Zones</span>
+            <span style={{ color: COFFEE, fontSize: "12px" }}>AI 识别到 3 个区域</span>
           </div>
         </div>
 
@@ -115,8 +115,8 @@ export function PlanScreen({ onBack }: { onBack: () => void }) {
         </div>
 
         <div className="flex items-center justify-between mb-4">
-          <p style={{ color: COFFEE, fontSize: "18px", fontWeight: 600 }}>Plan Selection</p>
-          <span style={{ color: COFFEE, opacity: 0.5, fontSize: "12px" }}>Pick duration</span>
+          <p style={{ color: COFFEE, fontSize: "18px", fontWeight: 600 }}>选择方案</p>
+          <span style={{ color: COFFEE, opacity: 0.5, fontSize: "12px" }}>选择时长</span>
         </div>
 
         <div className="grid grid-cols-3 gap-3 mb-6">

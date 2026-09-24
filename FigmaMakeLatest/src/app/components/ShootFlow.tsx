@@ -1668,7 +1668,7 @@ function ReviewStep({
           <ArrowLeft size={18} color={COFFEE} />
         </button>
         <div className="text-center">
-          <p style={{ color: COFFEE, fontSize: 15, fontWeight: 600 }}>Review captures</p>
+          <p style={{ color: COFFEE, fontSize: 15, fontWeight: 600 }}>查看拍摄结果</p>
           <p style={{ color: COFFEE, opacity: 0.55, fontSize: 11 }}>
             {assets.length} {assets.length === 1 ? "asset" : "assets"} ready
           </p>
@@ -1702,7 +1702,7 @@ function ReviewStep({
           </>
         ) : (
           <div className="h-full w-full flex items-center justify-center" style={{ backgroundColor: WHITE }}>
-            <p style={{ color: COFFEE, opacity: 0.5, fontSize: 12 }}>No captures yet</p>
+            <p style={{ color: COFFEE, opacity: 0.5, fontSize: 12 }}>还没有拍摄</p>
           </div>
         )}
       </div>
@@ -1759,7 +1759,7 @@ function ReviewStep({
             <Sparkles size={16} color={WHITE} />
           </div>
           <div className="flex-1">
-            <p style={{ color: COFFEE, fontSize: 12.5, fontWeight: 600 }}>AR scan ready</p>
+            <p style={{ color: COFFEE, fontSize: 12.5, fontWeight: 600 }}>AR 扫描就绪</p>
             <p style={{ color: COFFEE, opacity: 0.6, fontSize: 11, marginTop: 2 }}>
               {assets.some((x) => x.kind === "video")
                 ? "Video scan will be reconstructed into a 3D mesh."
@@ -2472,7 +2472,7 @@ function PromptStep({ onBack, onNext }: { onBack: () => void; onNext: () => void
           <ArrowLeft size={18} color={COFFEE} />
         </button>
         <div className="flex-1">
-          <p style={{ color: COFFEE, fontSize: 15, fontWeight: 600 }}>Describe your goal</p>
+          <p style={{ color: COFFEE, fontSize: 15, fontWeight: 600 }}>描述你的整理目标</p>
           <p style={{ color: COFFEE, opacity: 0.55, fontSize: 11 }}>
             浣序 AI · personalized plan
           </p>
@@ -3557,7 +3557,7 @@ function PlanStep({ onBack, onNext }: { onBack: () => void; onNext: () => void }
         <div className="flex items-center justify-center mb-4">
           <div className="h-1 w-10 rounded-full" style={{ backgroundColor: SOFT }} />
         </div>
-        <p style={{ color: COFFEE, fontSize: 17, fontWeight: 600, marginBottom: 14 }}>Plan Selection</p>
+        <p style={{ color: COFFEE, fontSize: 17, fontWeight: 600, marginBottom: 14 }}>选择方案</p>
 
         <div className="grid grid-cols-3 gap-3 mb-5">
           {durations.map((d) => {
@@ -3639,7 +3639,7 @@ function TaskStep({ onBack, onComplete }: { onBack: () => void; onComplete: () =
         >
           <ArrowLeft size={20} color={COFFEE} />
         </button>
-        <p style={{ color: COFFEE, fontSize: 14, fontWeight: 600 }}>Cleaning Session</p>
+        <p style={{ color: COFFEE, fontSize: 14, fontWeight: 600 }}>整理任务</p>
         <div className="w-11" />
       </div>
 
@@ -3693,7 +3693,7 @@ function TaskStep({ onBack, onComplete }: { onBack: () => void; onComplete: () =
           </span>
           <span style={{ color: COFFEE, opacity: 0.55, fontSize: 12 }}>03:42</span>
         </div>
-        <p style={{ color: COFFEE, fontSize: 22, fontWeight: 600 }}>Coffee Table</p>
+        <p style={{ color: COFFEE, fontSize: 22, fontWeight: 600 }}>茶几</p>
         <p style={{ color: COFFEE, opacity: 0.6, fontSize: 12, marginTop: 4 }}>4 quick tasks</p>
 
         <div className="space-y-2 mt-5">
@@ -4157,8 +4157,8 @@ function ZoneSelectStep({ onBack, onNext }: { onBack: () => void; onNext: () => 
           <ArrowLeft size={18} color={COFFEE} />
         </button>
         <div className="text-center">
-          <p style={{ color: COFFEE, fontSize: 15, fontWeight: 600 }}>Select Zones</p>
-          <p style={{ color: COFFEE, opacity: 0.55, fontSize: 11 }}>Multi-select supported</p>
+          <p style={{ color: COFFEE, fontSize: 15, fontWeight: 600 }}>选择区域</p>
+          <p style={{ color: COFFEE, opacity: 0.55, fontSize: 11 }}>可多选</p>
         </div>
         <div className="w-10" />
       </div>
@@ -4480,7 +4480,7 @@ function ARPreviewStep({ onBack, onNext }: { onBack: () => void; onNext: () => v
         >
           <AlertTriangle size={14} color={ORANGE} style={{ marginTop: 2 }} />
           <div className="flex-1">
-            <p style={{ color: COFFEE, fontSize: 12, fontWeight: 600 }}>Space conflict detected</p>
+            <p style={{ color: COFFEE, fontSize: 12, fontWeight: 600 }}>检测到区域冲突</p>
             <p style={{ color: COFFEE, opacity: 0.65, fontSize: 11, marginTop: 2 }}>
               Some items don't fit — adjust the real area or revise the plan.
             </p>
@@ -4762,7 +4762,7 @@ function ARGuideStep({
                 className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 px-3 py-1.5"
                 style={{ backgroundColor: "rgba(0,0,0,0.55)", borderRadius: 999 }}
               >
-                <span style={{ color: WHITE, fontSize: 11 }}>Showing original — release to resume</span>
+                <span style={{ color: WHITE, fontSize: 11 }}>显示原图 — 松手继续</span>
               </div>
             )}
           </>
@@ -4926,7 +4926,7 @@ function ARGuideStep({
                   {i + 1}. {t.text}
                 </span>
                 {t.skipped && (
-                  <span style={{ color: COFFEE, opacity: 0.5, fontSize: 10 }}>skipped</span>
+                  <span style={{ color: COFFEE, opacity: 0.5, fontSize: 10 }}>已跳过</span>
                 )}
               </button>
             ))}

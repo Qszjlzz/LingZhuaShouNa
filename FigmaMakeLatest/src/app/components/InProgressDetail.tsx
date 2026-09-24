@@ -161,7 +161,7 @@ export function InProgressDetail({
         {/* Progress bar */}
         <div className="px-6 mt-6">
           <div className="flex items-center justify-between mb-2">
-            <p style={{ color: COFFEE, fontSize: 13, fontWeight: 600 }}>Overall</p>
+            <p style={{ color: COFFEE, fontSize: 13, fontWeight: 600 }}>整体</p>
             <span style={{ color: ORANGE, fontSize: 12, fontWeight: 600 }}>
               {space.progress}%
             </span>
@@ -182,7 +182,7 @@ export function InProgressDetail({
 
         {/* Zones step list */}
         <div className="px-6 mt-7 mb-3">
-          <p style={{ color: COFFEE, fontSize: 16, fontWeight: 600 }}>Zones</p>
+          <p style={{ color: COFFEE, fontSize: 16, fontWeight: 600 }}>区域</p>
           <p style={{ color: COFFEE, opacity: 0.55, fontSize: 11, marginTop: 2 }}>
             Step-by-step breakdown
           </p>
@@ -260,7 +260,7 @@ export function InProgressDetail({
 
         {/* Recent activity */}
         <div className="px-6 mt-5 mb-3">
-          <p style={{ color: COFFEE, fontSize: 16, fontWeight: 600 }}>Recent Activity</p>
+          <p style={{ color: COFFEE, fontSize: 16, fontWeight: 600 }}>最近动态</p>
         </div>
         <div className="px-6 space-y-2">
           {space.recentActivity.map((a, i) => (

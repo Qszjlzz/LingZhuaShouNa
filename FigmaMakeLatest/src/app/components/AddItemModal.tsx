@@ -42,9 +42,9 @@ export function AddItemModal({
 
         <div className="flex items-center justify-between mb-5">
           <p style={{ color: COFFEE, fontSize: 17, fontWeight: 600 }}>
-            {mode === "choice" && "Add New Item"}
-            {mode === "photo" && "Capture Item"}
-            {mode === "text" && "Enter Item Details"}
+            {mode === "choice" && "添加新物品"}
+            {mode === "photo" && "拍照添加"}
+            {mode === "text" && "手动填写"}
           </p>
           <button
             onClick={onClose}
@@ -60,15 +60,15 @@ export function AddItemModal({
             <ChoiceCard
               icon={<Camera size={26} color={WHITE} />}
               bg={ORANGE}
-              title="Take Photo"
-              sub="AI auto-recognize"
+              title="拍照"
+              sub="AI 自动识别"
               onClick={() => setMode("photo")}
             />
             <ChoiceCard
               icon={<Type size={26} color={WHITE} />}
               bg={BLUE}
-              title="Type Manually"
-              sub="Enter details"
+              title="手动输入"
+              sub="填写物品信息"
               onClick={() => setMode("text")}
             />
           </div>
@@ -86,7 +86,7 @@ export function AddItemModal({
               >
                 <Camera size={28} color={WHITE} />
               </div>
-              <p style={{ color: COFFEE, fontSize: 13, fontWeight: 600 }}>Tap to capture</p>
+              <p style={{ color: COFFEE, fontSize: 13, fontWeight: 600 }}>点击拍摄</p>
               <p style={{ color: COFFEE, opacity: 0.55, fontSize: 11, marginTop: 2 }}>
                 AI will detect & tag the book
               </p>
@@ -107,7 +107,7 @@ export function AddItemModal({
               </button>
               <button
                 onClick={() => {
-                  onAdd({ name: "New Book", subgroup });
+                  onAdd({ name: "新物品", subgroup });
                   onClose();
                 }}
                 className="flex-1 py-3 flex items-center justify-center gap-2"
@@ -120,7 +120,7 @@ export function AddItemModal({
                   boxShadow: "0 6px 16px rgba(250,136,58,0.3)",
                 }}
               >
-                <Check size={16} /> Confirm
+                <Check size={16} /> 确认
               </button>
             </div>
           </div>
@@ -209,7 +209,7 @@ export function AddItemModal({
                   boxShadow: name.trim() ? "0 6px 16px rgba(250,136,58,0.3)" : "none",
                 }}
               >
-                <Check size={16} /> Save Item
+                <Check size={16} /> 保存物品
               </button>
             </div>
           </div>

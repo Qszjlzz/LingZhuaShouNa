@@ -67,9 +67,9 @@ export function MineScreen({ nativeState, onNativeChange }: { nativeState?: Nati
     <button onClick={() => setOpenSettings(false)} style={{ color: ORANGE, fontSize: 13 }}>返回</button>
     <h1 style={{ color: COFFEE, fontSize: 24, fontWeight: 700, marginTop: 18 }}>AI 设置</h1>
     <p style={{ color: COFFEE, opacity: 0.55, fontSize: 12, marginTop: 6 }}>用于整理方案和聊天。API Key 只保存在设备钥匙串。</p>
-    <label style={{ display: "block", color: COFFEE, fontSize: 12, marginTop: 26 }}>Endpoint</label>
+    <label style={{ display: "block", color: COFFEE, fontSize: 12, marginTop: 26 }}>接口地址</label>
     <input value={endpoint} onChange={(e) => setEndpoint(e.target.value)} className="w-full mt-2 px-3 py-3 outline-none" style={{ backgroundColor: LINEN, borderRadius: 12, color: COFFEE }} />
-    <label style={{ display: "block", color: COFFEE, fontSize: 12, marginTop: 16 }}>Model</label>
+    <label style={{ display: "block", color: COFFEE, fontSize: 12, marginTop: 16 }}>模型名称</label>
     <input value={model} onChange={(e) => setModel(e.target.value)} className="w-full mt-2 px-3 py-3 outline-none" style={{ backgroundColor: LINEN, borderRadius: 12, color: COFFEE }} />
     <label style={{ display: "block", color: COFFEE, fontSize: 12, marginTop: 16 }}>API Key</label>
     <input value={apiKey} onChange={(e) => setApiKey(e.target.value)} type="password" placeholder="输入后保存，留空则沿用已保存 Key" className="w-full mt-2 px-3 py-3 outline-none" style={{ backgroundColor: LINEN, borderRadius: 12, color: COFFEE }} />

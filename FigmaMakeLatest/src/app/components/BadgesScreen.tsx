@@ -402,7 +402,7 @@ export function BadgesScreen({ onBack, nativeState }: { onBack: () => void; nati
                 {active.locked ? (
                   <div className="w-full mt-5">
                     <div className="flex items-center justify-between mb-2">
-                      <span style={{ color: COFFEE, opacity: 0.55, fontSize: 11 }}>Progress</span>
+                      <span style={{ color: COFFEE, opacity: 0.55, fontSize: 11 }}>进度</span>
                       <span style={{ color: ORANGE, fontSize: 12, fontWeight: 600 }}>
                         {active.progress ?? 0}%
                       </span>
