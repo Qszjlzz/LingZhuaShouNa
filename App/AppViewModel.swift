@@ -117,9 +117,15 @@ final class AppViewModel: ObservableObject {
         let credentialMigrationFailed = storedAPIKey == nil
             && !legacyAPIKey.isEmpty
             && !dependencies.credentialStore.saveAPIKey(legacyAPIKey)
-        likedCommunityCaseIDs = Self.loadCommunityIDs(forKey: Self.communityLikesKey)
-        favoriteCommunityCaseIDs = Self.loadCommunityIDs(forKey: Self.communityFavoritesKey)
-        followedCommunityAuthors = Set(UserDefaults.standard.stringArray(forKey: Self.communityFollowsKey) ?? [])
+        // 社区互动状态原本存在 UserDefaults，这里并入快照后读快照；旧数据迁移一次，避免用户已点的赞丢掉。
+        likedCommunityCaseIDs = snapshot.likedCommunityCaseIDs
+        favoriteCommunityCaseIDs = snapshot.favoriteCommunityCaseIDs
+        followedCommunityAuthors = snapshot.followedCommunityAuthors
+        Self.migrateLegacyCommunityReactionsIfNeeded(
+            liked: &likedCommunityCaseIDs,
+            favorited: &favoriteCommunityCaseIDs,
+            followed: &followedCommunityAuthors
+        )
         selectedSpaceID = spaces.first?.id
         selectedExecutionZones = Set(spaces.first?.activePlan?.steps.map(\.zone) ?? [])
         message = credentialMigrationFailed
@@ -619,7 +625,6 @@ final class AppViewModel: ObservableObject {
             likedCommunityCaseIDs.insert(id)
             communityCases[index].likes += 1
         }
-        persistCommunityReactions()
         persist()
     }
 
@@ -627,7 +632,7 @@ final class AppViewModel: ObservableObject {
         if favoriteCommunityCaseIDs.remove(id) == nil {
             favoriteCommunityCaseIDs.insert(id)
         }
-        persistCommunityReactions()
+        persist()
     }
 
     func comments(for caseID: UUID) -> [CommunityComment] {
@@ -664,7 +669,25 @@ final class AppViewModel: ObservableObject {
         if followedCommunityAuthors.remove(trimmedAuthor) == nil {
             followedCommunityAuthors.insert(trimmedAuthor)
         }
-        UserDefaults.standard.set(Array(followedCommunityAuthors), forKey: Self.communityFollowsKey)
+        persist()
+    }
+
+    /// 老版本把点赞/收藏/关注写在 UserDefaults 里，这里搬进快照后清掉旧键，只执行一次。
+    private static func migrateLegacyCommunityReactionsIfNeeded(
+        liked: inout Set<UUID>,
+        favorited: inout Set<UUID>,
+        followed: inout Set<String>
+    ) {
+        let legacyLiked = loadCommunityIDs(forKey: Self.communityLikesKey)
+        let legacyFavorited = loadCommunityIDs(forKey: Self.communityFavoritesKey)
+        let legacyFollowed = Set(UserDefaults.standard.stringArray(forKey: Self.communityFollowsKey) ?? [])
+        guard !legacyLiked.isEmpty || !legacyFavorited.isEmpty || !legacyFollowed.isEmpty else { return }
+        liked.formUnion(legacyLiked)
+        favorited.formUnion(legacyFavorited)
+        followed.formUnion(legacyFollowed)
+        UserDefaults.standard.removeObject(forKey: Self.communityLikesKey)
+        UserDefaults.standard.removeObject(forKey: Self.communityFavoritesKey)
+        UserDefaults.standard.removeObject(forKey: Self.communityFollowsKey)
     }
 
     func resetDemo() {
@@ -706,8 +729,6 @@ final class AppViewModel: ObservableObject {
         referenceImage = nil
         selectedExecutionZones = []
         latestUnlockedAchievement = nil
-        persistCommunityReactions()
-        UserDefaults.standard.removeObject(forKey: Self.communityFollowsKey)
         persist()
         Task {
             for id in oldScheduleIDs {
@@ -1126,16 +1147,21 @@ final class AppViewModel: ObservableObject {
     private func persist() {
         do {
             try dependencies.storageStore.saveState(
-                AppStateSnapshot(spaces: spaces, achievements: achievements, communityCases: communityCases, communityComments: communityComments, scheduleItems: scheduleItems, llmSettings: llmSettings)
+                AppStateSnapshot(
+                    spaces: spaces,
+                    achievements: achievements,
+                    communityCases: communityCases,
+                    communityComments: communityComments,
+                    scheduleItems: scheduleItems,
+                    llmSettings: llmSettings,
+                    likedCommunityCaseIDs: likedCommunityCaseIDs,
+                    favoriteCommunityCaseIDs: favoriteCommunityCaseIDs,
+                    followedCommunityAuthors: followedCommunityAuthors
+                )
             )
         } catch {
             message = "保存失败：\(error.localizedDescription)"
         }
-    }
-
-    private func persistCommunityReactions() {
-        UserDefaults.standard.set(likedCommunityCaseIDs.map(\.uuidString), forKey: Self.communityLikesKey)
-        UserDefaults.standard.set(favoriteCommunityCaseIDs.map(\.uuidString), forKey: Self.communityFavoritesKey)
     }
 
     private func removingItemReference(_ itemID: UUID, from plan: StoragePlan?) -> StoragePlan? {

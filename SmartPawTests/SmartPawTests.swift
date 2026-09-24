@@ -902,9 +902,19 @@ private extension ARMask {
     }
 }
 
+/// 社区互动状态已统一存进快照，这里额外清掉 UserDefaults 里的历史键，保证测试之间互不污染。
+private let legacyCommunityReactionKeys = [
+    "SmartPaw.community.likedCaseIDs",
+    "SmartPaw.community.favoriteCaseIDs",
+    "SmartPaw.community.followedAuthors"
+]
+
 private extension AppDependencies {
     static var test: AppDependencies {
-        AppDependencies(
+        for key in legacyCommunityReactionKeys {
+            UserDefaults.standard.removeObject(forKey: key)
+        }
+        return AppDependencies(
             scanService: YOLOSegmentationScanService(),
             planningService: RuleBasedPlanningService(),
             cloudPlanningService: PassthroughCloudPlanningService(),

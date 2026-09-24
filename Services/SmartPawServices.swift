@@ -27,14 +27,21 @@ struct AppStateSnapshot: Codable, Equatable {
     var communityComments: [UUID: [CommunityComment]]
     var scheduleItems: [ScheduleItem]
     var llmSettings: LLMSettings
+    /// 社区互动状态与其余数据共用一份快照，避免散落在 UserDefaults 里造成重置不彻底、测试跨运行相互污染。
+    var likedCommunityCaseIDs: Set<UUID>
+    var favoriteCommunityCaseIDs: Set<UUID>
+    var followedCommunityAuthors: Set<String>
 
-    init(spaces: [StorageSpace], achievements: [Achievement], communityCases: [CommunityCase], communityComments: [UUID: [CommunityComment]] = [:], scheduleItems: [ScheduleItem] = [], llmSettings: LLMSettings = .default) {
+    init(spaces: [StorageSpace], achievements: [Achievement], communityCases: [CommunityCase], communityComments: [UUID: [CommunityComment]] = [:], scheduleItems: [ScheduleItem] = [], llmSettings: LLMSettings = .default, likedCommunityCaseIDs: Set<UUID> = [], favoriteCommunityCaseIDs: Set<UUID> = [], followedCommunityAuthors: Set<String> = []) {
         self.spaces = spaces
         self.achievements = achievements
         self.communityCases = communityCases
         self.communityComments = communityComments
         self.scheduleItems = scheduleItems
         self.llmSettings = llmSettings
+        self.likedCommunityCaseIDs = likedCommunityCaseIDs
+        self.favoriteCommunityCaseIDs = favoriteCommunityCaseIDs
+        self.followedCommunityAuthors = followedCommunityAuthors
     }
 
     enum CodingKeys: String, CodingKey {
@@ -44,6 +51,9 @@ struct AppStateSnapshot: Codable, Equatable {
         case communityComments
         case scheduleItems
         case llmSettings
+        case likedCommunityCaseIDs
+        case favoriteCommunityCaseIDs
+        case followedCommunityAuthors
     }
 
     init(from decoder: Decoder) throws {
@@ -54,6 +64,9 @@ struct AppStateSnapshot: Codable, Equatable {
         communityComments = try container.decodeIfPresent([UUID: [CommunityComment]].self, forKey: .communityComments) ?? [:]
         scheduleItems = try container.decodeIfPresent([ScheduleItem].self, forKey: .scheduleItems) ?? DemoData.scheduleItems
         llmSettings = try container.decodeIfPresent(LLMSettings.self, forKey: .llmSettings) ?? .default
+        likedCommunityCaseIDs = try container.decodeIfPresent(Set<UUID>.self, forKey: .likedCommunityCaseIDs) ?? []
+        favoriteCommunityCaseIDs = try container.decodeIfPresent(Set<UUID>.self, forKey: .favoriteCommunityCaseIDs) ?? []
+        followedCommunityAuthors = try container.decodeIfPresent(Set<String>.self, forKey: .followedCommunityAuthors) ?? []
     }
 }
 
