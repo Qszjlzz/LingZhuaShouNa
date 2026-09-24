@@ -1,3 +1,4 @@
-build: index-BWjq2RD0.js
-source: Figma Make Global-Style-Setup
-synced: 2026-09-22 18:30
+build: index-NZvzBasN.js
+source: Figma Make Global-Style-Setup (code_snapshot 2026-09-24, Version 77)
+merged: bridge 26 cmds + 中文文案 + 原地拍摄相机 preserved
+synced: 2026-09-24 23:59
