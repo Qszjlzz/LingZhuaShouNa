@@ -15,23 +15,23 @@ export type ProgressSpace = {
 
 const sample: ProgressSpace = {
   id: "p1",
-  title: "Bathroom",
+  title: "浴室",
   progress: 35,
   cover:
     "https://images.unsplash.com/photo-1758239873506-82d0e76244f6?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
-  estimate: "12 min left",
+  estimate: "还剩 12 分钟",
   streak: 4,
   zones: [
-    { id: "z1", name: "Counter Top", done: true, tasks: 3 },
-    { id: "z2", name: "Mirror Cabinet", done: true, tasks: 5 },
-    { id: "z3", name: "Shower Caddy", done: false, current: true, tasks: 4 },
-    { id: "z4", name: "Under-sink Storage", done: false, tasks: 6 },
-    { id: "z5", name: "Towel Rack", done: false, tasks: 2 },
+    { id: "z1", name: "台面", done: true, tasks: 3 },
+    { id: "z2", name: "镜柜", done: true, tasks: 5 },
+    { id: "z3", name: "淋浴置物架", done: false, current: true, tasks: 4 },
+    { id: "z4", name: "水槽下收纳", done: false, tasks: 6 },
+    { id: "z5", name: "毛巾架", done: false, tasks: 2 },
   ],
   recentActivity: [
-    { time: "Just now", text: "Wiped down counter & relocated cosmetics" },
-    { time: "5 min ago", text: "Sorted skincare into top drawer" },
-    { time: "12 min ago", text: "Tossed 3 expired products" },
+    { time: "刚刚", text: "擦净台面并把化妆品归位" },
+    { time: "5 分钟前", text: "护肤品归类进上层抽屉" },
+    { time: "12 分钟前", text: "丢掉 3 件过期物品" },
   ],
 };
 
@@ -143,16 +143,16 @@ export function InProgressDetail({
         >
           <Ring value={space.progress} size={140} />
           <div className="flex-1 space-y-2">
-            <Row icon={<Clock size={14} />} label="Estimate" value={space.estimate} />
+            <Row icon={<Clock size={14} />} label="预计用时" value={space.estimate} />
             <Row
               icon={<CheckCircle2 size={14} />}
-              label="Zones"
+              label="区域"
               value={`${completedZones} / ${space.zones.length}`}
             />
             <Row
               icon={<Flame size={14} />}
-              label="Streak"
-              value={`${space.streak} days`}
+              label="连续天数"
+              value={`${space.streak} 天`}
               highlight
             />
           </div>

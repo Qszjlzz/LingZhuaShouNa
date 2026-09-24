@@ -31,7 +31,7 @@ function Command({
 
 function CommandDialog({
   title = "Command Palette",
-  description = "Search for a command to run...",
+  description = "搜索要执行的命令…",
   children,
   ...props
 }: React.ComponentProps<typeof Dialog> & {

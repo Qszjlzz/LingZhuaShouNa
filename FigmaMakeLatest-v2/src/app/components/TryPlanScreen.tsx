@@ -80,7 +80,7 @@ export function TryPlanScreen({
       <div className="h-full w-full overflow-y-auto pb-32">
         {/* Hero */}
         <div className="relative w-full" style={{ height: 220 }}>
-          <ImageWithFallback src={COVER} alt="Plan" className="h-full w-full object-cover" />
+          <ImageWithFallback src={COVER} alt="方案" className="h-full w-full object-cover" />
           <div
             className="absolute inset-0"
             style={{

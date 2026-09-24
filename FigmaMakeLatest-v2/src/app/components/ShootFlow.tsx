@@ -1732,7 +1732,7 @@ function CaptureStep({
     >
       {/* Live camera feed — 原生画面透出时不需要占位图 */}
       {!liveFeed && (
-        <ImageWithFallback src={liveImage || ROOM_IMG} alt="Camera" className="h-full w-full object-cover" />
+        <ImageWithFallback src={liveImage || ROOM_IMG} alt="相机" className="h-full w-full object-cover" />
       )}
 
       {/* subtle vignette */}
@@ -1784,7 +1784,7 @@ function CaptureStep({
                   ? `重拍第 ${reshootIdx + 1} 张`
                   : mode === "photo"
                   ? `${shots.length} shots · ${angleHint}`
-                  : "AR scan ready"}
+                  : "AR 扫描就绪"}
               </span>
             </>
           )}
@@ -1812,7 +1812,7 @@ function CaptureStep({
               }}
             >
               {m === "photo" ? <Camera size={12} /> : <Box size={12} />}
-              {m === "photo" ? "Multi-shot" : "AR Scan"}
+              {m === "photo" ? "多张连拍" : "AR 扫描"}
             </button>
           ))}
         </div>
@@ -1974,7 +1974,7 @@ function ReviewStep({
           <ArrowLeft size={18} color={COFFEE} />
         </button>
         <div className="text-center">
-          <p style={{ color: COFFEE, fontSize: 15, fontWeight: 600 }}>Review captures</p>
+          <p style={{ color: COFFEE, fontSize: 15, fontWeight: 600 }}>查看拍摄</p>
           <p style={{ color: COFFEE, opacity: 0.55, fontSize: 11 }}>
             {assets.length} {assets.length === 1 ? "asset" : "assets"} ready
           </p>
@@ -2065,11 +2065,11 @@ function ReviewStep({
             <Sparkles size={16} color={WHITE} />
           </div>
           <div className="flex-1">
-            <p style={{ color: COFFEE, fontSize: 12.5, fontWeight: 600 }}>AR scan ready</p>
+            <p style={{ color: COFFEE, fontSize: 12.5, fontWeight: 600 }}>AR 扫描就绪</p>
             <p style={{ color: COFFEE, opacity: 0.6, fontSize: 11, marginTop: 2 }}>
               {assets.some((x) => x.kind === "video")
                 ? "Video scan will be reconstructed into a 3D mesh."
-                : "Multiple angles will be stitched for depth analysis."}
+                : "将拼接多个角度以分析空间纵深。"}
             </p>
           </div>
         </div>
@@ -2176,7 +2176,7 @@ function ConfirmStep({ onBack, onNext }: { onBack: () => void; onNext: () => voi
     <div className="h-full w-full flex flex-col" style={{ backgroundColor: LINEN }}>
       {/* Image with overlays */}
       <div className="relative w-full" style={{ height: "42%" }}>
-        <ImageWithFallback src={ROOM_IMG} alt="Captured" className="h-full w-full object-cover" />
+        <ImageWithFallback src={ROOM_IMG} alt="已拍摄" className="h-full w-full object-cover" />
         <div
           className="absolute inset-0"
           style={{
@@ -2709,7 +2709,7 @@ const REF_LIBRARY = [
 ];
 
 function PromptStep({ onBack, onNext }: { onBack: () => void; onNext: () => void }) {
-  const [tags, setTags] = useState<string[]>(["Minimalist", "Quick (5–10 min)"]);
+  const [tags, setTags] = useState<string[]>(["极简", "快速（5–10 分钟）"]);
   const [input, setInput] = useState("");
   const [refs, setRefs] = useState<string[]>([]);
   const [picker, setPicker] = useState<null | "menu" | "album">(null);
@@ -2801,7 +2801,7 @@ function PromptStep({ onBack, onNext }: { onBack: () => void; onNext: () => void
           }}
         >
           <div className="h-12 w-12 overflow-hidden flex-shrink-0" style={{ borderRadius: 12 }}>
-            <ImageWithFallback src={ROOM_IMG} alt="Scene" className="h-full w-full object-cover" />
+            <ImageWithFallback src={ROOM_IMG} alt="空间场景" className="h-full w-full object-cover" />
           </div>
           <div className="flex-1 min-w-0">
             <p style={{ color: COFFEE, fontSize: 12, fontWeight: 600 }}>客厅扫描</p>
@@ -3237,15 +3237,15 @@ function PromptStep({ onBack, onNext }: { onBack: () => void; onNext: () => void
 /* ---------- B. Step Planning ---------- */
 
 const zones = [
-  { n: 1, label: "Coffee Table", left: "12%", top: "38%", w: "32%", h: "26%" },
-  { n: 2, label: "Sofa Area", left: "46%", top: "28%", w: "38%", h: "42%" },
-  { n: 3, label: "Shelf Corner", left: "8%", top: "8%", w: "28%", h: "24%" },
+  { n: 1, label: "茶几区", left: "12%", top: "38%", w: "32%", h: "26%" },
+  { n: 2, label: "沙发区", left: "46%", top: "28%", w: "38%", h: "42%" },
+  { n: 3, label: "书架角落", left: "8%", top: "8%", w: "28%", h: "24%" },
 ];
 
 const durations = [
-  { id: "5min", label: "5min", sub: "Quick Fix" },
-  { id: "10min", label: "10min", sub: "Standard" },
-  { id: "1h", label: "1h", sub: "Deep Clean" },
+  { id: "5min", label: "5 分钟", sub: "快速整理" },
+  { id: "10min", label: "10 分钟", sub: "标准整理" },
+  { id: "1h", label: "1 小时", sub: "深度清洁" },
 ];
 
 const PLAN_TIERS: {
@@ -3264,9 +3264,9 @@ const PLAN_TIERS: {
     id: "basic",
     label: "快速整理",
     tagline: "只做基础整理",
-    duration: "10 min",
+    duration: "10 分钟",
     steps: 6,
-    badge: "BASIC",
+    badge: "基础",
     accent: BLUE,
     features: ["表面整理", "物品归位", "无需工具"],
     tools: false,
@@ -3276,9 +3276,9 @@ const PLAN_TIERS: {
     id: "smart",
     label: "智能整理",
     tagline: "AI平衡方案",
-    duration: "25 min",
+    duration: "25 分钟",
     steps: 12,
-    badge: "SMART",
+    badge: "智能推荐",
     accent: ORANGE,
     features: ["分区整理", "按类别分组", "可选工具"],
     tools: false,
@@ -3780,7 +3780,7 @@ function PlanStep({ onBack, onNext }: { onBack: () => void; onNext: () => void }
   return (
     <div className="h-full w-full">
       <div className="relative h-[55%] w-full overflow-hidden">
-        <ImageWithFallback src={ROOM_IMG} alt="Room" className="h-full w-full object-cover" />
+        <ImageWithFallback src={ROOM_IMG} alt="房间" className="h-full w-full object-cover" />
         <div
           className="absolute inset-0"
           style={{
@@ -3861,7 +3861,7 @@ function PlanStep({ onBack, onNext }: { onBack: () => void; onNext: () => void }
         <div className="flex items-center justify-center mb-4">
           <div className="h-1 w-10 rounded-full" style={{ backgroundColor: SOFT }} />
         </div>
-        <p style={{ color: COFFEE, fontSize: 17, fontWeight: 600, marginBottom: 14 }}>Plan Selection</p>
+        <p style={{ color: COFFEE, fontSize: 17, fontWeight: 600, marginBottom: 14 }}>选择方案</p>
 
         <div className="grid grid-cols-3 gap-3 mb-5">
           {durations.map((d) => {
@@ -3927,10 +3927,10 @@ function PlanStep({ onBack, onNext }: { onBack: () => void; onNext: () => void }
 
 function TaskStep({ onBack, onComplete }: { onBack: () => void; onComplete: () => void }) {
   const tasks = [
-    "Stack books neatly",
-    "Wipe coffee table",
-    "Place mug in kitchen",
-    "Fold throw blanket",
+    "把书叠整齐",
+    "擦拭茶几",
+    "把杯子放回厨房",
+    "折叠盖毯",
   ];
 
   return (
@@ -3943,7 +3943,7 @@ function TaskStep({ onBack, onComplete }: { onBack: () => void; onComplete: () =
         >
           <ArrowLeft size={20} color={COFFEE} />
         </button>
-        <p style={{ color: COFFEE, fontSize: 14, fontWeight: 600 }}>Cleaning Session</p>
+        <p style={{ color: COFFEE, fontSize: 14, fontWeight: 600 }}>清扫中</p>
         <div className="w-11" />
       </div>
 
@@ -3997,7 +3997,7 @@ function TaskStep({ onBack, onComplete }: { onBack: () => void; onComplete: () =
           </span>
           <span style={{ color: COFFEE, opacity: 0.55, fontSize: 12 }}>03:42</span>
         </div>
-        <p style={{ color: COFFEE, fontSize: 22, fontWeight: 600 }}>Coffee Table</p>
+        <p style={{ color: COFFEE, fontSize: 22, fontWeight: 600 }}>茶几区</p>
         <p style={{ color: COFFEE, opacity: 0.6, fontSize: 12, marginTop: 4 }}>4 quick tasks</p>
 
         <div className="space-y-2 mt-5">
@@ -4077,7 +4077,7 @@ function RewardStep({ onClose }: { onClose: () => void }) {
     return (
       <div className="relative h-full w-full overflow-hidden" style={{ backgroundColor: "#1a1411" }}>
         {/* Live camera feed */}
-        <ImageWithFallback src={AFTER_IMG} alt="Camera" className="h-full w-full object-cover" />
+        <ImageWithFallback src={AFTER_IMG} alt="相机" className="h-full w-full object-cover" />
 
         {/* Vignette */}
         <div
@@ -4440,9 +4440,9 @@ function RewardStep({ onClose }: { onClose: () => void }) {
 /* ---------- D. Zone Selection ---------- */
 
 const SELECTABLE_ZONES = [
-  { n: 1, label: "Coffee Table", color: ORANGE, left: "10%", top: "44%", w: "34%", h: "26%", items: 6, mins: 4 },
-  { n: 2, label: "Sofa Area", color: BLUE, left: "44%", top: "30%", w: "40%", h: "42%", items: 9, mins: 7 },
-  { n: 3, label: "Shelf Corner", color: "#A88370", left: "6%", top: "8%", w: "30%", h: "26%", items: 4, mins: 3 },
+  { n: 1, label: "茶几区", color: ORANGE, left: "10%", top: "44%", w: "34%", h: "26%", items: 6, mins: 4 },
+  { n: 2, label: "沙发区", color: BLUE, left: "44%", top: "30%", w: "40%", h: "42%", items: 9, mins: 7 },
+  { n: 3, label: "书架角落", color: "#A88370", left: "6%", top: "8%", w: "30%", h: "26%", items: 4, mins: 3 },
 ];
 
 function ZoneSelectStep({ onBack, onNext }: { onBack: () => void; onNext: () => void }) {
@@ -4466,7 +4466,7 @@ function ZoneSelectStep({ onBack, onNext }: { onBack: () => void; onNext: () => 
           <ArrowLeft size={18} color={COFFEE} />
         </button>
         <div className="text-center">
-          <p style={{ color: COFFEE, fontSize: 15, fontWeight: 600 }}>Select Zones</p>
+          <p style={{ color: COFFEE, fontSize: 15, fontWeight: 600 }}>选择区域</p>
           <p style={{ color: COFFEE, opacity: 0.55, fontSize: 11 }}>Multi-select supported</p>
         </div>
         <div className="w-10" />
@@ -4474,7 +4474,7 @@ function ZoneSelectStep({ onBack, onNext }: { onBack: () => void; onNext: () => 
 
       {/* Photo with zone overlays */}
       <div className="mx-5 mt-3 relative overflow-hidden" style={{ borderRadius: 22, aspectRatio: "3/4" }}>
-        <ImageWithFallback src={ROOM_IMG} alt="Scene" className="h-full w-full object-cover" />
+        <ImageWithFallback src={ROOM_IMG} alt="空间场景" className="h-full w-full object-cover" />
         <div className="absolute inset-0" style={{ backgroundColor: "rgba(26,20,17,0.28)" }} />
 
         {SELECTABLE_ZONES.map((z) => {
@@ -4625,9 +4625,9 @@ function ZoneSelectStep({ onBack, onNext }: { onBack: () => void; onNext: () => 
 /* ---------- E. AR 3D Preview ---------- */
 
 const AR_ARROWS = [
-  { from: "30%,55%", to: "12%,72%", label: "Charger cable" },
+  { from: "30%,55%", to: "12%,72%", label: "充电线" },
   { from: "55%,40%", to: "78%,30%", label: "Mug" },
-  { from: "45%,68%", to: "22%,82%", label: "Books" },
+  { from: "45%,68%", to: "22%,82%", label: "书籍" },
 ];
 
 function ARPreviewStep({ onBack, onNext }: { onBack: () => void; onNext: () => void }) {
@@ -4639,7 +4639,7 @@ function ARPreviewStep({ onBack, onNext }: { onBack: () => void; onNext: () => v
     <div className="relative h-full w-full overflow-hidden" style={{ backgroundColor: "#13110f" }}>
       {/* 3D mesh background */}
       <div className="absolute inset-0">
-        <ImageWithFallback src={ROOM_IMG} alt="Scene" className="h-full w-full object-cover" />
+        <ImageWithFallback src={ROOM_IMG} alt="空间场景" className="h-full w-full object-cover" />
         <div
           className="absolute inset-0"
           style={{
@@ -4673,7 +4673,7 @@ function ARPreviewStep({ onBack, onNext }: { onBack: () => void; onNext: () => v
         >
           <Box size={13} color={ORANGE} />
           <span style={{ color: COFFEE, fontSize: 12, fontWeight: 600 }}>
-            {demo ? "AR Live" : "3D Preview"}
+            {demo ? "AR 实景" : "3D 预览"}
           </span>
         </div>
         <button
@@ -4683,7 +4683,7 @@ function ARPreviewStep({ onBack, onNext }: { onBack: () => void; onNext: () => v
         >
           <Move3d size={14} color={demo ? WHITE : COFFEE} />
           <span style={{ color: demo ? WHITE : COFFEE, fontSize: 11, fontWeight: 600 }}>
-            {demo ? "Close" : "AR"}
+            {demo ? "关闭" : "AR"}
           </span>
         </button>
       </div>
@@ -4882,33 +4882,33 @@ type SubTask = { id: string; text: string; done?: boolean; skipped?: boolean };
 const AR_ZONE_TASKS: { zone: number; label: string; color: string; tasks: SubTask[] }[] = [
   {
     zone: 1,
-    label: "Coffee Table",
+    label: "茶几区",
     color: ORANGE,
     tasks: [
-      { id: "z1t1", text: "Coil the charger cable into the blue storage box" },
-      { id: "z1t2", text: "Move the mug to the kitchen counter" },
-      { id: "z1t3", text: "Stack the books vertically on the right side" },
-      { id: "z1t4", text: "Wipe the surface with a microfiber cloth" },
+      { id: "z1t1", text: "把充电线绕好放进蓝色收纳盒" },
+      { id: "z1t2", text: "把杯子移到厨房台面" },
+      { id: "z1t3", text: "把书竖着堆在右侧" },
+      { id: "z1t4", text: "用超细纤维布擦净台面" },
     ],
   },
   {
     zone: 2,
-    label: "Sofa Area",
+    label: "沙发区",
     color: BLUE,
     tasks: [
-      { id: "z2t1", text: "Fold the throw blanket on the sofa arm" },
-      { id: "z2t2", text: "Fluff and align the cushions" },
-      { id: "z2t3", text: "Tuck the remote into the side basket" },
+      { id: "z2t1", text: "把盖毯折好搭在沙发扶手上" },
+      { id: "z2t2", text: "拍松并摆正靠垫" },
+      { id: "z2t3", text: "把遥控器收进侧边收纳篮" },
     ],
   },
   {
     zone: 3,
-    label: "Shelf Corner",
+    label: "书架角落",
     color: "#A88370",
     tasks: [
-      { id: "z3t1", text: "Group books by height on the top shelf" },
-      { id: "z3t2", text: "Wipe down the decorative bowl" },
-      { id: "z3t3", text: "Move the lamp cable behind the shelf" },
+      { id: "z3t1", text: "按高度把书排在顶层隔板" },
+      { id: "z3t2", text: "擦干净装饰碗" },
+      { id: "z3t3", text: "把台灯线移到架子后面" },
     ],
   },
 ];
@@ -4991,7 +4991,7 @@ function ARGuideStep({
         {compare ? (
           <div className="flex h-full w-full">
             <div className="flex-1 relative overflow-hidden border-r" style={{ borderColor: "rgba(255,255,255,0.2)" }}>
-              <ImageWithFallback src={ROOM_IMG} alt="Before" className="h-full w-full object-cover" />
+              <ImageWithFallback src={ROOM_IMG} alt="整理前" className="h-full w-full object-cover" />
               <span
                 className="absolute top-20 left-3 px-2 py-0.5"
                 style={{ backgroundColor: "rgba(0,0,0,0.55)", color: WHITE, borderRadius: 6, fontSize: 10, fontWeight: 600 }}
@@ -5000,7 +5000,7 @@ function ARGuideStep({
               </span>
             </div>
             <div className="flex-1 relative overflow-hidden">
-              <ImageWithFallback src={ROOM_IMG} alt="Target" className="h-full w-full object-cover" />
+              <ImageWithFallback src={ROOM_IMG} alt="目标区域" className="h-full w-full object-cover" />
               <div className="absolute inset-0" style={{ backgroundColor: "rgba(250,136,58,0.18)" }} />
               <span
                 className="absolute top-20 left-3 px-2 py-0.5"
@@ -5012,7 +5012,7 @@ function ARGuideStep({
           </div>
         ) : (
           <>
-            <ImageWithFallback src={ROOM_IMG} alt="Live" className="h-full w-full object-cover" />
+            <ImageWithFallback src={ROOM_IMG} alt="实时画面" className="h-full w-full object-cover" />
             {!longPress && (
               <>
                 {/* Highlight slab */}
@@ -5071,7 +5071,7 @@ function ARGuideStep({
                 className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 px-3 py-1.5"
                 style={{ backgroundColor: "rgba(0,0,0,0.55)", borderRadius: 999 }}
               >
-                <span style={{ color: WHITE, fontSize: 11 }}>Showing original — release to resume</span>
+                <span style={{ color: WHITE, fontSize: 11 }}>正在显示原图 — 松手继续</span>
               </div>
             )}
           </>
@@ -5144,7 +5144,7 @@ function ARGuideStep({
         {!expanded ? (
           <>
             <p style={{ color: COFFEE, fontSize: 17, fontWeight: 600, lineHeight: 1.4, marginBottom: 14 }}>
-              {current?.text || "All steps complete!"}
+              {current?.text || "全部步骤已完成！"}
             </p>
 
             <div className="flex gap-2">
@@ -5287,7 +5287,7 @@ function ARGuideStep({
             <p style={{ color: COFFEE, opacity: 0.55, fontSize: 12, marginBottom: 14 }}>
               We'll remember this for next time.
             </p>
-            {["Item missing", "Don't want to tidy", "Maybe later"].map((r) => (
+            {["物品没识别到", "不想收拾", "稍后再说"].map((r) => (
               <button
                 key={r}
                 onClick={() => skipReason(r)}

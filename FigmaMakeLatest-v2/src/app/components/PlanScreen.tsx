@@ -11,9 +11,9 @@ const durations = ["5min", "10min", "1h"] as const;
 type Duration = (typeof durations)[number];
 
 const zones = [
-  { n: 1, label: "Coffee Table", left: "12%", top: "38%", w: "32%", h: "26%" },
-  { n: 2, label: "Sofa Area", left: "46%", top: "28%", w: "38%", h: "42%" },
-  { n: 3, label: "Shelf Corner", left: "8%", top: "8%", w: "28%", h: "24%" },
+  { n: 1, label: "茶几区", left: "12%", top: "38%", w: "32%", h: "26%" },
+  { n: 2, label: "沙发区", left: "46%", top: "28%", w: "38%", h: "42%" },
+  { n: 3, label: "书架角落", left: "8%", top: "8%", w: "28%", h: "24%" },
 ];
 
 export function PlanScreen({ onBack }: { onBack: () => void }) {
@@ -26,7 +26,7 @@ export function PlanScreen({ onBack }: { onBack: () => void }) {
       <div className="relative h-[58%] w-full overflow-hidden">
         <ImageWithFallback
           src="https://images.unsplash.com/photo-1768548273848-ebab6f26b48c?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080"
-          alt="Living room"
+          alt="客厅"
           className="h-full w-full object-cover"
         />
         <div
