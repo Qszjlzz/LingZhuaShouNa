@@ -18,9 +18,13 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
         webView.scrollView.bounces = false
         context.coordinator.webView = webView
         loadBundle(in: webView)
-        // 相机预热：已授权就把采集链路提前配好（不 startRunning，不会亮系统的相机指示灯），
-        // 这样点进拍摄页时只差最后一步，画面几乎立刻出来，不用盯着占位图等。
-        Task { await CameraEngine.shared.prepareIfAuthorized() }
+        // 相机常驻待命：已授权就把画面层铺好并让相机跑起来（透明不可见），
+        // 点拍摄按钮时只剩"显示"这一步，一帧内出画面，没有加载过程。
+        // 只在已授权时做 —— 免得一打开 App 就弹权限框。
+        Task {
+            await CameraEngine.shared.prepareIfAuthorized()
+            await CameraPreviewOverlay.shared.armIfAuthorized(in: webView)
+        }
         return webView
     }
 
@@ -67,6 +71,7 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
             case "camera.preview.warm":
                 await CameraPreviewOverlay.shared.warmUp()
                 respond(requestID, data: ["ok": CameraEngine.shared.isReady])
+            case "camera.preview.show": await showInlinePreview(requestID: requestID)
             case "camera.preview.start": await startInlinePreview(requestID: requestID, payload: payload)
             case "camera.preview.frame": updateInlinePreviewFrame(payload: payload); respond(requestID, data: ["ok": true])
             case "camera.preview.stop": CameraPreviewOverlay.shared.stop(); respond(requestID, data: ["ok": true])
@@ -176,6 +181,19 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
             let ok = await CameraPreviewOverlay.shared.start(in: webView, frame: frame)
             if ok { await MainActor.run { viewModel.scannedItems = [] } }
             // 起不来时把原因告诉网页：没授权和"被别的 App 占着"要给不同提示。
+            let reason = ok ? "" : (CameraEngine.shared.permissionDenied ? "denied" : "unavailable")
+            respond(requestID, data: ["ok": ok, "reason": reason])
+        }
+
+        /// 点拍摄按钮的瞬间调用：相机已经在待命，这里只把画面显示出来。
+        /// 万一还没待命（首次授权、刚从后台回来）就顺手补一次启动，保证一定能出画面。
+        private func showInlinePreview(requestID: String) async {
+            guard let webView else { return fail(requestID, "WebView 未就绪") }
+            var ok = CameraPreviewOverlay.shared.reveal()
+            if !ok {
+                await CameraPreviewOverlay.shared.arm(in: webView)
+                ok = CameraPreviewOverlay.shared.reveal()
+            }
             let reason = ok ? "" : (CameraEngine.shared.permissionDenied ? "denied" : "unavailable")
             respond(requestID, data: ["ok": ok, "reason": reason])
         }

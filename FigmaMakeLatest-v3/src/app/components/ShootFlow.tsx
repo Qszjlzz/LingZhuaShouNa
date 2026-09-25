@@ -1407,8 +1407,11 @@ function CaptureStep({
   const [error, setError] = useState<string | null>(null);
   const recTimer = useRef<any>(null);
   // 真实取景：相机画面垫在 WebView 底下，页面原地透明透出来，UI 一个像素都不动。
+  // 相机在点进来之前就已经待命，所以这里乐观地认为"画面已经在"——
+  // 容器一开始就是透明的，画面直接透出来，中间没有"深色底 → 画面"的跳变。
+  // 万一真的没起来，startPreview 失败后才会切成深色底并给重试提示。
   const previewRef = useRef<HTMLDivElement>(null);
-  const [liveFeed, setLiveFeed] = useState(false);
+  const [liveFeed, setLiveFeed] = useState(true);
   // 等待画面期间一律用深色底（和相机出画面前的黑屏一致），不再显示任何占位图。
   // 取景失败只在这页里提示 + 重试，绝不跳到系统相机页。
   const [camFailed, setCamFailed] = useState(false);
@@ -1447,6 +1450,8 @@ function CaptureStep({
       // 相机可能刚被别的应用占着，缓一下再试。
       await new Promise((r) => setTimeout(r, 600));
     }
+    // 真的没起来才收回"画面已在"的乐观假设，改用深色底 + 重试提示。
+    setLiveFeed(false);
     return false;
   };
 
@@ -1466,12 +1471,6 @@ function CaptureStep({
       void nativeRequest("camera.preview.stop", {}).catch(() => {});
     };
   }, []);
-
-  useEffect(() => {
-    if (liveFeed) return;
-    const t = setTimeout(() => setShowStatic(true), 500);
-    return () => clearTimeout(t);
-  }, [liveFeed]);
 
   // 画面要透上来，得把预览区以上这条链路的背景临时改成透明，离开时还原。
   useEffect(() => {

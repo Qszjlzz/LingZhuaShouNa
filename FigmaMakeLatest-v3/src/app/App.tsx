@@ -16,10 +16,10 @@ export default function App() {
   const [nativeState, setNativeState] = useState<NativeState | null>(null);
   const refresh = () => getNativeState().then(setNativeState).catch(() => undefined);
 
-  // 点下去的这一刻就让原生把摄像头加电，别等 React 把拍摄页渲染完才开工 ——
-  // 相机硬件启动和页面渲染并行跑，页面挂好时画面通常已经在了。
+  // 相机在 App 前台期间一直跑着（画面层已铺好、只是透明不可见），
+  // 这里只剩"把画面显示出来"一步，不等硬件、不建图层 —— 点下去就是相机。
   const openShoot = () => {
-    void nativeRequest("camera.preview.warm", {}).catch(() => undefined);
+    void nativeRequest("camera.preview.show", {}).catch(() => undefined);
     setShooting(true);
   };
 
