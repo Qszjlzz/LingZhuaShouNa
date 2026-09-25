@@ -17,17 +17,4 @@ document.addEventListener(
   true,
 );
 
-// 键盘收起后把页面滚回顶部，避免残留偏移。
-document.addEventListener(
-  "focusout",
-  () => {
-    window.setTimeout(() => {
-      const active = document.activeElement as HTMLElement | null;
-      if (active && /^(input|textarea|select)$/i.test(active.tagName)) return;
-      document.scrollingElement?.scrollTo({ top: 0 });
-    }, 200);
-  },
-  true,
-);
-
 createRoot(document.getElementById("root")!).render(<App />);
