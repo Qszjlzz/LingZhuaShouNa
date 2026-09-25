@@ -75,6 +75,9 @@ struct LLMSettings: Codable, Equatable {
     var endpoint: String
     var apiKey: String
     var model: String
+    /// 视觉识别可以单独指定接口与模型（例如 qwen-vl-max）。留空时复用上面的规划配置。
+    var visionEndpoint: String
+    var visionModel: String
 
     static let `default` = LLMSettings(
         isEnabled: false,
@@ -84,14 +87,23 @@ struct LLMSettings: Codable, Equatable {
     )
 
     private enum CodingKeys: String, CodingKey {
-        case isEnabled, endpoint, apiKey, model
+        case isEnabled, endpoint, apiKey, model, visionEndpoint, visionModel
     }
 
-    init(isEnabled: Bool, endpoint: String, apiKey: String, model: String) {
+    init(
+        isEnabled: Bool,
+        endpoint: String,
+        apiKey: String,
+        model: String,
+        visionEndpoint: String = "",
+        visionModel: String = ""
+    ) {
         self.isEnabled = isEnabled
         self.endpoint = endpoint
         self.apiKey = apiKey
         self.model = model
+        self.visionEndpoint = visionEndpoint
+        self.visionModel = visionModel
     }
 
     init(from decoder: Decoder) throws {
@@ -100,6 +112,8 @@ struct LLMSettings: Codable, Equatable {
         endpoint = try container.decodeIfPresent(String.self, forKey: .endpoint) ?? Self.default.endpoint
         apiKey = try container.decodeIfPresent(String.self, forKey: .apiKey) ?? ""
         model = try container.decodeIfPresent(String.self, forKey: .model) ?? Self.default.model
+        visionEndpoint = try container.decodeIfPresent(String.self, forKey: .visionEndpoint) ?? ""
+        visionModel = try container.decodeIfPresent(String.self, forKey: .visionModel) ?? ""
     }
 
     func encode(to encoder: Encoder) throws {
@@ -107,18 +121,44 @@ struct LLMSettings: Codable, Equatable {
         try container.encode(isEnabled, forKey: .isEnabled)
         try container.encode(endpoint, forKey: .endpoint)
         try container.encode(model, forKey: .model)
+        try container.encode(visionEndpoint, forKey: .visionEndpoint)
+        try container.encode(visionModel, forKey: .visionModel)
     }
 
-    var canRequest: Bool {
-        guard isEnabled,
-              let url = URL(string: endpoint.trimmingCharacters(in: .whitespacesAndNewlines)),
+    var resolvedVisionEndpoint: String {
+        visionEndpoint.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? endpoint
+            : visionEndpoint
+    }
+
+    var resolvedVisionModel: String {
+        visionModel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? model
+            : visionModel
+    }
+
+    private func isReachable(_ rawEndpoint: String) -> Bool {
+        let trimmed = rawEndpoint.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let url = URL(string: trimmed),
               let scheme = url.scheme?.lowercased(),
               let host = url.host, !host.isEmpty,
               url.user == nil, url.password == nil, url.fragment == nil,
               scheme == "https" || (scheme == "http" && ["localhost", "127.0.0.1", "::1"].contains(host.lowercased()))
         else { return false }
+        return true
+    }
+
+    var canRequest: Bool {
+        guard isEnabled, isReachable(endpoint) else { return false }
         return !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// 拍照识别走的是多模态接口，与主规划接口可以是两套配置。
+    var canRequestVision: Bool {
+        guard isEnabled, isReachable(resolvedVisionEndpoint) else { return false }
+        return !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !resolvedVisionModel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 }
 
@@ -658,7 +698,8 @@ struct YOLOSegmentationScanService: ScanService {
             throw ScanError.invalidImage
         }
 
-        let yoloItems = Self.cleanedItems(await Self.detectItems(in: cgImage))
+        let rawDetected = await Self.detectItems(in: cgImage)
+        let yoloItems = Self.cleanedItems(rawDetected)
         let textRecoveredItems = await OCRToolRecovery.items(in: cgImage)
         let recoveredItems = Self.cleanedItems(yoloItems + textRecoveredItems)
         if !recoveredItems.isEmpty {
@@ -667,11 +708,29 @@ struct YOLOSegmentationScanService: ScanService {
             // on the detector output to avoid a second coordinate transform.
             let refined = await edgeSAM.refine(recoveredItems, in: cgImage)
             let cleaned = Array(Self.presentationItems(Self.cleanedItems(refined), mode: .still).prefix(10))
-            return await SceneSemanticCalibration.calibrate(cleaned, in: image)
+            if !cleaned.isEmpty {
+                return await SceneSemanticCalibration.calibrate(cleaned, in: image)
+            }
+            // 精修后反而全部被过滤掉时不要交白卷，退回宽松口径。
+            let relaxedRefined = Self.relaxedItems(refined)
+            if !relaxedRefined.isEmpty {
+                return await SceneSemanticCalibration.calibrate(relaxedRefined, in: image)
+            }
+        }
+        // 严格口径（必须有精确轮廓）认不出东西时降级：只要模型给出了可信的框就先呈现，
+        // 宁可置信度低一点，也不要让用户拍完看到一片空白。
+        let relaxed = Self.relaxedItems(rawDetected)
+        if !relaxed.isEmpty {
+            return await SceneSemanticCalibration.calibrate(relaxed, in: image)
         }
         let fallbackItems = Self.cleanedItems(try await fallback.scanImage(image))
         let refined = await edgeSAM.refine(fallbackItems, in: cgImage)
-        return await SceneSemanticCalibration.calibrate(Self.presentationItems(Self.cleanedItems(refined), mode: .still), in: image)
+        let fallbackPresentation = Self.presentationItems(Self.cleanedItems(refined), mode: .still)
+        if !fallbackPresentation.isEmpty {
+            return await SceneSemanticCalibration.calibrate(fallbackPresentation, in: image)
+        }
+        let relaxedFallback = Self.relaxedItems(try await fallback.scanImage(image))
+        return await SceneSemanticCalibration.calibrate(relaxedFallback, in: image)
     }
 
     // Live AR needs a predictable frame budget. Use the primary instance
@@ -743,6 +802,28 @@ struct YOLOSegmentationScanService: ScanService {
                 return hintIoU(lhs, rhs) >= (sameCategory ? 0.62 : 0.82)
             }
             if !duplicate { kept.append(item) }
+        }
+        return kept
+    }
+
+    /// 放宽一层口径：不强制要求精确轮廓，只要有可信的检测框就呈现出来。
+    /// 用在严格过滤后结果为空的场合，避免"拍了但什么都没识别到"。
+    private static func relaxedItems(_ items: [DetectedItem]) -> [DetectedItem] {
+        var kept: [DetectedItem] = []
+        for item in items.sorted(by: { $0.confidence > $1.confidence }) {
+            guard item.confidence >= 0.25, item.name != "待确认物体" else { continue }
+            var item = item
+            if item.arHint == nil { item.arHint = ARHint.centerFallback }
+            if item.arMask == nil {
+                item.arMask = softMask(from: item.arHint ?? ARHint.centerFallback)
+            }
+            guard let hint = item.arHint else { continue }
+            let duplicate = kept.contains { existing in
+                guard let existingHint = existing.arHint else { return false }
+                return existing.name == item.name || hintIoU(existingHint, hint) >= 0.7
+            }
+            if !duplicate { kept.append(item) }
+            if kept.count >= 6 { break }
         }
         return kept
     }
@@ -1022,8 +1103,12 @@ struct YOLOSegmentationScanService: ScanService {
         #else
         configuration.computeUnits = .all
         #endif
-        return bundledModelURLs().compactMap { modelURL in
-            guard let model = try? MLModel(contentsOf: modelURL, configuration: configuration) else { return nil }
+        let loaded = bundledModelURLs().compactMap { modelURL -> YOLOModel? in
+            guard let model = try? MLModel(contentsOf: modelURL, configuration: configuration) else {
+                // 模型在真机上编译失败时本地识别会直接返回空，这里是排查的第一现场。
+                print("SMARTPAW_MODEL_LOAD_FAIL \(modelURL.lastPathComponent)")
+                return nil
+            }
             let inputSize = model.modelDescription.inputDescriptionsByName["image"]?.imageConstraint?.pixelsWide ?? 0
             guard inputSize > 0 else { return nil }
             let kind: YOLOModelKind = modelURL.lastPathComponent.hasPrefix("yolov8s-worldv2") ? .worldDetection : .segmentation
@@ -1043,7 +1128,13 @@ struct YOLOSegmentationScanService: ScanService {
                 sourceName: modelURL.deletingPathExtension().lastPathComponent
             )
         }
+        print("SMARTPAW_MODEL_LOADED count=\(loaded.count) names=\(loaded.map(\.sourceName).joined(separator: "、"))")
+        return loaded
     }()
+
+    /// 诊断用：真机上如果这里是空的，本地识别一定返回空结果。
+    static var loadedModelNames: [String] { cachedModels.map(\.sourceName) }
+    static var loadedModelCount: Int { cachedModels.count }
 
     private static func bundledModelURLs() -> [URL] {
         let bundles = [Bundle.main] + Bundle.allBundles

@@ -1,3 +1,3 @@
-build: index-DYuewNGg.js
-source: Figma Make v3 设计稿拍摄流程 + 原生拍照/AR扫描
-synced: 2026-09-25 13:23
+build: index-hfYpn36F.js
+source: Figma Make v3 设计稿拍摄流程 + 原生拍照/AR扫描 + 云端多模态识别
+synced: 2026-09-26 00:22

@@ -35,7 +35,8 @@ final class ScanStudioModel: ObservableObject {
     private static let hints = ["广角", "左侧", "右侧", "俯视"]
 
     private let engine = CameraEngine.shared
-    private let scanService = YOLOSegmentationScanService()
+    /// 用统一的识别路由：本地轮廓 + 云端多模态兜底，AR 实时扫描也不会出现"扫不出东西"。
+    private let scanService = RecognitionRouter.shared
 
     @Published var mode: Mode
     @Published var shots: [UIImage] = []

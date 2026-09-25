@@ -65,6 +65,8 @@ final class AppViewModel: ObservableObject {
     private var activeScanID: UUID?
     /// 连拍时每张照片都会起一轮扫描，用递增代号区分先后，避免旧一轮的结果覆盖新一轮。
     private var scanGeneration = 0
+    /// 同一批拍摄里云端识别只调用一次，标记在这里。
+    private var usedCloudRecognitionInBatch = false
 
     init(dependencies: AppDependencies) {
         self.dependencies = dependencies
@@ -164,6 +166,10 @@ final class AppViewModel: ObservableObject {
             message = nil
         }
         #endif
+        // 拍照/AR 识别需要知道用户当前保存的 AI 设置，用来决定要不要走云端多模态识别。
+        if let router = dependencies.scanService as? RecognitionRouter {
+            router.settingsProvider = { [weak self] in self?.llmSettings ?? .default }
+        }
         Task { [weak self] in
             await self?.refreshNotificationAuthorizationState()
             await self?.reconcileScheduleNotifications()
@@ -318,8 +324,18 @@ final class AppViewModel: ObservableObject {
 
         do {
             var mergedItems: [DetectedItem] = []
-            for image in images {
-                let results = try await dependencies.scanService.scanImage(image)
+            // 连拍时云端多模态识别只跑一次，其余照片走本地，避免每张都等一次网络往返。
+            if !accumulate { usedCloudRecognitionInBatch = false }
+            let router = dependencies.scanService as? RecognitionRouter
+            for (_, image) in images.enumerated() {
+                let results: [DetectedItem]
+                if let router {
+                    let allowsCloud = !usedCloudRecognitionInBatch
+                    usedCloudRecognitionInBatch = true
+                    results = try await router.scanImage(image, allowsCloud: allowsCloud)
+                } else {
+                    results = try await dependencies.scanService.scanImage(image)
+                }
                 // 这里不再用 activeScanID 提前退出：连拍时新一轮会把上一轮的代号顶掉，
                 // 旧写法会让前面几张的识别结果直接作废，最后方案里只剩最后一张的东西。
                 for item in results {

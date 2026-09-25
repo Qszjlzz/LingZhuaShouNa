@@ -29,6 +29,8 @@
 		A0E000000000000000000005 /* yoloe-context-seg.mlpackage in Resources */ = {isa = PBXBuildFile; fileRef = A0E000000000000000000006 /* yoloe-context-seg.mlpackage */; };
 		A11000000000000000000001 /* RecognitionResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = A12000000000000000000001 /* RecognitionResult.swift */; };
 		A11000000000000000000002 /* MobileCLIPRecognitionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A12000000000000000000002 /* MobileCLIPRecognitionService.swift */; };
+		SPA2C2478C19C7416AA00841 /* CloudVisionRecognitionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = SP923B2899303942B78265A1 /* CloudVisionRecognitionService.swift */; };
+		SPA834CF8D279E44B5BB6F5B /* RecognitionRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = SPC9E38F4453534A60884D24 /* RecognitionRouter.swift */; };
 		A1FAD299803EB78A7089873F /* ImageDecoding.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C8CAF629E6F83A34613990B /* ImageDecoding.swift */; };
 		A5B6694A3D4F93F640D5168D /* edge_sam_decoder.mlpackage in Resources */ = {isa = PBXBuildFile; fileRef = E079203E98D6EA82F534BC43 /* edge_sam_decoder.mlpackage */; };
 		ACAE33FF11F3DDEBF555DDC2 /* external-messy-desk-note.png in Resources */ = {isa = PBXBuildFile; fileRef = 0129B4B7A8FC9DF181334704 /* external-messy-desk-note.png */; };
@@ -95,6 +97,8 @@
 		A0E000000000000000000006 /* yoloe-context-seg.mlpackage */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.mlpackage; path = "yoloe-context-seg.mlpackage"; sourceTree = "<group>"; };
 		A12000000000000000000001 /* RecognitionResult.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = RecognitionResult.swift; sourceTree = "<group>"; };
 		A12000000000000000000002 /* MobileCLIPRecognitionService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MobileCLIPRecognitionService.swift; sourceTree = "<group>"; };
+		SP923B2899303942B78265A1 /* CloudVisionRecognitionService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CloudVisionRecognitionService.swift; sourceTree = "<group>"; };
+		SPC9E38F4453534A60884D24 /* RecognitionRouter.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = RecognitionRouter.swift; sourceTree = "<group>"; };
 		A335BF6F1730E6236BEF42E7 /* RootView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		A0E000000000000000000016 /* AppLanguage.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AppLanguage.swift; sourceTree = "<group>"; };
 		C20000000000000000000004 /* CurrentFigmaMakeWebView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CurrentFigmaMakeWebView.swift; sourceTree = "<group>"; };
@@ -313,6 +317,8 @@
 				E0124065F43217D86371CB89 /* SmartPawServices.swift */,
 				62AB7C21645033ADF9B3D3F8 /* EdgeSAMSegmentationService.swift */,
 				A12000000000000000000002 /* MobileCLIPRecognitionService.swift */,
+				SP923B2899303942B78265A1 /* CloudVisionRecognitionService.swift */,
+				SPC9E38F4453534A60884D24 /* RecognitionRouter.swift */,
 				B20000000000000000000001 /* MobileCLIP */,
 			);
 			path = Services;
@@ -469,6 +475,8 @@
 				7A87E26C01D121EDF9F350D1 /* SmartPawServices.swift in Sources */,
 				BE6779B8D14D4A28C612F05C /* EdgeSAMSegmentationService.swift in Sources */,
 				A11000000000000000000002 /* MobileCLIPRecognitionService.swift in Sources */,
+				SPA2C2478C19C7416AA00841 /* CloudVisionRecognitionService.swift in Sources */,
+				SPA834CF8D279E44B5BB6F5B /* RecognitionRouter.swift in Sources */,
 				B11000000000000000000001 /* MobileCLIPTextRecognitionService.swift in Sources */,
 				B11000000000000000000002 /* CLIPTokenizer.swift in Sources */,
 				B11000000000000000000003 /* GPT2ByteEncoder.swift in Sources */,

@@ -8,7 +8,7 @@ struct AppDependencies {
     let credentialStore: CredentialStore
 
     static let live = AppDependencies(
-        scanService: YOLOSegmentationScanService(),
+        scanService: RecognitionRouter.shared,
         planningService: RuleBasedPlanningService(),
         cloudPlanningService: OpenAICompatiblePlanningService(),
         storageStore: JSONStorageStore(),
@@ -16,7 +16,7 @@ struct AppDependencies {
     )
 
     static let preview = AppDependencies(
-        scanService: YOLOSegmentationScanService(),
+        scanService: RecognitionRouter.shared,
         planningService: RuleBasedPlanningService(),
         cloudPlanningService: OpenAICompatiblePlanningService(),
         storageStore: InMemoryStorageStore(),

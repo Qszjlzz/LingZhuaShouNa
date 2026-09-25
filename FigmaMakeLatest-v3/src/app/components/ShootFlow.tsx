@@ -2251,7 +2251,7 @@ function ReviewStep({
             <p style={{ color: COFFEE, fontSize: 12.5, fontWeight: 600 }}>AR 扫描就绪</p>
             <p style={{ color: COFFEE, opacity: 0.6, fontSize: 11, marginTop: 2 }}>
               {assets.some((x) => x.kind === "video")
-                ? "Video scan will be reconstructed into a 3D mesh."
+                ? "视频扫描会重建成三维网格，用于还原空间结构。"
                 : "将拼接多个角度以分析空间纵深。"}
             </p>
           </div>
@@ -2303,6 +2303,7 @@ function ConfirmStep({ assets, onBack, onNext }: { assets: CapturedAsset[]; onBa
   const [blindSpots, setBlindSpots] = useState<BlindSpot[]>([]);
   const [activeSpot, setActiveSpot] = useState<string | null>(null);
   const [spotNote, setSpotNote] = useState("");
+  const [diagnostics, setDiagnostics] = useState<Record<string, string>>({});
 
   useEffect(() => {
     // 识别在后台跑（快门不等它），进这一步时先等它跑完，再取结果。
@@ -2310,6 +2311,7 @@ function ConfirmStep({ assets, onBack, onNext }: { assets: CapturedAsset[]; onBa
       try {
         await nativeRequest("scan.await", {});
         const state = await nativeRequest<NativeState>("state.get");
+        setDiagnostics(state.scanDiagnostics ?? {});
         setItems(state.scannedItems.map((item) => ({ ...item, emoji: getEmojiForItem(item.name) })));
         setBlindSpots(state.scannedItems.filter((item) => item.confidence < 0.55).map((item, index) => ({
           id: `low-${item.id}`, label: item.name, reason: `置信度 ${Math.round(item.confidence * 100)}% — 请确认`,
@@ -2334,8 +2336,41 @@ function ConfirmStep({ assets, onBack, onNext }: { assets: CapturedAsset[]; onBa
   const removeItem = (id: string) => setItems((arr) => arr.filter((i) => i.id !== id));
 
   const getEmojiForItem = (name: string): string => {
-    const lowerName = name.toLowerCase();
-    // Simple keyword matching for common items
+    const lowerName = (name || "").toLowerCase();
+    // 识别结果现在是中文物品名，按中文关键词匹配图标，英文只作兜底。
+    const rules: [string[], string][] = [
+      [["电脑", "键盘", "鼠标", "显示器", "主机"], "💻"],
+      [["手机", "充电", "数据线", "耳机", "平板", "电池", "插排"], "📱"],
+      [["相机"], "📷"],
+      [["书", "杂志", "画册", "漫画", "资料", "试卷"], "📚"],
+      [["笔", "尺", "橡皮", "便签", "胶带", "订书", "文具"], "✏️"],
+      [["杯", "咖啡", "茶", "壶", "水杯", "马克"], "☕"],
+      [["瓶", "罐"], "🥤"],
+      [["碗", "盘", "餐具", "筷", "勺"], "🥣"],
+      [["灯", "台灯", "照明"], "💡"],
+      [["毯", "枕", "抱枕", "沙发", "被", "靠垫"], "🛋️"],
+      [["蜡烛", "香薰"], "🕯️"],
+      [["植物", "绿植", "花", "盆栽"], "🌿"],
+      [["玩偶", "娃娃", "公仔", "积木", "手办", "玩具"], "🧸"],
+      [["衣", "裤", "袜", "帽", "围巾", "外套", "裙"], "👔"],
+      [["工具", "钳", "螺丝", "钻", "锤"], "🔧"],
+      [["药", "维生素", "保健品"], "💊"],
+      [["箱", "盒", "篮", "袋", "收纳"], "🗂️"],
+      [["垃圾", "包装", "快递", "废弃"], "🗑️"],
+      [["钥匙"], "🔑"],
+      [["眼镜"], "👓"],
+      [["手表"], "⌚"],
+      [["遥控"], "🎛️"],
+      [["伞"], "☂️"],
+      [["包", "背包", "钱包"], "🎒"],
+      [["鞋"], "👟"],
+      [["毛巾", "纸巾", "洗漱"], "🧻"],
+      [["剪刀"], "✂️"],
+      [["闹钟", "时钟"], "⏰"],
+    ];
+    for (const [keywords, emoji] of rules) {
+      if (keywords.some((k) => lowerName.includes(k))) return emoji;
+    }
     if (lowerName.includes("book")) return "📚";
     if (lowerName.includes("mug") || lowerName.includes("cup") || lowerName.includes("coffee")) return "☕";
     if (lowerName.includes("lamp") || lowerName.includes("light")) return "💡";
@@ -2347,7 +2382,7 @@ function ConfirmStep({ assets, onBack, onNext }: { assets: CapturedAsset[]; onBa
     if (lowerName.includes("cloth") || lowerName.includes("shirt") || lowerName.includes("sweater")) return "👔";
     if (lowerName.includes("tool")) return "🔧";
     if (lowerName.includes("vitamin") || lowerName.includes("pill") || lowerName.includes("medicine")) return "💊";
-    return "📦"; // Default icon for unknown items
+    return "📦";
   };
 
   const addItem = () => {
@@ -2512,7 +2547,17 @@ function ConfirmStep({ assets, onBack, onNext }: { assets: CapturedAsset[]; onBa
               <p style={{ color: COFFEE, fontSize: 12, fontWeight: 600 }}>这次没认出东西来</p>
             </div>
             <p style={{ color: COFFEE, opacity: 0.7, fontSize: 12, lineHeight: 1.6 }}>
-              可能是光线偏暗或角度太杂。可以退回补拍一张，也可以直接手动添加物品 —— 后面的方案会按你填的生成。
+              {diagnostics.cloudReady === "yes"
+                ? "云端识别没能给出物品，可能是画面太暗或物品太小。可以退回补拍一张，也可以直接手动添加物品。"
+                : diagnostics.modelCount === "0"
+                  ? "本地识别模型没有加载成功，且还没开启云端识别。到「我的 → AI 规划设置」填好 API Key 并打开开关，识别会走云端多模态模型。"
+                  : "本地模型这次没认出来。建议到「我的 → AI 规划设置」开启云端识别（填 API Key），识别会准确很多；也可以退回补拍或手动添加物品。"}
+            </p>
+            <p style={{ color: COFFEE, opacity: 0.45, fontSize: 10.5, lineHeight: 1.5, marginTop: 4 }}>
+              {diagnostics.source ? `本次来源：${diagnostics.source}` : ""}
+              {diagnostics["本地"] ? ` · 本地 ${diagnostics["本地"]} 件` : ""}
+              {diagnostics["云端"] ? ` · 云端 ${diagnostics["云端"]} 件` : ""}
+              {diagnostics["云端错误"] ? ` · ${diagnostics["云端错误"]}` : ""}
             </p>
           </div>
         )}
@@ -2571,7 +2616,11 @@ function ConfirmStep({ assets, onBack, onNext }: { assets: CapturedAsset[]; onBa
             boxShadow: allResolved ? "0 8px 22px rgba(250,136,58,0.32)" : "none",
           }}
         >
-          {allResolved ? "Confirm & continue" : `Resolve ${blindSpots.filter((b) => !b.resolved).length} blind spot${blindSpots.filter((b) => !b.resolved).length === 1 ? "" : "s"} first`}
+          {allResolved
+            ? items.length > 0
+              ? `确认这 ${items.length} 件并生成方案`
+              : "仍然继续，手动添加物品"
+            : `还有 ${blindSpots.filter((b) => !b.resolved).length} 处待确认`}
         </button>
       </div>
 

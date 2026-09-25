@@ -6,6 +6,7 @@ import { MyPlansScreen } from "./MyPlansScreen";
 import { SavedPostsScreen } from "./SavedPostsScreen";
 import { FriendsScreen } from "./FriendsScreen";
 import { BadgesScreen } from "./BadgesScreen";
+import { AISettingsScreen } from "./AISettingsScreen";
 
 const stats = [
   { label: "已追踪物品", value: "248" },
@@ -20,17 +21,19 @@ export function MineScreen() {
   const [openSaved, setOpenSaved] = useState(false);
   const [openFriends, setOpenFriends] = useState(false);
   const [openBadges, setOpenBadges] = useState(false);
+  const [openSettings, setOpenSettings] = useState(false);
 
   if (openPlans) return <MyPlansScreen onBack={() => setOpenPlans(false)} />;
   if (openSaved) return <SavedPostsScreen onBack={() => setOpenSaved(false)} />;
   if (openFriends) return <FriendsScreen onBack={() => setOpenFriends(false)} />;
   if (openBadges) return <BadgesScreen onBack={() => setOpenBadges(false)} />;
+  if (openSettings) return <AISettingsScreen onBack={() => setOpenSettings(false)} />;
 
   const menu: { icon: any; label: string; sub: string; onClick?: () => void }[] = [
     { icon: Calendar, label: "我的方案", sub: "3个进行中", onClick: () => setOpenPlans(true) },
     { icon: Bookmark, label: "已保存帖子", sub: "24", onClick: () => setOpenSaved(true) },
     { icon: Users, label: "好友", sub: "邀请和分享", onClick: () => setOpenFriends(true) },
-    { icon: Settings, label: "设置", sub: "" },
+    { icon: Settings, label: "设置", sub: "云端识别与方案", onClick: () => setOpenSettings(true) },
     { icon: HelpCircle, label: "帮助与反馈", sub: "" },
     { icon: LogOut, label: "退出登录", sub: "" },
   ];

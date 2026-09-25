@@ -11,6 +11,7 @@ export type NativeState = {
   achievements: { id: string; title: string; subtitle: string; iconName: string }[];
   communityCases: any[]; comments: Record<string, any[]>; liked: string[]; favorites: string[];
   followedAuthors: string[]; schedules: any[]; message?: string;
+  scanDiagnostics?: Record<string, string>;
 };
 
 type NativeResponse<T = unknown> = { requestId: string; status: "success" | "error" | "cancelled"; data?: T; error?: string };

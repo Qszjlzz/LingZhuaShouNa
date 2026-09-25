@@ -25,6 +25,11 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
             await CameraEngine.shared.prepareIfAuthorized()
             await CameraPreviewOverlay.shared.armIfAuthorized(in: webView)
         }
+        // 识别模型放后台提前加载：第一次拍照时不必等编译，诊断信息也能立刻给出。
+        Task.detached(priority: .utility) {
+            let names = YOLOSegmentationScanService.loadedModelNames
+            print("SMARTPAW_MODELS \(names.count) \(names.joined(separator: "、"))")
+        }
         return webView
     }
 
@@ -57,9 +62,9 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
         private func handle(requestID: String, command: String, payload: [String: Any]) async {
             switch command {
             case "state.get": respond(requestID, data: stateObject())
-            case "llm.settings.get": respond(requestID, data: ["isEnabled": viewModel.llmSettings.isEnabled, "endpoint": viewModel.llmSettings.endpoint, "model": viewModel.llmSettings.model, "hasAPIKey": !viewModel.llmSettings.apiKey.isEmpty])
+            case "llm.settings.get": respond(requestID, data: ["isEnabled": viewModel.llmSettings.isEnabled, "endpoint": viewModel.llmSettings.endpoint, "model": viewModel.llmSettings.model, "visionEndpoint": viewModel.llmSettings.visionEndpoint, "visionModel": viewModel.llmSettings.visionModel, "hasAPIKey": !viewModel.llmSettings.apiKey.isEmpty])
             case "llm.settings.save":
-                let settings = LLMSettings(isEnabled: payload["isEnabled"] as? Bool ?? false, endpoint: payload["endpoint"] as? String ?? LLMSettings.default.endpoint, apiKey: payload["apiKey"] as? String ?? viewModel.llmSettings.apiKey, model: payload["model"] as? String ?? LLMSettings.default.model)
+                let settings = LLMSettings(isEnabled: payload["isEnabled"] as? Bool ?? false, endpoint: payload["endpoint"] as? String ?? LLMSettings.default.endpoint, apiKey: payload["apiKey"] as? String ?? viewModel.llmSettings.apiKey, model: payload["model"] as? String ?? LLMSettings.default.model, visionEndpoint: payload["visionEndpoint"] as? String ?? "", visionModel: payload["visionModel"] as? String ?? "")
                 guard viewModel.saveLLMSettings(settings) else { return fail(requestID, viewModel.message ?? "AI 设置保存失败") }
                 respond(requestID, data: ["saved": true])
             case "llm.test":
@@ -77,6 +82,14 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
             case "camera.preview.stop": CameraPreviewOverlay.shared.stop(); respond(requestID, data: ["ok": true])
             case "camera.capture": await captureInline(requestID: requestID)
             case "scan.await": await scanQueueTask?.value; respondWithState(requestID)
+            case "scan.diagnose":
+                respond(requestID, data: [
+                    "modelCount": YOLOSegmentationScanService.loadedModelCount,
+                    "models": YOLOSegmentationScanService.loadedModelNames,
+                    "cloudEnabled": viewModel.llmSettings.canRequestVision,
+                    "visionModel": viewModel.llmSettings.resolvedVisionModel,
+                    "detail": RecognitionRouter.shared.diagnostics,
+                ] as [String: Any])
             case "space.select":
                 guard let id = uuid(payload["id"]) else { return fail(requestID, "空间 ID 无效") }
                 viewModel.selectSpace(id); respondWithState(requestID)
@@ -348,11 +361,17 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
                 let spaces: [StorageSpace]; let selectedSpaceID: UUID?; let scannedItems: [DetectedItem]
                 let achievements: [Achievement]; let communityCases: [CommunityCase]; let comments: [UUID: [CommunityComment]]
                 let liked: [UUID]; let favorites: [UUID]; let followedAuthors: [String]; let schedules: [ScheduleItem]; let message: String?
+                let scanDiagnostics: [String: String]
             }
+            var diagnostics = RecognitionRouter.shared.diagnostics
+            diagnostics["modelCount"] = "\(YOLOSegmentationScanService.loadedModelCount)"
+            diagnostics["models"] = YOLOSegmentationScanService.loadedModelNames.joined(separator: "、")
+            diagnostics["cloudReady"] = viewModel.llmSettings.canRequestVision ? "yes" : "no"
             let value = State(spaces: viewModel.spaces, selectedSpaceID: viewModel.selectedSpaceID, scannedItems: viewModel.scannedItems,
                 achievements: viewModel.achievements, communityCases: viewModel.communityCases, comments: viewModel.communityComments,
                 liked: Array(viewModel.likedCommunityCaseIDs), favorites: Array(viewModel.favoriteCommunityCaseIDs),
-                followedAuthors: Array(viewModel.followedCommunityAuthors), schedules: viewModel.scheduleItems, message: viewModel.message)
+                followedAuthors: Array(viewModel.followedCommunityAuthors), schedules: viewModel.scheduleItems, message: viewModel.message,
+                scanDiagnostics: diagnostics)
             let encoder = JSONEncoder(); encoder.dateEncodingStrategy = .iso8601
             guard let data = try? encoder.encode(value), let object = try? JSONSerialization.jsonObject(with: data) else { return [:] }
             return object
