@@ -244,8 +244,6 @@ export function ShootFlow({
     }
   };
 
-  const tier = chosen.tier;
-
   return (
     <div className="absolute inset-0 z-50" style={{ backgroundColor: LINEN }}>
       {step === "capture" && (
@@ -329,31 +327,15 @@ export function ShootFlow({
           onBack={() => setStep("plandeck")}
           onNext={(zs) => {
             setZoneList(zs);
-            setStep(tier === "basic" ? "arPreview" : "tools");
+            setStep("arGuide");
           }}
-        />
-      )}
-      {step === "tools" && (
-        <ToolsStep
-          items={confirmedItems}
-          onBack={() => setStep("zones")}
-          onNext={() => setStep("arPreview")}
-        />
-      )}
-      {step === "arPreview" && (
-        <ARPreviewStep
-          photo={photo}
-          zones={zoneList}
-          onBack={() => setStep(tier === "pro" ? "tools" : "zones")}
-          onNext={() => setStep("arGuide")}
         />
       )}
       {step === "arGuide" && (
         <ARGuideStep
           photo={photo}
           zones={zoneList}
-          tier={tier}
-          onBack={() => setStep("arPreview")}
+          onBack={() => setStep("zones")}
           onComplete={() => {
             void completeNativePlan().finally(() => setStep("reward"));
           }}
@@ -5485,64 +5467,59 @@ const AR_ZONE_TASKS: { zone: number; label: string; color: string; tasks: SubTas
 function ARGuideStep({
   photo,
   zones,
-  tier = "smart",
   onBack,
   onComplete,
 }: {
   photo?: string;
   zones: FlowZone[];
-  tier?: PlanTier;
   onBack: () => void;
   onComplete: () => void;
 }) {
-  // 每个区域的步骤由这次真实拍到的物品生成，一件一条归位动作。
   const zoneTasks = buildZoneTasks(zones);
   const [zoneIdx, setZoneIdx] = useState(0);
   const [tasks, setTasks] = useState<SubTask[]>(zoneTasks[0].tasks);
   const [zoneTransition, setZoneTransition] = useState(false);
   const totalZones = zoneTasks.length;
   const zoneInfo = zoneTasks[zoneIdx];
-  const [compare, setCompare] = useState(false);
-  const [expanded, setExpanded] = useState(false);
   const [skipping, setSkipping] = useState(false);
-  const [longPress, setLongPress] = useState(false);
-  const longPressTimer = useRef<any>(null);
 
   const currentIdx = tasks.findIndex((t) => !t.done && !t.skipped);
   const current = tasks[currentIdx];
   const doneCount = tasks.filter((t) => t.done).length;
   const total = tasks.length;
-  const progress = (doneCount / total) * 100;
 
   const advancing = useRef(false);
 
-  // 一个区域里所有步骤都完成/跳过就自动往下走：不管是点"完成"、点"跳过"，
+  // 一个区域里所有步骤都完成/跳过就弹出完成层：不管是点"完成任务"、点"跳过"，
   // 还是手动把清单全勾上，都走这一条路，避免点了按钮卡在原地。
   useEffect(() => {
     if (zoneTransition || advancing.current) return;
     const allSettled = tasks.length === 0 || tasks.every((t) => t.done || t.skipped);
     if (!allSettled) return;
     advancing.current = true;
-    if (zoneIdx + 1 < totalZones) {
-      setZoneTransition(true);
-      window.setTimeout(() => {
-        setZoneIdx((i) => i + 1);
-        setTasks(zoneTasks[zoneIdx + 1].tasks);
-        setZoneTransition(false);
-        advancing.current = false;
-      }, 1200);
-    } else {
-      window.setTimeout(() => {
-        advancing.current = false;
-        onComplete();
-      }, 400);
-    }
+    setZoneTransition(true);
   }, [tasks, zoneIdx, zoneTransition]);
+
+  const advanceZone = () => {
+    if (zoneIdx + 1 < totalZones) {
+      setZoneIdx((i) => i + 1);
+      setTasks(zoneTasks[zoneIdx + 1].tasks);
+      setZoneTransition(false);
+      advancing.current = false;
+    } else {
+      setZoneTransition(false);
+      advancing.current = false;
+      onComplete();
+    }
+  };
 
   const complete = () => {
     if (!current) {
-      // 清单里已经全勾完了：直接推进，别让按钮变成死的。
-      if (tasks.every((t) => t.done || t.skipped)) advancing.current = false;
+      // 清单里已经全勾完了：直接弹完成层，别让按钮变成死的。
+      if (tasks.every((t) => t.done || t.skipped)) {
+        advancing.current = false;
+        setZoneTransition(true);
+      }
       return;
     }
     setTasks((arr) => arr.map((t) => (t.id === current.id ? { ...t, done: true } : t)));
@@ -5555,290 +5532,160 @@ function ARGuideStep({
     setSkipping(false);
   };
 
-  const toggleTask = (id: string) =>
-    setTasks((arr) =>
-      arr.map((t) => (t.id === id ? { ...t, done: !t.done, skipped: false } : t)),
+  // 步骤示意图：随步骤进度给不同的小图示，呼应设计稿里"清空 -> 工具 -> 分格"的节奏。
+  const stepHint =
+    currentIdx <= 0 ? (
+      <>
+        <Trash2 size={15} color={COFFEE} />
+        <span style={{ color: COFFEE, opacity: 0.6, fontSize: 10.5, fontWeight: 500 }}>
+          先清空台面，再逐一归位
+        </span>
+      </>
+    ) : currentIdx === 1 ? (
+      <>
+        <Box size={15} color={ORANGE} />
+        <span style={{ color: COFFEE, opacity: 0.6, fontSize: 10.5, fontWeight: 500 }}>
+          小件用收纳盒分装，别散着放
+        </span>
+      </>
+    ) : (
+      <>
+        <Layers size={15} color={BLUE} />
+        <span style={{ color: COFFEE, opacity: 0.6, fontSize: 10.5, fontWeight: 500 }}>
+          按类别分格摆放，保持易取
+        </span>
+      </>
     );
-
-  const onPressStart = () => {
-    longPressTimer.current = setTimeout(() => setLongPress(true), 350);
-  };
-  const onPressEnd = () => {
-    clearTimeout(longPressTimer.current);
-    setLongPress(false);
-  };
 
   return (
     <div className="h-full w-full flex flex-col" style={{ backgroundColor: "#13110f" }}>
-      {/* Upper 70% — camera + AR overlay */}
-      <div
-        className="relative flex-1 overflow-hidden"
-        onMouseDown={onPressStart}
-        onMouseUp={onPressEnd}
-        onMouseLeave={onPressEnd}
-        onTouchStart={onPressStart}
-        onTouchEnd={onPressEnd}
-      >
-        {compare ? (
-          <div className="flex h-full w-full">
-            <div className="flex-1 relative overflow-hidden border-r" style={{ borderColor: "rgba(255,255,255,0.2)" }}>
-              <ImageWithFallback src={photo || ROOM_IMG} alt="整理前" className="h-full w-full object-cover" />
-              <span
-                className="absolute top-20 left-3 px-2 py-0.5"
-                style={{ backgroundColor: "rgba(0,0,0,0.55)", color: WHITE, borderRadius: 6, fontSize: 10, fontWeight: 600 }}
-              >
-                BEFORE
-              </span>
-            </div>
-            <div className="flex-1 relative overflow-hidden">
-              <ImageWithFallback src={photo || ROOM_IMG} alt="目标区域" className="h-full w-full object-cover" />
-              <div className="absolute inset-0" style={{ backgroundColor: "rgba(250,136,58,0.18)" }} />
-              <span
-                className="absolute top-20 left-3 px-2 py-0.5"
-                style={{ backgroundColor: ORANGE, color: WHITE, borderRadius: 6, fontSize: 10, fontWeight: 600 }}
-              >
-                TARGET
-              </span>
-            </div>
-          </div>
-        ) : (
-          <>
-            <ImageWithFallback src={photo || ROOM_IMG} alt="实时画面" className="h-full w-full object-cover" />
-            {!longPress && (
-              <>
-                {/* Highlight slab */}
-                <div
-                  className="absolute"
-                  style={{
-                    left: "18%",
-                    top: "42%",
-                    width: "44%",
-                    height: "32%",
-                    border: `2px solid ${ORANGE}`,
-                    backgroundColor: "rgba(250,136,58,0.22)",
-                    borderRadius: 14,
-                    boxShadow: "0 0 30px rgba(250,136,58,0.5)",
-                  }}
-                />
-                {/* Animated arrow */}
-                <svg className="absolute inset-0 w-full h-full pointer-events-none">
-                  <defs>
-                    <marker id="arrow2" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
-                      <polygon points="0 0, 6 3, 0 6" fill={ORANGE} />
-                    </marker>
-                  </defs>
-                  <line
-                    x1="62%"
-                    y1="50%"
-                    x2="22%"
-                    y2="74%"
-                    stroke={ORANGE}
-                    strokeWidth="3"
-                    strokeDasharray="6 4"
-                    markerEnd="url(#arrow2)"
-                  />
-                </svg>
-                {/* Ghost outline target */}
-                <div
-                  className="absolute flex items-center justify-center"
-                  style={{
-                    left: "14%",
-                    top: "68%",
-                    width: 70,
-                    height: 50,
-                    border: `2px dashed ${BLUE}`,
-                    backgroundColor: "rgba(180,199,220,0.18)",
-                    borderRadius: 10,
-                  }}
-                >
-                  <span style={{ color: WHITE, fontSize: 10, fontWeight: 600, textShadow: "0 1px 2px rgba(0,0,0,0.7)" }}>
-                    目标位置
-                  </span>
-                </div>
-              </>
-            )}
-            {longPress && (
-              <div
-                className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 px-3 py-1.5"
-                style={{ backgroundColor: "rgba(0,0,0,0.55)", borderRadius: 999 }}
-              >
-                <span style={{ color: WHITE, fontSize: 11 }}>正在显示原图 — 松手继续</span>
-              </div>
-            )}
-          </>
-        )}
+      {/* 全屏真实照片 */}
+      <div className="relative flex-1 overflow-hidden">
+        <ImageWithFallback src={photo || ROOM_IMG} alt="实时画面" className="h-full w-full object-cover" />
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            background: "linear-gradient(180deg, rgba(0,0,0,0.28) 0%, rgba(0,0,0,0) 32%)",
+          }}
+        />
 
-        {/* Top bar */}
+        {/* 顶部：返回 + 区域进度 */}
         <div className="absolute top-0 left-0 right-0 px-5 pt-14 flex items-center justify-between">
           <button
             onClick={onBack}
-            className="h-10 w-10 rounded-full flex items-center justify-center"
-            style={{ backgroundColor: "rgba(255,255,255,0.92)" }}
+            className="h-9 w-9 rounded-full flex items-center justify-center"
+            style={{ backgroundColor: "rgba(255,255,255,0.92)", boxShadow: "0 2px 8px rgba(0,0,0,0.12)" }}
           >
-            <ArrowLeft size={18} color={COFFEE} />
+            <X size={16} color={COFFEE} />
           </button>
-          <div
-            className="px-3.5 py-2 flex items-center gap-2"
-            style={{ backgroundColor: "rgba(255,255,255,0.92)", borderRadius: 999 }}
+          <span
+            className="px-3.5 py-1.5"
+            style={{
+              backgroundColor: "rgba(255,255,255,0.92)",
+              borderRadius: 999,
+              fontSize: 10.5,
+              fontWeight: 700,
+              color: COFFEE,
+              letterSpacing: "0.05em",
+            }}
           >
-            <Sparkles size={13} color={ORANGE} />
-            <span style={{ color: COFFEE, fontSize: 12, fontWeight: 600 }}>
-              区域 {zoneInfo.zone}/{totalZones} · 第 {Math.min(doneCount + 1, total)}/{total} 步
-            </span>
-          </div>
-          <div className="w-10" />
+            收纳区域 {zoneInfo.zone}/{totalZones} · 第 {Math.min(currentIdx + 1, total)}/{total} 步
+          </span>
+          <div style={{ width: 36 }} />
         </div>
       </div>
 
-      {/* Lower 30% — glass instruction card */}
+      {/* 底部白色任务卡 */}
       <div
-        className="relative px-5 pt-3 pb-6"
+        className="flex flex-col"
         style={{
-          backgroundColor: "rgba(255,255,255,0.92)",
-          backdropFilter: "blur(20px)",
-          WebkitBackdropFilter: "blur(20px)",
-          borderTopLeftRadius: 26,
-          borderTopRightRadius: 26,
-          minHeight: expanded ? "62%" : "32%",
-          transition: "min-height 0.25s",
-          overflowY: "auto",
+          backgroundColor: WHITE,
+          borderRadius: "26px 26px 0 0",
+          marginTop: -18,
+          padding: "18px 22px 24px",
+          boxShadow: "0 -8px 30px rgba(0,0,0,0.2)",
         }}
       >
-        <button
-          onClick={() => setExpanded((e) => !e)}
-          className="w-full flex items-center justify-center mb-2"
-        >
-          <ChevronUp
-            size={20}
-            color={COFFEE}
-            style={{ opacity: 0.5, transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}
-          />
-        </button>
-
-        {/* Progress */}
-        <div className="flex items-center gap-2 mb-2">
-          <span style={{ color: COFFEE, opacity: 0.6, fontSize: 11, fontWeight: 600 }}>
-            {zoneInfo.label} · 第 {Math.min(doneCount + 1, total)}/{total} 步
-          </span>
-          <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: LINEN }}>
-            <div
-              className="h-full rounded-full"
-              style={{
-                width: `${progress}%`,
-                background: `linear-gradient(90deg, ${ORANGE} 0%, #FFAA66 100%)`,
-                transition: "width 0.3s",
-              }}
-            />
-          </div>
+        <div className="flex items-center gap-2 mb-1.5">
+          <span style={{ width: 8, height: 8, borderRadius: 999, backgroundColor: zoneInfo.color }} />
+          <p style={{ color: COFFEE, opacity: 0.5, fontSize: 11, fontWeight: 600 }}>
+            {zoneInfo.label} · {doneCount}/{total} 已完成
+          </p>
         </div>
 
-        {!expanded ? (
-          <>
-            <p style={{ color: COFFEE, fontSize: 17, fontWeight: 600, lineHeight: 1.4, marginBottom: 14 }}>
-              {current?.text || "全部步骤已完成！"}
-            </p>
+        <p
+          style={{
+            color: COFFEE,
+            fontSize: 16.5,
+            fontWeight: 700,
+            lineHeight: 1.4,
+            marginBottom: 12,
+          }}
+        >
+          {current ? current.text : "这个区域已经收纳完成"}
+        </p>
 
-            <div className="flex gap-2">
-              <button
-                onClick={() => setCompare((c) => !c)}
-                className="flex-1 py-2.5 flex items-center justify-center gap-1.5"
-                style={{
-                  backgroundColor: compare ? COFFEE : LINEN,
-                  color: compare ? WHITE : COFFEE,
-                  borderRadius: 999,
-                  fontSize: 11,
-                  fontWeight: 600,
-                }}
-              >
-                <GitCompare size={13} /> 对比
-              </button>
-              <button
-                onClick={() => setSkipping(true)}
-                className="flex-1 py-2.5 flex items-center justify-center gap-1.5"
-                style={{
-                  backgroundColor: LINEN,
-                  color: COFFEE,
-                  borderRadius: 999,
-                  fontSize: 11,
-                  fontWeight: 600,
-                }}
-              >
-                <SkipForward size={13} /> 跳过
-              </button>
-              <button
-                onClick={complete}
-                className="flex-[1.4] py-2.5 flex items-center justify-center gap-1.5"
-                style={{
-                  backgroundColor: "#5fb37e",
-                  color: WHITE,
-                  borderRadius: 999,
-                  fontSize: 12,
-                  fontWeight: 700,
-                  boxShadow: "0 6px 16px rgba(95,179,126,0.35)",
-                }}
-              >
-                <CheckCircle2 size={14} /> 完成
-              </button>
-            </div>
+        {/* 步骤示意条 */}
+        <div
+          className="flex items-center gap-2.5 px-3.5 py-3 mb-4"
+          style={{ backgroundColor: LINEN, borderRadius: 14 }}
+        >
+          {stepHint}
+        </div>
 
-            <p
-              className="text-center mt-3"
-              style={{ color: COFFEE, opacity: 0.45, fontSize: 10 }}
-            >
-              长按画面可对照整理前的样子
-            </p>
-          </>
-        ) : (
-          <div className="space-y-2 pb-4">
-            <p style={{ color: COFFEE, fontSize: 13, fontWeight: 600, marginBottom: 4 }}>
-              All subtasks · {doneCount}/{total}
-            </p>
-            {tasks.map((t, i) => (
-              <button
-                key={t.id}
-                onClick={() => toggleTask(t.id)}
-                className="w-full flex items-center gap-3 px-3 py-2.5"
-                style={{
-                  backgroundColor: t.skipped ? "transparent" : LINEN,
-                  border: t.skipped ? `1px dashed ${SOFT}` : "none",
-                  borderRadius: 14,
-                  opacity: t.skipped ? 0.5 : 1,
-                }}
-              >
-                <div
-                  className="h-6 w-6 rounded-full flex items-center justify-center"
-                  style={{
-                    backgroundColor: t.done ? "#5fb37e" : WHITE,
-                    border: t.done ? "none" : `2px solid ${SOFT}`,
-                  }}
-                >
-                  {t.done && <Check size={13} color={WHITE} strokeWidth={3} />}
-                </div>
-                <span
-                  className="flex-1 text-left"
-                  style={{
-                    color: COFFEE,
-                    fontSize: 12.5,
-                    textDecoration: t.done ? "line-through" : "none",
-                    opacity: t.done ? 0.55 : 1,
-                  }}
-                >
-                  {i + 1}. {t.text}
-                </span>
-                {t.skipped && (
-                  <span style={{ color: COFFEE, opacity: 0.5, fontSize: 10 }}>已跳过</span>
-                )}
-              </button>
-            ))}
-          </div>
-        )}
+        {/* 进度条 */}
+        <div className="flex gap-1.5 mb-4">
+          {tasks.map((t, i) => (
+            <span
+              key={t.id}
+              style={{
+                flex: 1,
+                height: 4,
+                borderRadius: 999,
+                backgroundColor:
+                  t.done || t.skipped ? "#5fb37e" : i === currentIdx ? ORANGE : SOFT,
+              }}
+            />
+          ))}
+        </div>
+
+        {/* 按钮：跳过 + 完成任务 */}
+        <div className="flex gap-2.5">
+          <button
+            onClick={() => setSkipping(true)}
+            className="px-5 py-3.5 flex items-center gap-1.5 active:scale-[0.98] transition-transform"
+            style={{
+              backgroundColor: LINEN,
+              color: COFFEE,
+              borderRadius: 999,
+              fontSize: 12.5,
+              fontWeight: 600,
+            }}
+          >
+            <SkipForward size={14} /> 跳过
+          </button>
+          <button
+            onClick={complete}
+            className="flex-1 py-3.5 flex items-center justify-center gap-1.5 active:scale-[0.98] transition-transform"
+            style={{
+              backgroundColor: "#5fb37e",
+              color: WHITE,
+              borderRadius: 999,
+              fontSize: 13.5,
+              fontWeight: 700,
+              boxShadow: "0 6px 16px rgba(95,179,126,0.35)",
+            }}
+          >
+            <CheckCircle2 size={15} /> {currentIdx >= total - 1 ? "完成收纳" : "完成任务"}
+          </button>
+        </div>
       </div>
 
-      {/* Zone transition splash */}
+      {/* 区域完成弹层：手动点按钮才进下一个区域 */}
       {zoneTransition && (
         <div
           className="absolute inset-0 z-50 flex flex-col items-center justify-center px-8"
-          style={{ backgroundColor: "rgba(19,17,15,0.85)", backdropFilter: "blur(10px)" }}
+          style={{ backgroundColor: "rgba(19,17,15,0.88)", backdropFilter: "blur(10px)" }}
         >
           <div
             className="h-16 w-16 rounded-full flex items-center justify-center mb-4"
@@ -5846,10 +5693,60 @@ function ARGuideStep({
           >
             <Check size={28} color={WHITE} strokeWidth={3} />
           </div>
-          <p style={{ color: WHITE, fontSize: 18, fontWeight: 700 }}>第 {zoneIdx + 1} 个区域完成！</p>
-          <p style={{ color: WHITE, opacity: 0.75, fontSize: 13, marginTop: 6, textAlign: "center" }}>
-            正在前往 {zoneTasks[zoneIdx + 1]?.label}…
+          <p style={{ color: WHITE, fontSize: 18, fontWeight: 700 }}>
+            {zoneIdx + 1 < totalZones ? `区域 ${zoneInfo.zone} 收纳完成！` : "全部收纳成功！"}
           </p>
+          <p style={{ color: WHITE, opacity: 0.65, fontSize: 12, marginTop: 6, textAlign: "center" }}>
+            {zoneIdx + 1 < totalZones
+              ? `接下来是 ${zoneTasks[zoneIdx + 1]?.label}`
+              : "所有选中的区域都收纳好了"}
+          </p>
+
+          {/* 进度小卡 */}
+          <div
+            className="w-full px-4 py-3.5 mt-5"
+            style={{ backgroundColor: WHITE, borderRadius: 16, maxWidth: 300 }}
+          >
+            <div className="flex items-center justify-between mb-2">
+              <p style={{ color: COFFEE, fontSize: 11.5, fontWeight: 600 }}>
+                {zoneIdx + 1 < totalZones ? zoneTasks[zoneIdx + 1]?.label : "本次整理"}
+              </p>
+              <p style={{ color: COFFEE, opacity: 0.5, fontSize: 10.5 }}>
+                {zoneIdx + 1 < totalZones
+                  ? `区域 ${zoneTasks[zoneIdx + 1]?.zone}/${totalZones}`
+                  : `${doneCount}/${total} 步完成`}
+              </p>
+            </div>
+            <div style={{ height: 6, borderRadius: 999, backgroundColor: SOFT, overflow: "hidden" }}>
+              <div
+                style={{
+                  width: `${zoneIdx + 1 < totalZones ? ((zoneIdx + 1) / totalZones) * 100 : 100}%`,
+                  height: "100%",
+                  backgroundColor: ORANGE,
+                  borderRadius: 999,
+                }}
+              />
+            </div>
+          </div>
+
+          <button
+            onClick={advanceZone}
+            className="w-full py-3.5 mt-5 flex items-center justify-center gap-2 active:scale-[0.98] transition-transform"
+            style={{
+              backgroundColor: ORANGE,
+              color: WHITE,
+              borderRadius: 999,
+              fontSize: 13.5,
+              fontWeight: 700,
+              maxWidth: 300,
+              boxShadow: "0 8px 22px rgba(250,136,58,0.35)",
+            }}
+          >
+            {zoneIdx + 1 < totalZones
+              ? `开始收纳区域 ${zoneTasks[zoneIdx + 1]?.zone}`
+              : "查看整理成果"}
+            <ChevronRight size={15} />
+          </button>
         </div>
       )}
 
