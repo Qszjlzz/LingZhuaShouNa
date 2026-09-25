@@ -338,8 +338,11 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
               let jsURL = Bundle.main.urls(forResourcesWithExtension: "js", subdirectory: "FigmaMakeLatestWeb/assets")?.first,
               let css = try? String(contentsOf: cssURL, encoding: .utf8),
               let js = try? String(contentsOf: jsURL, encoding: .utf8) else { return }
+        // 设计稿画布是 390×844。直接让网页拉伸铺满会把布局拉变形（拍摄页取景区
+        // 变高、dock 沉底），所以这里固定 root 为设计稿尺寸，再整体等比缩放到屏宽
+        //（cover 模式，溢出的零点几 pt 裁掉），保证和 Figma 里的比例逐像素一致。
         webView.loadHTMLString("""
-        <!doctype html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>html,body,#root{width:100%;height:100%;margin:0;overflow:hidden}body{background:#EDE5DA}</style><style>\(css)</style></head><body><div id="root"></div><script>\(js)</script></body></html>
+        <!doctype html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>html,body{width:100%;height:100%;margin:0;overflow:hidden;background:#EDE5DA}#root{position:absolute;top:0;left:0;width:390px;height:844px;transform-origin:top left;overflow:hidden}</style><style>\(css)</style></head><body><div id="root"></div><script>\(js)</script><script>(function(){function fit(){var s=Math.max(window.innerWidth/390,window.innerHeight/844);var r=document.getElementById('root');if(r)r.style.transform='scale('+s+')';}window.addEventListener('resize',fit);fit();})();</script></body></html>
         """, baseURL: base)
     }
 }
