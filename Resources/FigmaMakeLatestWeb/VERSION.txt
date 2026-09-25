@@ -1,3 +1,2 @@
-build: index-BDin9_45.js
-source: 最终版：方案名统一快速整理+方案页留白重排；区域数=拍摄张数
-synced: 2026-09-26 02:57
+build 2026-09-26 03:06 (chat API 双格式修复)
+commit 52cd68e+

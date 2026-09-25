@@ -4,15 +4,21 @@ import UserNotifications
 
 private enum ChatError: LocalizedError {
     case notConfigured
-    case httpFailure
-    case invalidResponse
+    case httpFailure(String)
+    case invalidResponse(String)
 
     var errorDescription: String? {
         switch self {
-        case .notConfigured: return "尚未配置可用的 AI API，请先在设置中保存 Endpoint、API Key 和模型。"
-        case .httpFailure: return "AI 服务请求失败，请检查 API Key、网络或 Endpoint。"
-        case .invalidResponse: return "AI 返回内容无法解析，请检查模型和接口格式。"
+        case .notConfigured: return "尚未配置可用的 AI API，请先在「我的 - AI 设置」中保存 Endpoint、API Key 和模型。"
+        case .httpFailure(let detail): return "AI 服务请求失败" + Self.detailSuffix(detail)
+        case .invalidResponse(let detail): return "AI 返回内容无法解析" + Self.detailSuffix(detail)
         }
+    }
+
+    private static func detailSuffix(_ raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "，请检查 API Key、模型与 Endpoint。" }
+        return "：" + String(trimmed.prefix(140))
     }
 }
 
@@ -850,16 +856,25 @@ final class AppViewModel: ObservableObject {
 
         llmConnectionState = .testing
         do {
+            let endpointString = settings.endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
+            let usesChatCompletions = endpointString.lowercased().contains("/chat/completions")
+            let model = settings.model.trimmingCharacters(in: .whitespacesAndNewlines)
             var request = URLRequest(url: endpoint)
             request.httpMethod = "POST"
             request.timeoutInterval = 20
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.setValue("Bearer \(settings.apiKey.trimmingCharacters(in: .whitespacesAndNewlines))", forHTTPHeaderField: "Authorization")
-            request.httpBody = try JSONSerialization.data(withJSONObject: [
-                "model": settings.model.trimmingCharacters(in: .whitespacesAndNewlines),
-                "input": "Reply with OK.",
-                "max_output_tokens": 8
-            ])
+            request.httpBody = usesChatCompletions
+                ? try JSONSerialization.data(withJSONObject: [
+                    "model": model,
+                    "messages": [["role": "user", "content": "Reply with OK."]],
+                    "max_tokens": 8
+                ])
+                : try JSONSerialization.data(withJSONObject: [
+                    "model": model,
+                    "input": "Reply with OK.",
+                    "max_output_tokens": 8
+                ])
 
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let httpResponse = response as? HTTPURLResponse else {
@@ -868,7 +883,9 @@ final class AppViewModel: ObservableObject {
             guard (200..<300).contains(httpResponse.statusCode) else {
                 throw LLMConnectionTestError.httpStatus(httpResponse.statusCode)
             }
-            guard Self.isValidResponsesPayload(data) else {
+            guard Self.isValidLLMPayload(data, chatCompletions: usesChatCompletions) else {
+                let raw = String(data: data, encoding: .utf8) ?? ""
+                print("SMARTPAW_LLM_TEST_PARSE_FAIL \(raw.prefix(300))")
                 throw LLMConnectionTestError.invalidPayload
             }
 
@@ -884,48 +901,90 @@ final class AppViewModel: ObservableObject {
         }
     }
 
-    func sendChatMessage(message: String, history: [[String: String]]) async throws -> String {
+    func sendChatMessage(message: String, history: [[String: String]], planName: String? = nil) async throws -> String {
         guard llmSettings.canRequest else { throw ChatError.notConfigured }
-        guard let url = URL(string: llmSettings.endpoint.trimmingCharacters(in: .whitespacesAndNewlines)) else {
-            throw ChatError.invalidResponse
-        }
-        var input: [[String: Any]] = []
-        let context = currentChatContext()
-        input.append(["role": "system", "content": "你是灵爪收纳助手。请基于当前扫描和空间信息，用简洁、具体、可执行的中文回答。\n\(context)"])
+        let planLine = (planName?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 }
+            .map { "当前方案：\($0)。用户正在这个方案基础上提微调要求，回答要直接给出怎么改、改哪里。" } ?? ""
+        var messages: [[String: String]] = [[
+            "role": "system",
+            "content": "你是灵爪收纳助手。请基于当前扫描和空间信息，用简洁、具体、可执行的中文回答，控制在 80 字以内。\n\(planLine)\n\(currentChatContext())"
+        ]]
         for item in history.prefix(12) {
             guard let role = item["role"], let text = item["text"], !text.isEmpty else { continue }
-            input.append(["role": role == "assistant" ? "assistant" : "user", "content": text])
+            messages.append(["role": role == "assistant" ? "assistant" : "user", "content": text])
         }
-        input.append(["role": "user", "content": message])
+        messages.append(["role": "user", "content": message])
+        return try await requestLLMText(messages: messages, settings: llmSettings, maxTokens: 500)
+    }
+
+    /// 统一的文本对话通道：按 Endpoint 自动选择 OpenAI `/responses` 或 `/chat/completions`
+    /// （DeepSeek、通义、Kimi、智谱等国产服务都是后者），两种请求体与响应结构并不通用。
+    private func requestLLMText(
+        messages: [[String: String]],
+        settings: LLMSettings,
+        maxTokens: Int,
+        timeout: TimeInterval = 45
+    ) async throws -> String {
+        let endpoint = settings.endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let url = URL(string: endpoint) else { throw ChatError.invalidResponse("") }
+        let model = settings.model.trimmingCharacters(in: .whitespacesAndNewlines)
+        let apiKey = settings.apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        let usesChatCompletions = endpoint.lowercased().contains("/chat/completions")
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        request.timeoutInterval = 45
+        request.timeoutInterval = timeout
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("Bearer \(llmSettings.apiKey)", forHTTPHeaderField: "Authorization")
-        request.httpBody = try JSONSerialization.data(withJSONObject: [
-            "model": llmSettings.model,
-            "input": input,
-            "max_output_tokens": 500
-        ])
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw ChatError.httpFailure
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        if usesChatCompletions {
+            request.httpBody = try JSONSerialization.data(withJSONObject: [
+                "model": model,
+                "messages": messages.map { ["role": $0["role"] ?? "user", "content": $0["content"] ?? ""] },
+                "max_tokens": maxTokens,
+                "temperature": 0.7
+            ])
+        } else {
+            request.httpBody = try JSONSerialization.data(withJSONObject: [
+                "model": model,
+                "input": messages.map { ["role": $0["role"] ?? "user", "content": $0["content"] ?? ""] },
+                "max_output_tokens": maxTokens
+            ])
         }
-        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw ChatError.invalidResponse
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+            let raw = String(data: data, encoding: .utf8) ?? ""
+            print("SMARTPAW_LLM_HTTP \(http.statusCode) \(raw.prefix(300))")
+            throw ChatError.httpFailure(raw)
+        }
+        if let text = Self.extractLLMText(from: data, chatCompletions: usesChatCompletions), !text.isEmpty {
+            return text
+        }
+        let raw = String(data: data, encoding: .utf8) ?? ""
+        print("SMARTPAW_LLM_PARSE_FAIL \(raw.prefix(300))")
+        throw ChatError.invalidResponse(raw)
+    }
+
+    private static func extractLLMText(from data: Data, chatCompletions: Bool) -> String? {
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        if chatCompletions {
+            guard
+                let choices = object["choices"] as? [[String: Any]],
+                let message = choices.first?["message"] as? [String: Any],
+                let content = message["content"] as? String
+            else { return nil }
+            let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
         }
         if let text = object["output_text"] as? String, !text.isEmpty { return text }
-        if let output = object["output"] as? [[String: Any]] {
-            for item in output {
-                if let content = item["content"] as? [[String: Any]] {
-                    for part in content where part["type"] as? String == "output_text" {
-                        if let text = part["text"] as? String, !text.isEmpty { return text }
-                    }
-                }
+        guard let output = object["output"] as? [[String: Any]] else { return nil }
+        for item in output {
+            guard let content = item["content"] as? [[String: Any]] else { continue }
+            for part in content where part["type"] as? String == "output_text" {
+                if let text = part["text"] as? String, !text.isEmpty { return text }
             }
         }
-        throw ChatError.invalidResponse
+        return nil
     }
 
     private func currentChatContext() -> String {
@@ -1065,8 +1124,14 @@ final class AppViewModel: ObservableObject {
         )
     }
 
-    private static func isValidResponsesPayload(_ data: Data) -> Bool {
+    private static func isValidLLMPayload(_ data: Data, chatCompletions: Bool) -> Bool {
         guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return false }
+        if chatCompletions {
+            guard let choices = object["choices"] as? [[String: Any]],
+                  let message = choices.first?["message"] as? [String: Any],
+                  let content = message["content"] as? String else { return false }
+            return !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
         if let outputText = object["output_text"] as? String, !outputText.isEmpty { return true }
         guard let output = object["output"] as? [[String: Any]], !output.isEmpty else { return false }
         return output.contains { item in

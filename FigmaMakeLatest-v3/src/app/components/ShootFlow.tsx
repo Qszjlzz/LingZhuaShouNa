@@ -1072,7 +1072,11 @@ function TuneChatStep({
     setInput("");
     setSending(true);
     try {
-      const result = await nativeRequest<{ reply: string }>("chat.send", { message: newTweak, history: previousHistory });
+      const result = await nativeRequest<{ reply: string }>("chat.send", {
+        message: newTweak,
+        history: previousHistory,
+        planName: plan.name,
+      });
       setMessages((m) => [...m, { id: `a${Date.now()}`, role: "ai", text: result.reply, tweakSnap: snap }]);
     } catch (error) {
       setMessages((m) => [...m, {

@@ -366,7 +366,8 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
                 return ["role": role, "text": text]
             }
             do {
-                let reply = try await viewModel.sendChatMessage(message: message, history: history)
+                let planName = (payload["planName"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                let reply = try await viewModel.sendChatMessage(message: message, history: history, planName: planName)
                 respond(requestID, data: ["reply": reply, "mode": "cloud"])
             } catch {
                 fail(requestID, error.localizedDescription)
