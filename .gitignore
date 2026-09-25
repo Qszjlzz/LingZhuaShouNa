@@ -45,10 +45,15 @@ smart paw-汇报.pptx
 灵爪收纳.docx
 
 # Node dependencies (huge, reinstall with npm/pnpm install)
+# Note: trailing-slash patterns only match directories; FigmaMakeLatest-v3/node_modules
+# is a symlink, so it needs an explicit entry below.
 node_modules/
+FigmaMakeLatest*/node_modules
+MakePreview/node_modules
 
 # Web build output (runtime copy lives in Resources/FigmaMakeLatestWeb)
 FigmaMakeLatest/dist/
+FigmaMakeLatest*/dist/
 
 # Local screenshots and scratch exports
 outputs/

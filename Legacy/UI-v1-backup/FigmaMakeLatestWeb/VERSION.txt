@@ -1,0 +1,3 @@
+build: index-BWjq2RD0.js
+source: Figma Make Global-Style-Setup
+synced: 2026-09-22 18:30

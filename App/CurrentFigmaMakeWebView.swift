@@ -58,6 +58,7 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
                 await viewModel.testLLMConnection(settings)
                 respond(requestID, data: ["state": String(describing: viewModel.llmConnectionState)])
             case "capture.open": openCapture(requestID: requestID, payload: payload)
+            case "scan.open": openScanStudio(requestID: requestID, payload: payload)
             case "camera.preview.start": await startInlinePreview(requestID: requestID, payload: payload)
             case "camera.preview.frame": updateInlinePreviewFrame(payload: payload); respond(requestID, data: ["ok": true])
             case "camera.preview.stop": CameraPreviewOverlay.shared.stop(); respond(requestID, data: ["ok": true])
@@ -117,6 +118,39 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
                 config.filter = .images; config.selectionLimit = capturePurpose == "scan" ? 6 : 1
                 let picker = PHPickerViewController(configuration: config); picker.delegate = self
                 topViewController()?.present(picker, animated: true)
+            }
+        }
+
+        /// 拍摄统一走原生页：画面是原生的，照片留在原生侧，
+        /// 只把 240px 缩略图回给网页做展示，避免大图 base64 撑爆 WebView。
+        private func openScanStudio(requestID: String, payload: [String: Any]) {
+            pendingRequestID = requestID
+            capturePurpose = "scan"
+            let wantsAR = payload["mode"] as? String == "ar"
+            let studio = ScanStudioView(
+                initialMode: wantsAR ? .ar : .photo,
+                onCommit: { [weak self] result in
+                    guard let self else { return }
+                    self.topViewController()?.dismiss(animated: true)
+                    self.consumeStudioResult(result, requestID: requestID)
+                },
+                onCancel: { [weak self] in
+                    guard let self else { return }
+                    self.topViewController()?.dismiss(animated: true)
+                    self.cancelCapture()
+                }
+            )
+            let host = UIHostingController(rootView: studio)
+            host.modalPresentationStyle = .fullScreen
+            host.modalTransitionStyle = .crossDissolve
+            topViewController()?.present(host, animated: true)
+        }
+
+        private func consumeStudioResult(_ result: ScanStudioResult, requestID: String) {
+            Task {
+                await viewModel.scanImages(result.images)
+                emit(["requestId": requestID, "status": "success",
+                      "data": ["previews": result.thumbnails, "state": stateObject()] as [String: Any]])
             }
         }
 
@@ -187,6 +221,18 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
             }
         }
 
+        /// 网页只需要一张能看的小图。原图留在原生侧做识别，不跨桥回传。
+        private static func thumbnailDataURL(for image: UIImage, width: CGFloat = 240) -> String? {
+            let ratio = image.size.height / max(image.size.width, 1)
+            let target = CGSize(width: width, height: width * ratio)
+            UIGraphicsBeginImageContextWithOptions(target, false, 1)
+            image.draw(in: CGRect(origin: .zero, size: target))
+            let scaled = UIGraphicsGetImageFromCurrentImageContext()
+            UIGraphicsEndImageContext()
+            guard let scaled, let data = scaled.jpegData(compressionQuality: 0.6) else { return nil }
+            return "data:image/jpeg;base64," + data.base64EncodedString()
+        }
+
         private func loadImage(from provider: NSItemProvider) async -> UIImage? {
             await withCheckedContinuation { continuation in
                 provider.loadObject(ofClass: UIImage.self) { object, _ in
@@ -197,14 +243,16 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
 
         private func consume(images: [UIImage]) {
             let requestID = pendingRequestID
-            let preview = images.first.flatMap { $0.jpegData(compressionQuality: 0.68) }?.base64EncodedString()
+            // 只回传小图：网页只做展示，识别用的是原生侧的原图。
+            // 之前这里回传全分辨率 JPEG 的 base64，几张连拍就能把 WebView 撑到被系统杀掉。
+            let preview = images.first.flatMap { Self.thumbnailDataURL(for: $0) }
             if capturePurpose == "after", let image = images.first {
                 viewModel.finishActivePlan(afterImage: image)
-                respond(requestID, data: ["preview": preview.map { "data:image/jpeg;base64,\($0)" } as Any, "state": stateObject()]); return
+                respond(requestID, data: ["preview": preview as Any, "state": stateObject()]); return
             }
             Task {
                 await viewModel.scanImages(images)
-                respond(requestID, data: ["preview": preview.map { "data:image/jpeg;base64,\($0)" } as Any, "state": stateObject()])
+                respond(requestID, data: ["preview": preview as Any, "state": stateObject()])
             }
         }
 

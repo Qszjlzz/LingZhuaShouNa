@@ -8,6 +8,8 @@
 
 /* Begin PBXBuildFile section */
 		9A1F0004CC1F4A2B88B1E004 /* CameraPreviewOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A1F0003CC1F4A2B88B1E003 /* CameraPreviewOverlay.swift */; };
+		9A2A0002DD2A4B3C99A1E002 /* CameraEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A2A0001DD2A4B3C99A1E001 /* CameraEngine.swift */; };
+		9A2A0004DD2A4B3C99A1E004 /* ScanStudioView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A2A0003DD2A4B3C99A1E003 /* ScanStudioView.swift */; };
 		9A1F0002CC1F4A2B88B1E002 /* CameraCaptureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A1F0001CC1F4A2B88B1E001 /* CameraCaptureView.swift */; };
 		092A9540A2DA35E897D8AD47 /* SmartPawModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F5A81A449657E82DF57C3B6 /* SmartPawModels.swift */; };
 		107B60DD19983C79EC7F0E75 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8A3D85099B1D340186011524 /* Assets.xcassets */; };
@@ -68,6 +70,8 @@
 
 /* Begin PBXFileReference section */
 		9A1F0003CC1F4A2B88B1E003 /* CameraPreviewOverlay.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CameraPreviewOverlay.swift; sourceTree = "<group>"; };
+		9A2A0001DD2A4B3C99A1E001 /* CameraEngine.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CameraEngine.swift; sourceTree = "<group>"; };
+		9A2A0003DD2A4B3C99A1E003 /* ScanStudioView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ScanStudioView.swift; sourceTree = "<group>"; };
 		9A1F0001CC1F4A2B88B1E001 /* CameraCaptureView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CameraCaptureView.swift; sourceTree = "<group>"; };
 		0129B4B7A8FC9DF181334704 /* external-messy-desk-note.png */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = image.png; path = "external-messy-desk-note.png"; sourceTree = "<group>"; };
 		09ED6F58A952E7F1FF27ED67 /* SmartPaw.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SmartPaw.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -163,6 +167,8 @@
 				B4C3517B7A6B57B5A410478C /* AppDependencies.swift */,
 				ECBD0487DCD50AC08D1B45EE /* AppViewModel.swift */,
 				9A1F0003CC1F4A2B88B1E003 /* CameraPreviewOverlay.swift */,
+				9A2A0001DD2A4B3C99A1E001 /* CameraEngine.swift */,
+				9A2A0003DD2A4B3C99A1E003 /* ScanStudioView.swift */,
 				9A1F0001CC1F4A2B88B1E001 /* CameraCaptureView.swift */,
 				9C8CAF629E6F83A34613990B /* ImageDecoding.swift */,
 				232ED368E5900174F40FF844 /* KeychainCredentialStore.swift */,
@@ -449,6 +455,8 @@
 				43B6962E08C3488E0C042EAC /* AppDependencies.swift in Sources */,
 				FBC15514A2C6C4C0011BC009 /* AppViewModel.swift in Sources */,
 				9A1F0004CC1F4A2B88B1E004 /* CameraPreviewOverlay.swift in Sources */,
+				9A2A0002DD2A4B3C99A1E002 /* CameraEngine.swift in Sources */,
+				9A2A0004DD2A4B3C99A1E004 /* ScanStudioView.swift in Sources */,
 				9A1F0002CC1F4A2B88B1E002 /* CameraCaptureView.swift in Sources */,
 				A1FAD299803EB78A7089873F /* ImageDecoding.swift in Sources */,
 				653D4BFA3B6E6C0023555979 /* KeychainCredentialStore.swift in Sources */,
