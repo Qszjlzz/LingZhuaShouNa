@@ -62,6 +62,7 @@ struct CloudVisionRecognitionService: Sendable {
             let payload: [String: Any] = [
                 "model": settings.resolvedVisionModel,
                 "temperature": 0.2,
+                "max_tokens": 1500,
                 "messages": [["role": "user", "content": parts]]
             ]
             request.httpBody = try JSONSerialization.data(withJSONObject: payload)
@@ -174,6 +175,8 @@ struct CloudVisionRecognitionService: Sendable {
     private static func item(_ raw: RawItem) -> DetectedItem? {
         let name = (raw.name ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty, name.count <= 24 else { return nil }
+        // 家具、背景不是收纳对象，模型列进来也不该出现在方案里。
+        guard !Self.isIgnored(name: name) else { return nil }
         let category = ItemCategory(rawValue: raw.category ?? "") ?? Self.inferredCategory(for: name)
         var hint: ARHint?
         if let x = raw.x, let y = raw.y, x.isFinite, y.isFinite {
@@ -217,19 +220,34 @@ struct CloudVisionRecognitionService: Sendable {
 
     /// 模型偶尔会返回不在枚举里的类别名，这里按中文关键词兜底归类，
     /// 保证方案生成时拿到的是 App 认识的类别。
+    /// 模型难免返回不在枚举里的类别名（杯子、文件资料等），这里按中文关键词兜底，
+    /// 保证后面的方案生成拿到的是 App 认识的七类之一。
     private static func inferredCategory(for name: String) -> ItemCategory {
         let rules: [(keywords: [String], category: ItemCategory)] = [
-            (["书", "本", "杂志", "资料", "试卷", "画册", "漫画"], .books),
-            (["笔", "尺", "橡皮", "便签", "胶带", "订书", "文具", "本子"], .stationery),
-            (["充电", "数据线", "耳机", "电脑", "手机", "平板", "键盘", "鼠标", "相机", "电池", "插排", "显示器"], .electronics),
-            (["衣", "裤", "袜", "帽", "围巾", "外套", "裙", "被", "毯"], .clothes),
-            (["玩偶", "娃娃", "积木", "手办", "公仔", "摆件", "玩具"], .toys),
-            (["垃圾", "废弃", "包装", "快递", "空瓶"], .trash)
+            (["纸", "文件", "资料", "杂志", "试卷", "画册", "漫画", "课本", "快递单"], .books),
+            (["笔", "尺", "橡皮", "便签", "胶带", "订书", "文具", "本子", "剪刀", "胶水"], .stationery),
+            (["充电", "数据线", "耳机", "电脑", "手机", "平板", "键盘", "鼠标", "相机", "电池", "插排", "显示器", "音响", "手环"], .electronics),
+            (["衣", "裤", "袜", "帽", "围巾", "外套", "裙", "被", "毯", "毛巾", "包"], .clothes),
+            (["玩偶", "娃娃", "积木", "手办", "公仔", "摆件", "玩具", "模型"], .toys),
+            (["垃圾", "废弃", "包装", "快递", "空瓶", "废纸", "果皮"], .trash),
+            // 杯碗瓶罐没有独立类别，统一落到收纳工具，方案里会给它一个固定收纳位。
+            (["杯", "碗", "盘", "碟", "瓶", "壶", "餐具", "刀", "叉", "勺", "化妆", "护肤", "牙刷"], .tools),
+            (["书", "本"], .books)
         ]
         for rule in rules where rule.keywords.contains(where: { name.contains($0) }) {
             return rule.category
         }
         return .tools
+    }
+
+    /// 大型家具和背景不是"要收纳的东西"，模型偶尔会列进来，这里直接丢掉。
+    private static let ignoredKeywords = [
+        "桌子", "书桌", "椅子", "座椅", "床", "沙发", "柜", "地板", "地面", "墙壁", "墙面",
+        "窗户", "窗帘", "门", "天花板", "灯", "地毯", "房间", "背景", "墙纸", "楼梯",
+    ]
+
+    private static func isIgnored(name: String) -> Bool {
+        ignoredKeywords.contains(where: { name.contains($0) })
     }
 
     private static func jpegData(for image: UIImage) -> Data? {
@@ -244,15 +262,21 @@ struct CloudVisionRecognitionService: Sendable {
     }
 
     private static let prompt = """
-    你是收纳 App「灵爪收纳」的图像识别引擎。请仔细看这张照片，找出画面里所有可以被收纳或整理的物品。
-    只输出 JSON，不要 Markdown 代码块，不要任何解释文字。
-    格式：{"items":[{"name":"中文物品名","category":"类别","count":数量,"x":中心横坐标,"y":中心纵坐标,"width":框宽,"height":框高,"zone":"建议放置区域"}]}
-    约束：
-    1. category 只能从这七项里选一个：书籍、电子产品、文具、衣物、玩偶杂物、待丢弃、收纳工具。
-    2. x、y 是物品中心在画面中的位置，取值 0 到 1；width、height 是物品占画面的比例，取值 0.05 到 1。
-    3. 最多 10 条，按画面中显眼程度排序，同类物品可以合并成一条并给出 count。
-    4. name 用简洁中文，不超过 12 个字，不要写位置描述。
-    5. 如果画面里确实没有可收纳的物品，返回 {"items":[]}。
+    你是收纳 App「灵爪收纳」的图像识别引擎。用户拍了一张需要整理的居家或桌面照片。
+    请找出画面里所有可以被收纳、归位、整理的小件物品。
+
+    输出要求：
+    1. 只输出 JSON，不要 Markdown 代码块，不要任何解释文字。
+    2. 格式：{"items":[{"name":"中文物品名","category":"类别","count":数量,"x":中心横坐标,"y":中心纵坐标,"width":框宽,"height":框高,"zone":"建议放置区域"}]}
+    3. category 只能从这七项里选一个：书籍、电子产品、文具、衣物、玩偶杂物、待丢弃、收纳工具。
+       归类参考：杯子、碗、餐具、水瓶、化妆品 → 收纳工具；纸张、文件、资料、本子、课本 → 书籍；
+       充电器、数据线、耳机、键盘、鼠标、电脑、手机、平板 → 电子产品；
+       垃圾、快递包装、空瓶、废纸 → 待丢弃；实在判断不了 → 收纳工具。
+    4. 不要列入：桌子、椅子、床、沙发、柜子、地板、墙壁、窗户、门、灯这类大型家具和背景，也不要列画面边缘只露一半的物体。
+    5. x、y 是物品中心在画面中的位置，取值 0 到 1（左上 0,0，右下 1,1）；width、height 是物品占画面的比例，取值 0.05 到 1。
+    6. 最多 10 条，按画面中显眼程度排序；同类物品可以合并成一条并给出 count。
+    7. name 用简洁中文，不超过 12 个字，不要写位置描述，同类物品用同一个名字。
+    8. 宁可多列也不要漏 —— 用户要靠这些物品生成收纳方案。只有画面里确实什么都没有时才返回 {"items":[]}。
     """
 
     private struct Envelope: Decodable {

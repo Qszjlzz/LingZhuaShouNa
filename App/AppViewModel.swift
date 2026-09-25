@@ -166,6 +166,8 @@ final class AppViewModel: ObservableObject {
             message = nil
         }
         #endif
+        // 允许从沙箱里的配置文件一次性导入 AI 设置，省去在手机小键盘上粘贴几十位密钥。
+        importExternalLLMConfiguration()
         // 拍照/AR 识别需要知道用户当前保存的 AI 设置，用来决定要不要走云端多模态识别。
         if let router = dependencies.scanService as? RecognitionRouter {
             router.settingsProvider = { [weak self] in self?.llmSettings ?? .default }
@@ -1204,6 +1206,35 @@ final class AppViewModel: ObservableObject {
 
     /// 把识别家底写进 App 的 Documents 目录，方便排查"为什么没识别出来"。
     /// 只写接口地址与模型名，绝不落盘密钥。
+    /// 从沙箱里的 `smartpaw-llm.json` 一次性导入 AI 设置（endpoint / apiKey / model，
+    /// 可选 visionEndpoint / visionModel）。用途是不用在手机小键盘上粘贴几十位密钥；
+    /// 导入成功后文件即删除，之后仍然可以在 App 内的「AI 设置」里改。
+    private func importExternalLLMConfiguration() {
+        let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let file = documents.appendingPathComponent("smartpaw-llm.json")
+        guard let data = try? Data(contentsOf: file),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let apiKey = (object["apiKey"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !apiKey.isEmpty
+        else { return }
+        var updated = llmSettings
+        if let endpoint = (object["endpoint"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !endpoint.isEmpty { updated.endpoint = endpoint }
+        if let model = (object["model"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !model.isEmpty { updated.model = model }
+        if let visionEndpoint = (object["visionEndpoint"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !visionEndpoint.isEmpty { updated.visionEndpoint = visionEndpoint }
+        if let visionModel = (object["visionModel"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !visionModel.isEmpty { updated.visionModel = visionModel }
+        updated.apiKey = apiKey
+        updated.isEnabled = true
+        llmSettings = updated
+        _ = dependencies.credentialStore.saveAPIKey(apiKey)
+        try? FileManager.default.removeItem(at: file)
+        persist()
+        print("SMARTPAW_BOOT 已导入 AI 配置 endpoint=\(updated.endpoint) model=\(updated.model) canRequestVision=\(updated.canRequestVision)")
+    }
+
     private func writeDiagnostics(note: String, items: [DetectedItem]) {
         var lines: [String] = [
             "时间: \(Date())",
