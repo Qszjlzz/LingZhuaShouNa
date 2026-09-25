@@ -286,6 +286,7 @@ export function ShootFlow({
       {step === "plandeck" && (
         <PlanDeckStep
           plans={plans}
+          photo={photo}
           onClose={onClose}
           onStart={async (p) => {
             setChosen(p);
@@ -308,6 +309,7 @@ export function ShootFlow({
       {step === "tune" && (
         <TuneChatStep
           plan={chosen}
+          photo={photo}
           onBack={() => setStep("plandeck")}
           onConfirm={(refined) => {
             setChosen(refined);
@@ -714,11 +716,13 @@ const PEEK = (390 - CARD_W) / 2;     // 39px each side
 
 function PlanDeckStep({
   plans,
+  photo,
   onClose,
   onStart,
   onTune,
 }: {
   plans: GenPlan[];
+  photo?: string;
   onClose: () => void;
   onStart: (p: GenPlan) => void;
   onTune: (p: GenPlan) => void;
@@ -810,7 +814,7 @@ function PlanDeckStep({
                 {/* ── Hero image ── */}
                 <div className="relative flex-shrink-0" style={{ height: "57%" }}>
                   <ImageWithFallback
-                    src={p.image}
+                    src={photo || p.image}
                     alt={p.name}
                     className="h-full w-full object-cover"
                   />
@@ -1025,7 +1029,7 @@ const TUNE_CHIPS = [
   "预算低一些",
 ];
 
-function PlanPreviewCard({ plan, tweaks }: { plan: GenPlan; tweaks: string[] }) {
+function PlanPreviewCard({ plan, photo, tweaks }: { plan: GenPlan; photo?: string; tweaks: string[] }) {
   const [loaded, setLoaded] = useState(false);
   useEffect(() => {
     const t = setTimeout(() => setLoaded(true), 680);
@@ -1072,7 +1076,7 @@ function PlanPreviewCard({ plan, tweaks }: { plan: GenPlan; tweaks: string[] }) 
             transition={{ duration: 0.5 }}
             style={{ position: "absolute", inset: 0 }}
           >
-            <ImageWithFallback src={plan.image} alt="" className="h-full w-full object-cover" />
+            <ImageWithFallback src={photo || plan.image} alt="" className="h-full w-full object-cover" />
             {/* Accent colour wash */}
             <div style={{ position: "absolute", inset: 0, background: `linear-gradient(140deg, ${plan.accent}55 0%, transparent 58%)` }} />
             {/* Bottom gradient for legibility */}
@@ -1150,10 +1154,12 @@ function PlanPreviewCard({ plan, tweaks }: { plan: GenPlan; tweaks: string[] }) 
 
 function TuneChatStep({
   plan,
+  photo,
   onBack,
   onConfirm,
 }: {
   plan: GenPlan;
+  photo?: string;
   onBack: () => void;
   onConfirm: (refined: GenPlan) => void;
 }) {
@@ -1211,7 +1217,7 @@ function TuneChatStep({
       {/* ── Plan image hero ── */}
       <div className="relative flex-shrink-0" style={{ height: 196 }}>
         <ImageWithFallback
-          src={plan.image}
+          src={photo || plan.image}
           alt={plan.name}
           className="h-full w-full object-cover"
         />
@@ -1287,7 +1293,7 @@ function TuneChatStep({
             {/* Visual preview card — shown after each AI response that carries tweaks */}
             {m.role === "ai" && m.tweakSnap && m.tweakSnap.length > 0 && (
               <div style={{ marginTop: 8 }}>
-                <PlanPreviewCard plan={plan} tweaks={m.tweakSnap} />
+                <PlanPreviewCard plan={plan} photo={photo} tweaks={m.tweakSnap} />
               </div>
             )}
           </div>
@@ -4414,7 +4420,7 @@ function RewardStep({ photo, onClose }: { photo?: string; onClose: () => void })
     return (
       <div className="relative h-full w-full overflow-hidden" style={{ backgroundColor: "#1a1411" }}>
         {/* Live camera feed */}
-        <ImageWithFallback src={AFTER_IMG} alt="相机" className="h-full w-full object-cover" />
+        <ImageWithFallback src={photo || AFTER_IMG} alt="相机" className="h-full w-full object-cover" />
 
         {/* Vignette */}
         <div
@@ -5057,7 +5063,7 @@ function ARPreviewStep({
     <div className="relative h-full w-full overflow-hidden" style={{ backgroundColor: "#13110f" }}>
       {/* 3D mesh background */}
       <div className="absolute inset-0">
-        <ImageWithFallback src={ROOM_IMG} alt="空间场景" className="h-full w-full object-cover" />
+        <ImageWithFallback src={photo || ROOM_IMG} alt="空间场景" className="h-full w-full object-cover" />
         <div
           className="absolute inset-0"
           style={{
@@ -5113,7 +5119,7 @@ function ARPreviewStep({
           style={{ backgroundColor: "rgba(250,136,58,0.92)", borderRadius: 12 }}
         >
           <p style={{ color: WHITE, fontSize: 11, fontWeight: 500 }}>
-            AR live unavailable on this device — rotate the 3D model instead.
+            当前设备暂不支持 AR 实景，你可以直接拖动查看 3D 预览。
           </p>
         </div>
       )}
