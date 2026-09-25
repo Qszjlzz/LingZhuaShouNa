@@ -20,8 +20,20 @@ final class CameraEngine: NSObject, ObservableObject {
     private let videoOutput = AVCaptureVideoDataOutput()
     private let sessionQueue = DispatchQueue(label: "smartpaw.camera.session")
 
-    /// 等待照片回包的调用者。用数组而不是单个闭包，连拍时不会互相覆盖。
-    private var pendingCaptures: [CheckedContinuation<UIImage?, Never>] = []
+    /// 等待照片回包的调用者。用队列而不是单个闭包，连拍时不会互相覆盖。
+    private var pendingCaptures: [PendingCapture] = []
+    /// 拍照超时巡检。session 没跑起来时 AVCapturePhotoOutput 不会回调，
+    /// 没有这层保护，等待者会永远挂着（网页侧表现为卡到 60 秒超时）。
+    private var captureWatchdog: Task<Void, Never>?
+    /// 单张照片最多等多久。正常拍摄 1 秒内就回来，8 秒足够宽松。
+    private static let captureTimeout: TimeInterval = 8
+
+    private struct PendingCapture {
+        let id = UUID()
+        let continuation: CheckedContinuation<UIImage?, Never>
+        let deadline: Date
+    }
+
     private var configured = false
     private var running = false
 
@@ -73,17 +85,37 @@ final class CameraEngine: NSObject, ObservableObject {
         Task { @MainActor in self.finishAllCaptures(with: nil) }
     }
 
-    /// 收尾所有等待照片的调用者。第一个拿到 image，其余按失败处理。
+    /// 把刚拍到的这张交给排队最久的那个等待者（先进先出）。
+    /// 剩下的继续等各自那张，不因为别人先回来就被判失败。
+    @MainActor
+    private func deliverCapture(_ image: UIImage?) {
+        guard !pendingCaptures.isEmpty else { return }
+        let first = pendingCaptures.removeFirst()
+        first.continuation.resume(returning: image)
+    }
+
+    /// 收尾所有等待照片的调用者（相机停止 / 出错时调用）。
     @MainActor
     private func finishAllCaptures(with image: UIImage?) {
         let waiters = pendingCaptures
         pendingCaptures = []
-        waiters.first?.resume(returning: image)
-        waiters.dropFirst().forEach { $0.resume(returning: nil) }
+        waiters.first?.continuation.resume(returning: image)
+        waiters.dropFirst().forEach { $0.continuation.resume(returning: nil) }
     }
 
     var isAuthorized: Bool {
         AVCaptureDevice.authorizationStatus(for: .video) == .authorized
+    }
+
+    /// configure 之后 `isReady` 是回主线程异步刷新的，`start()` 一返回就立刻读
+    /// 会读到 false。需要确认相机真的能用时，用这个方法等它就绪。
+    @MainActor
+    func waitUntilReady(timeout: TimeInterval = 3) async -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !isReady, Date() < deadline {
+            try? await Task.sleep(nanoseconds: 50_000_000)
+        }
+        return isReady
     }
 
     @MainActor
@@ -140,13 +172,42 @@ final class CameraEngine: NSObject, ObservableObject {
     // MARK: - Still capture
 
     /// 拍一张。可以连续调用，每次都会拿到自己的那张图。
+    ///
+    /// 请求按顺序排队：先请求的先拿到，各自独立回调，连拍不会串味也不会丢。
+    /// 超过 `captureTimeout` 还没回包就按失败收尾，不让调用方无限等待。
     func capturePhoto() async -> UIImage? {
         guard configured else { return nil }
         return await withCheckedContinuation { continuation in
-            Task { @MainActor in self.pendingCaptures.append(continuation) }
+            Task { @MainActor in
+                self.pendingCaptures.append(
+                    PendingCapture(continuation: continuation,
+                                   deadline: Date().addingTimeInterval(Self.captureTimeout))
+                )
+                self.startCaptureWatchdogIfNeeded()
+            }
             let settings = AVCapturePhotoSettings()
             settings.flashMode = torchEnabled ? .on : .off
             photoOutput.capturePhoto(with: settings, delegate: self)
+        }
+    }
+
+    /// 有等待中的拍照请求时，周期性把超时的那几个按失败收尾。
+    @MainActor
+    private func startCaptureWatchdogIfNeeded() {
+        guard captureWatchdog == nil else { return }
+        captureWatchdog = Task { [weak self] in
+            while true {
+                try? await Task.sleep(nanoseconds: 250_000_000)
+                if Task.isCancelled { break }
+                guard let self, !self.pendingCaptures.isEmpty else { break }
+                let now = Date()
+                let expired = self.pendingCaptures.filter { $0.deadline <= now }
+                guard !expired.isEmpty else { continue }
+                let expiredIDs = Set(expired.map { $0.id })
+                self.pendingCaptures.removeAll { expiredIDs.contains($0.id) }
+                expired.forEach { $0.continuation.resume(returning: nil) }
+            }
+            self?.captureWatchdog = nil
         }
     }
 
@@ -182,8 +243,7 @@ extension CameraEngine: AVCapturePhotoCaptureDelegate {
     func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
         let image = photo.fileDataRepresentation().flatMap(UIImage.init(data:))
         Task { @MainActor [weak self] in
-            // 只把图交给第一个等待者，其余按 nil 收尾，避免连拍串味。
-            self?.finishAllCaptures(with: image)
+            self?.deliverCapture(image)
         }
     }
 }
