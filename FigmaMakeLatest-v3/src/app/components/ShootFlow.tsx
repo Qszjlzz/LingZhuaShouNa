@@ -2275,13 +2275,22 @@ function ConfirmStep({ assets, onBack, onNext }: { assets: CapturedAsset[]; onBa
   const [spotNote, setSpotNote] = useState("");
 
   useEffect(() => {
-    nativeRequest<NativeState>("state.get").then((state) => {
-      setItems(state.scannedItems.map((item) => ({ ...item, emoji: getEmojiForItem(item.name) })));
-      setBlindSpots(state.scannedItems.filter((item) => item.confidence < 0.55).map((item, index) => ({
-        id: `low-${item.id}`, label: item.name, reason: `置信度 ${Math.round(item.confidence * 100)}% — 请确认`,
-        left: `${10 + (index % 3) * 28}%`, top: `${34 + (index % 2) * 25}%`, w: "22%", h: "18%",
-      })));
-    }).finally(() => setLoadingItems(false));
+    // 识别在后台跑（快门不等它），进这一步时先等它跑完，再取结果。
+    (async () => {
+      try {
+        await nativeRequest("scan.await", {});
+        const state = await nativeRequest<NativeState>("state.get");
+        setItems(state.scannedItems.map((item) => ({ ...item, emoji: getEmojiForItem(item.name) })));
+        setBlindSpots(state.scannedItems.filter((item) => item.confidence < 0.55).map((item, index) => ({
+          id: `low-${item.id}`, label: item.name, reason: `置信度 ${Math.round(item.confidence * 100)}% — 请确认`,
+          left: `${10 + (index % 3) * 28}%`, top: `${34 + (index % 2) * 25}%`, w: "22%", h: "18%",
+        })));
+      } catch {
+        /* 取不到就走空态提示 */
+      } finally {
+        setLoadingItems(false);
+      }
+    })();
   }, []);
 
   const confirmAndContinue = async () => {

@@ -37,6 +37,8 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
         var viewModel: AppViewModel
         private var pendingRequestID = ""
         private var capturePurpose = "scan"
+        /// 拍完照后的识别任务链。快门不等识别，识别在后台串行跑完再通知网页。
+        private var scanQueueTask: Task<Void, Never>?
 
         init(viewModel: AppViewModel) { self.viewModel = viewModel }
 
@@ -69,6 +71,7 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
             case "camera.preview.frame": updateInlinePreviewFrame(payload: payload); respond(requestID, data: ["ok": true])
             case "camera.preview.stop": CameraPreviewOverlay.shared.stop(); respond(requestID, data: ["ok": true])
             case "camera.capture": await captureInline(requestID: requestID)
+            case "scan.await": await scanQueueTask?.value; respondWithState(requestID)
             case "space.select":
                 guard let id = uuid(payload["id"]) else { return fail(requestID, "空间 ID 无效") }
                 viewModel.selectSpace(id); respondWithState(requestID)
@@ -181,7 +184,7 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
             CameraPreviewOverlay.shared.updateFrame(CGRect(x: x, y: y, width: w, height: h))
         }
 
-        /// 原地拍一张：不弹任何界面，拍完直接把图交给识别流程。
+        /// 原地拍一张：不弹任何界面。缩略图立刻回给网页（秒出图），识别在后台排队跑。
         private func captureInline(requestID: String) async {
             guard let image = await CameraPreviewOverlay.shared.capture() else {
                 return fail(requestID, "相机不可用")
@@ -189,7 +192,18 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
             // 内联连拍永远是扫描用途，避免沿用上一次的 "after" 走进整理后分支。
             capturePurpose = "scan"
             pendingRequestID = requestID
-            consume(images: [image], accumulate: true)
+            // 先把图送回页面：识别（10 个模型）要几秒，不能让快门等它。
+            let preview = Self.thumbnailDataURL(for: image)
+            respond(requestID, data: ["preview": preview as Any, "state": stateObject()])
+
+            let previous = scanQueueTask
+            scanQueueTask = Task { [weak self] in
+                // 连拍时识别必须串行，否则两次扫描会同时读写 scannedItems。
+                await previous?.value
+                guard let self else { return }
+                await self.viewModel.scanImages([image], accumulate: true)
+                self.emit(["event": "scan.updated", "state": self.stateObject()])
+            }
         }
 
         /// 直接用 App 内置取景框拍照，避免跳到系统相机破坏演示连贯性。
