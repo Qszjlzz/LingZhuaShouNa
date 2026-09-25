@@ -1,0 +1,29 @@
+/* iOS / WKWebView 专属兜底：聚焦输入框时系统会因为字号小于 16px 自动放大整页，
+   表现为"点一下输入框整个界面变大"。这里统一把输入类元素固定到 16px，
+   并禁止文本自动缩放。视觉尺寸仍由外层容器与行高控制。 */
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overscroll-behavior: none;
+}
+
+input,
+textarea,
+select {
+  font-size: 16px !important;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* 键盘弹出时不要让整页跟着橡皮筋滚动，避免内容被顶上去盖住对话。 */
+body {
+  overflow: hidden;
+}

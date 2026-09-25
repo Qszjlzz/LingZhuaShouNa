@@ -193,6 +193,11 @@ export function AISettingsScreen({ onBack }: { onBack: () => void }) {
           placeholder={hasKey ? "已保存过 Key，留空表示不修改" : "粘贴你的 Key"}
           onChange={setApiKey}
         />
+        <p style={{ fontSize: 11, marginTop: -4, opacity: 0.65 }}>
+          {hasKey
+            ? "当前状态：密钥已保存。上面留空直接保存不会清掉它。"
+            : "当前状态：还没有密钥，粘贴后保存即可启用云端识别与方案微调。"}
+        </p>
         <Field
           label="视觉识别接口（选填）"
           value={visionEndpoint}

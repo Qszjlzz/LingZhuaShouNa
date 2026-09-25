@@ -64,7 +64,20 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
             case "state.get": respond(requestID, data: stateObject())
             case "llm.settings.get": respond(requestID, data: ["isEnabled": viewModel.llmSettings.isEnabled, "endpoint": viewModel.llmSettings.endpoint, "model": viewModel.llmSettings.model, "visionEndpoint": viewModel.llmSettings.visionEndpoint, "visionModel": viewModel.llmSettings.visionModel, "hasAPIKey": !viewModel.llmSettings.apiKey.isEmpty])
             case "llm.settings.save":
-                let settings = LLMSettings(isEnabled: payload["isEnabled"] as? Bool ?? false, endpoint: payload["endpoint"] as? String ?? LLMSettings.default.endpoint, apiKey: payload["apiKey"] as? String ?? viewModel.llmSettings.apiKey, model: payload["model"] as? String ?? LLMSettings.default.model, visionEndpoint: payload["visionEndpoint"] as? String ?? "", visionModel: payload["visionModel"] as? String ?? "")
+                // 设置页不回显已保存的密钥，输入框通常是空的；空值一律表示"不改动"，
+                // 否则用户只改个开关就会把密钥清空。
+                let incomingKey = (payload["apiKey"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                let resolvedKey = incomingKey.isEmpty ? viewModel.llmSettings.apiKey : incomingKey
+                let incomingEndpoint = (payload["endpoint"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                let incomingModel = (payload["model"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                let settings = LLMSettings(
+                    isEnabled: payload["isEnabled"] as? Bool ?? false,
+                    endpoint: incomingEndpoint.isEmpty ? viewModel.llmSettings.endpoint : incomingEndpoint,
+                    apiKey: resolvedKey,
+                    model: incomingModel.isEmpty ? viewModel.llmSettings.model : incomingModel,
+                    visionEndpoint: payload["visionEndpoint"] as? String ?? "",
+                    visionModel: payload["visionModel"] as? String ?? ""
+                )
                 guard viewModel.saveLLMSettings(settings) else { return fail(requestID, viewModel.message ?? "AI 设置保存失败") }
                 respond(requestID, data: ["saved": true])
             case "llm.test":
