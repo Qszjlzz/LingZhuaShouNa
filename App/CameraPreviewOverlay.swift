@@ -53,7 +53,8 @@ final class CameraPreviewOverlay {
         await engine.start()
         // start() 里 isReady 是异步回主线程更新的，直接读会读到 false，
         // 那样网页就误以为"没有相机"退回去弹原生页了，所以这里要等它就绪。
-        var ready = await engine.waitUntilReady()
+        // 第一次别等太久：真起不来就赶紧重启重试，别让页面干等 3 秒。
+        var ready = await engine.waitUntilReady(timeout: 1.5)
         if !ready {
             // 相机可能刚被别的应用占着（微信视频、系统相机没关干净）：
             // 整个链路重启一次再试，总比让网页跳去开系统相机好。

@@ -1409,9 +1409,7 @@ function CaptureStep({
   // 真实取景：相机画面垫在 WebView 底下，页面原地透明透出来，UI 一个像素都不动。
   const previewRef = useRef<HTMLDivElement>(null);
   const [liveFeed, setLiveFeed] = useState(false);
-  // 占位用的房间图是远程图，下载要等网络。相机正常时画面几百毫秒就到，
-  // 没必要先去下载它 —— 等一下还没画面才显示，避免"卡在加载假图"上。
-  const [showStatic, setShowStatic] = useState(false);
+  // 等待画面期间一律用深色底（和相机出画面前的黑屏一致），不再显示任何占位图。
   // 取景失败只在这页里提示 + 重试，绝不跳到系统相机页。
   const [camFailed, setCamFailed] = useState(false);
   const [camReason, setCamReason] = useState<string | null>(null);
@@ -1887,10 +1885,8 @@ function CaptureStep({
       className="relative h-full w-full overflow-hidden"
       style={{ backgroundColor: liveFeed ? "transparent" : "#1a1411" }}
     >
-      {/* Live camera feed —— 真机上是垫在底下的真实画面，拿不到时才用占位图 */}
-      {!liveFeed && showStatic && (
-        <ImageWithFallback src={ROOM_IMG} alt="Camera" className="h-full w-full object-cover" />
-      )}
+      {/* 相机画面是垫在底下的真实画面。没出画面前就是一块深色底，
+          不再插任何占位图 —— 以前会先显示远程房间图再换成相机，那一下就是"UI 变了"。 */}
 
       {/* 取景没起来：只在这页里提示 + 重试，不跳系统相机 */}
       {camFailed && (
