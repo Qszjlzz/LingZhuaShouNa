@@ -28,7 +28,13 @@ export default function App() {
 
   return (
     <div
-      className="relative size-full overflow-hidden"
+      className={
+        shooting || relightSpace
+          ? // 全屏覆盖页（拍摄/焕新）用 fixed 定位：不依赖祖先高度，
+            // 否则没有全局 height:100% 时 size-full 容器会塌成 0 高。
+            "fixed inset-0 overflow-hidden"
+          : "relative size-full overflow-hidden"
+      }
       style={{ backgroundColor: shooting ? "transparent" : "#EDE5DA" }}
     >
       <div className="relative size-full overflow-hidden">

@@ -4405,22 +4405,91 @@ function RewardStep({ photo, onClose }: { photo?: string; onClose: () => void })
   const [slider, setSlider] = useState(50);
   const [flash, setFlash] = useState(false);
   const [captureError, setCaptureError] = useState<string | null>(null);
+  const [liveFeed, setLiveFeed] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const previewRef = useRef<HTMLDivElement>(null);
+
+  // 整理后的打卡照走和主拍摄页同一套内联相机：不跳原生页，也不会误触发识别。
+  const rectOf = () => {
+    const r = previewRef.current?.getBoundingClientRect();
+    return r
+      ? { x: r.x, y: r.y, width: r.width, height: r.height }
+      : { x: 0, y: 0, width: window.innerWidth, height: window.innerHeight };
+  };
+
+  const startPreview = async (): Promise<boolean> => {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const res = await nativeRequest<{ ok: boolean }>("camera.preview.start", rectOf());
+        if (res.ok === true) { setLiveFeed(true); return true; }
+      } catch { /* 下面统一重试 */ }
+      await new Promise((r) => setTimeout(r, 600));
+    }
+    setLiveFeed(false);
+    return false;
+  };
+
+  useEffect(() => {
+    if (afterPhoto) return;
+    let stopped = false;
+    void (async () => { const ok = await startPreview(); if (!stopped && !ok) setCaptureError("相机还没准备好，点一下快门再试一次"); })();
+    const sync = () => { void nativeRequest("camera.preview.frame", rectOf()).catch(() => {}); };
+    window.addEventListener("resize", sync);
+    return () => {
+      stopped = true;
+      window.removeEventListener("resize", sync);
+      void nativeRequest("camera.preview.stop", {}).catch(() => {});
+    };
+  }, [afterPhoto]);
+
+  // 画面要从 WebView 底下透上来，得把预览区以上这条链路的背景临时改透明。
+  useEffect(() => {
+    if (!liveFeed || afterPhoto) return;
+    const chain: HTMLElement[] = [];
+    let node: HTMLElement | null = previewRef.current;
+    while (node) { chain.push(node); node = node.parentElement; }
+    const saved = chain.map((el) => el.style.background);
+    const savedHtml = document.documentElement.style.background;
+    const savedBody = document.body.style.background;
+    chain.forEach((el) => { el.style.background = "transparent"; });
+    document.documentElement.style.background = "transparent";
+    document.body.style.background = "transparent";
+    return () => {
+      chain.forEach((el, i) => { el.style.background = saved[i]; });
+      document.documentElement.style.background = savedHtml;
+      document.body.style.background = savedBody;
+    };
+  }, [liveFeed, afterPhoto]);
 
   const captureAfter = async () => {
-    setFlash(true); setCaptureError(null);
+    if (busy) return;
+    setBusy(true);
+    setCaptureError(null);
     try {
-      const result = await nativeRequest<{ preview?: string }>("capture.open", { source: "camera", purpose: "after" });
-      if (result.preview) setAfterPhoto(result.preview);
-    } catch (error) { if ((error as Error).message !== "已取消") setCaptureError((error as Error).message); }
-    finally { setFlash(false); }
+      if (!liveFeed) { await startPreview(); }
+      const shot = await nativeRequest<{ preview?: string }>("camera.capture", { purpose: "after" });
+      if (!shot.preview) { setCaptureError("没有拿到照片，光线亮一点再试一次"); return; }
+      setAfterPhoto(shot.preview);
+    } catch (error) {
+      const message = (error as Error).message;
+      if (message !== "已取消") setCaptureError(message);
+    } finally {
+      setBusy(false);
+    }
   };
 
   // Camera capture view
   if (!afterPhoto) {
     return (
-      <div className="relative h-full w-full overflow-hidden" style={{ backgroundColor: "#1a1411" }}>
-        {/* Live camera feed */}
-        <ImageWithFallback src={photo || AFTER_IMG} alt="相机" className="h-full w-full object-cover" />
+      <div
+        ref={previewRef}
+        className="relative h-full w-full overflow-hidden"
+        style={{ backgroundColor: liveFeed ? "transparent" : "#1a1411" }}
+      >
+        {/* 实时取景画面（相机画面垫在 WebView 底下，透明后透上来）；没起来时用整理前照片兜底 */}
+        {!liveFeed && (
+          <ImageWithFallback src={photo || AFTER_IMG} alt="相机" className="h-full w-full object-cover" />
+        )}
 
         {/* Vignette */}
         <div
@@ -4464,7 +4533,15 @@ function RewardStep({ photo, onClose }: { photo?: string; onClose: () => void })
         </div>
 
         {/* Bottom controls */}
-        <div className="absolute bottom-0 left-0 right-0 pb-10 pt-6 px-8 flex items-center justify-center">
+        <div className="absolute bottom-0 left-0 right-0 pb-10 pt-6 px-8 flex flex-col items-center gap-3">
+          {captureError && (
+            <p
+              className="px-4 py-2 text-center"
+              style={{ backgroundColor: "rgba(0,0,0,0.55)", color: WHITE, borderRadius: 12, fontSize: 12 }}
+            >
+              {captureError}
+            </p>
+          )}
           <button
             onClick={() => {
               setFlash(true);
@@ -4473,6 +4550,7 @@ function RewardStep({ photo, onClose }: { photo?: string; onClose: () => void })
                 void captureAfter();
               }, 220);
             }}
+            disabled={busy}
             className="h-20 w-20 rounded-full flex items-center justify-center"
             style={{
               backgroundColor: WHITE,

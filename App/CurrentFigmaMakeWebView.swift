@@ -93,7 +93,7 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
             case "camera.preview.start": await startInlinePreview(requestID: requestID, payload: payload)
             case "camera.preview.frame": updateInlinePreviewFrame(payload: payload); respond(requestID, data: ["ok": true])
             case "camera.preview.stop": CameraPreviewOverlay.shared.stop(); respond(requestID, data: ["ok": true])
-            case "camera.capture": await captureInline(requestID: requestID)
+            case "camera.capture": await captureInline(requestID: requestID, payload: payload)
             case "scan.await": await scanQueueTask?.value; respondWithState(requestID)
             case "scan.diagnose":
                 respond(requestID, data: [
@@ -231,16 +231,21 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
         }
 
         /// 原地拍一张：不弹任何界面。缩略图立刻回给网页（秒出图），识别在后台排队跑。
-        private func captureInline(requestID: String) async {
+        private func captureInline(requestID: String, payload: [String: Any] = [:]) async {
             guard let image = await CameraPreviewOverlay.shared.capture() else {
-                return fail(requestID, "相机不可用")
+                // 相机没起来就明确告诉页面原因，页面据此提示重试（而不是弹系统相机）。
+                let reason = CameraEngine.shared.permissionDenied ? "没有相机权限：去「设置 → 灵爪收纳」里打开相机" : "相机还没准备好，稍等一下再拍"
+                return fail(requestID, reason)
             }
-            // 内联连拍永远是扫描用途，避免沿用上一次的 "after" 走进整理后分支。
-            capturePurpose = "scan"
+            // purpose=after 是「整理后打卡照」，只回缩略图；其余一律按扫描用途处理。
+            let isAfter = payload["purpose"] as? String == "after"
+            capturePurpose = isAfter ? "after" : "scan"
             pendingRequestID = requestID
             // 先把图送回页面：识别（10 个模型）要几秒，不能让快门等它。
             let preview = Self.thumbnailDataURL(for: image)
             respond(requestID, data: ["preview": preview as Any, "state": stateObject()])
+            // 整理后的照片不参与识别，避免把成果照里的物品重复计入本次扫描。
+            if isAfter { return }
 
             let previous = scanQueueTask
             scanQueueTask = Task { [weak self] in
