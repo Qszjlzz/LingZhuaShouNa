@@ -301,7 +301,7 @@ final class AppViewModel: ObservableObject {
     }
 
     /// Merges complementary views of the same space before the user confirms the result.
-    func scanImages(_ images: [UIImage]) async {
+    func scanImages(_ images: [UIImage], accumulate: Bool = false) async {
         guard let primaryImage = images.first else { return }
         let scanID = UUID()
         activeScanID = scanID
@@ -329,7 +329,22 @@ final class AppViewModel: ObservableObject {
                 }
             }
 
-            scannedItems = mergedItems
+            // 连拍时每张都要并入结果：直接替换会让前面几张白拍。
+            if accumulate {
+                var base = scannedItems
+                for item in mergedItems {
+                    if let index = base.firstIndex(where: {
+                        $0.name == item.name && $0.category == item.category
+                    }) {
+                        base[index].confidence = max(base[index].confidence, item.confidence)
+                    } else {
+                        base.append(item)
+                    }
+                }
+                scannedItems = base
+            } else {
+                scannedItems = mergedItems
+            }
             if let selectedSpaceID, let index = spaces.firstIndex(where: { $0.id == selectedSpaceID }) {
                 spaces[index].detectedItems = scannedItems
                 spaces[index].beforeImageName = try saveImage(primaryImage, prefix: "before")

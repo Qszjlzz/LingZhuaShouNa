@@ -1299,6 +1299,9 @@ function CaptureStep({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const recTimer = useRef<any>(null);
+  // 真实取景：相机画面垫在 WebView 底下，页面原地透明透出来，UI 一个像素都不动。
+  const previewRef = useRef<HTMLDivElement>(null);
+  const [liveFeed, setLiveFeed] = useState(false);
 
   // Swipe / drag state
   const dragStartX = useRef<number | null>(null);
@@ -1308,6 +1311,56 @@ function CaptureStep({
   const angleHint = ANGLE_HINTS[Math.min(shots.length, ANGLE_HINTS.length - 1)];
   const fmt = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 
+  // 进入拍摄页就起真相机；离开时关掉。拿不到原生层（模拟器/未授权）就用占位图。
+  useEffect(() => {
+    let stopped = false;
+    const rectOf = () => {
+      const r = previewRef.current?.getBoundingClientRect();
+      return r
+        ? { x: r.x, y: r.y, width: r.width, height: r.height }
+        : { x: 0, y: 0, width: window.innerWidth, height: window.innerHeight };
+    };
+    (async () => {
+      try {
+        const res = await nativeRequest<{ ok: boolean }>("camera.preview.start", rectOf());
+        if (!stopped) setLiveFeed(res.ok === true);
+      } catch {
+        /* 没有原生层就沿用占位图 */
+      }
+    })();
+    const sync = () => {
+      void nativeRequest("camera.preview.frame", rectOf()).catch(() => {});
+    };
+    window.addEventListener("resize", sync);
+    return () => {
+      stopped = true;
+      window.removeEventListener("resize", sync);
+      void nativeRequest("camera.preview.stop", {}).catch(() => {});
+    };
+  }, []);
+
+  // 画面要透上来，得把预览区以上这条链路的背景临时改成透明，离开时还原。
+  useEffect(() => {
+    if (!liveFeed) return;
+    const chain: HTMLElement[] = [];
+    let node: HTMLElement | null = previewRef.current;
+    while (node) {
+      chain.push(node);
+      node = node.parentElement;
+    }
+    const saved = chain.map((el) => el.style.background);
+    const savedHtml = document.documentElement.style.background;
+    const savedBody = document.body.style.background;
+    chain.forEach((el) => { el.style.background = "transparent"; });
+    document.documentElement.style.background = "transparent";
+    document.body.style.background = "transparent";
+    return () => {
+      chain.forEach((el, i) => { el.style.background = saved[i]; });
+      document.documentElement.style.background = savedHtml;
+      document.body.style.background = savedBody;
+    };
+  }, [liveFeed]);
+
   const snapPhoto = async () => {
     if (busy) return;
     setShutter(true);
@@ -1315,11 +1368,19 @@ function CaptureStep({
     setBusy(true);
     setError(null);
     try {
-      const result = await nativeRequest<{ previews?: string[] }>("scan.open", {
-        mode: "photo",
-        single: true,
-      });
-      const src = (result.previews ?? []).filter(Boolean)[0];
+      let src: string | undefined;
+      // 有实时画面就原地拍一张，全程不离开这个页面。
+      if (liveFeed) {
+        const shot = await nativeRequest<{ preview?: string }>("camera.capture", {});
+        src = shot.preview;
+      }
+      if (!src) {
+        const result = await nativeRequest<{ previews?: string[] }>("scan.open", {
+          mode: "photo",
+          single: true,
+        });
+        src = (result.previews ?? []).filter(Boolean)[0];
+      }
       if (!src) {
         setError("没有拿到照片，光线亮一点再试一次");
         return;
@@ -1365,8 +1426,15 @@ function CaptureStep({
     recTimer.current = setInterval(() => setRecDuration((d) => d + 1), 1000);
     try {
       // 真实 AR 扫描由原生页完成，这里只负责把结果收进照片条。
-      const result = await nativeRequest<{ previews?: string[] }>("scan.open", { mode: "ar" });
-      const src = (result.previews ?? []).filter(Boolean)[0];
+      let src: string | undefined;
+      if (liveFeed) {
+        const shot = await nativeRequest<{ preview?: string }>("camera.capture", {});
+        src = shot.preview;
+      }
+      if (!src) {
+        const result = await nativeRequest<{ previews?: string[] }>("scan.open", { mode: "ar" });
+        src = (result.previews ?? []).filter(Boolean)[0];
+      }
       if (!src) {
         setError("扫描没有生成画面，换一个角度再试一次");
         return;
@@ -1685,9 +1753,15 @@ function CaptureStep({
 
   /* ---- CAMERA MODE ---- */
   return (
-    <div className="relative h-full w-full overflow-hidden" style={{ backgroundColor: "#1a1411" }}>
-      {/* Live camera feed */}
-      <ImageWithFallback src={ROOM_IMG} alt="Camera" className="h-full w-full object-cover" />
+    <div
+      ref={previewRef}
+      className="relative h-full w-full overflow-hidden"
+      style={{ backgroundColor: liveFeed ? "transparent" : "#1a1411" }}
+    >
+      {/* Live camera feed —— 真机上是垫在底下的真实画面，拿不到时才用占位图 */}
+      {!liveFeed && (
+        <ImageWithFallback src={ROOM_IMG} alt="Camera" className="h-full w-full object-cover" />
+      )}
 
       {/* subtle vignette */}
       <div

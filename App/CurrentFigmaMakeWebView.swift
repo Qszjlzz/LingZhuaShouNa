@@ -165,6 +165,7 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
                 frame = CGRect(x: x, y: y, width: w, height: h)
             }
             let ok = await CameraPreviewOverlay.shared.start(in: webView, frame: frame)
+            if ok { await MainActor.run { viewModel.scannedItems = [] } }
             respond(requestID, data: ["ok": ok])
         }
 
@@ -179,8 +180,10 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
             guard let image = await CameraPreviewOverlay.shared.capture() else {
                 return fail(requestID, "相机不可用")
             }
+            // 内联连拍永远是扫描用途，避免沿用上一次的 "after" 走进整理后分支。
+            capturePurpose = "scan"
             pendingRequestID = requestID
-            consume(images: [image])
+            consume(images: [image], accumulate: true)
         }
 
         /// 直接用 App 内置取景框拍照，避免跳到系统相机破坏演示连贯性。
@@ -224,7 +227,7 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
         }
 
         /// 网页只需要一张能看的小图。原图留在原生侧做识别，不跨桥回传。
-        private static func thumbnailDataURL(for image: UIImage, width: CGFloat = 240) -> String? {
+        private static func thumbnailDataURL(for image: UIImage, width: CGFloat = 640) -> String? {
             let ratio = image.size.height / max(image.size.width, 1)
             let target = CGSize(width: width, height: width * ratio)
             UIGraphicsBeginImageContextWithOptions(target, false, 1)
@@ -243,7 +246,7 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
             }
         }
 
-        private func consume(images: [UIImage]) {
+        private func consume(images: [UIImage], accumulate: Bool = false) {
             let requestID = pendingRequestID
             // 只回传小图：网页只做展示，识别用的是原生侧的原图。
             // 之前这里回传全分辨率 JPEG 的 base64，几张连拍就能把 WebView 撑到被系统杀掉。
@@ -253,7 +256,7 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
                 respond(requestID, data: ["preview": preview as Any, "state": stateObject()]); return
             }
             Task {
-                await viewModel.scanImages(images)
+                await viewModel.scanImages(images, accumulate: accumulate)
                 respond(requestID, data: ["preview": preview as Any, "state": stateObject()])
             }
         }
