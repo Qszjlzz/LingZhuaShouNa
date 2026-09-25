@@ -1285,61 +1285,428 @@ function CaptureStep({
   onClose: () => void;
   on完成: (assets: CapturedAsset[]) => void;
 }) {
+  const [flash, setFlash] = useState(false);
+  const [pressed, setPressed] = useState(false);
+  const [mode, setMode] = useState<"photo" | "video">("photo");
+  const [shots, setShots] = useState<CapturedAsset[]>([]);
+  const [recording, setRecording] = useState(false);
+  const [recDuration, setRecDuration] = useState(0);
+  const [shutter, setShutter] = useState(false);
+  const [previewMode, setPreviewMode] = useState(false);
+  const [currentIdx, setCurrentIdx] = useState(0);
+  const [reshootIdx, setReshootIdx] = useState<number | null>(null);
+  const [freshEntryId, setFreshEntryId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [hint, setHint] = useState<string | null>(null);
+  const recTimer = useRef<any>(null);
 
-  // 画面和拍照都在原生页里做，这一层只负责接入口和结果。
-  // 原图留在原生侧给 AI 识别，网页只拿到 240px 缩略图做展示，
-  // 所以连拍多少张都不会把内存撑爆。
-  const openStudio = async (mode: "photo" | "ar") => {
+  // Swipe / drag state
+  const dragStartX = useRef<number | null>(null);
+  const isDragging = useRef(false);
+  const [dragOffset, setDragOffset] = useState(0);
+
+  const angleHint = ANGLE_HINTS[Math.min(shots.length, ANGLE_HINTS.length - 1)];
+  const fmt = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+
+  const snapPhoto = async () => {
     if (busy) return;
+    setShutter(true);
+    setTimeout(() => setShutter(false), 200);
     setBusy(true);
     setError(null);
-    setHint(null);
     try {
-      const result = await nativeRequest<{ previews?: string[]; state: NativeState }>(
-        "scan.open",
-        { mode }
-      );
-      const list = (result.previews ?? []).filter(Boolean);
-      if (list.length === 0) throw new Error("没有拿到照片，光线亮一点再试一次");
-      const assets: CapturedAsset[] = list.map((src, i) => ({
-        id: `p${Date.now()}-${i}`,
-        kind: "photo",
-        src,
-        label: ANGLE_HINTS[i] || `拍摄 ${i + 1}`,
-      }));
-      on完成(assets);
+      const result = await nativeRequest<{ previews?: string[] }>("scan.open", {
+        mode: "photo",
+        single: true,
+      });
+      const src = (result.previews ?? []).filter(Boolean)[0];
+      if (!src) {
+        setError("没有拿到照片，光线亮一点再试一次");
+        return;
+      }
+    const newId = `p${Date.now()}`;
+    const newShot: CapturedAsset = {
+      id: newId,
+      kind: "photo",
+      src,
+      label: ANGLE_HINTS[reshootIdx !== null ? reshootIdx : shots.length] || `拍摄 ${shots.length + 1}`,
+    };
+
+    if (reshootIdx !== null) {
+      const idx = reshootIdx;
+      setShots((arr) => arr.map((s, i) => (i === idx ? newShot : s)));
+      setCurrentIdx(idx);
+      setFreshEntryId(newId);
+      setReshootIdx(null);
+    } else {
+      setShots((arr) => {
+        const next = [...arr, newShot];
+        setCurrentIdx(next.length - 1);
+        return next;
+      });
+      setFreshEntryId(newId);
+    }
+
+    setTimeout(() => setPreviewMode(true), 220);
     } catch (e) {
       const message = e instanceof Error ? e.message : "拍摄未完成";
-      if (message === "已取消") {
-        setHint(mode === "ar" ? "已退出扫描，需要时再点一次 AR 扫描" : "已退出拍摄，需要时再点一次多张连拍");
-      } else {
-        setError(message);
-      }
+      if (message !== "已取消") setError(message);
     } finally {
       setBusy(false);
     }
   };
 
-  return (
-    <div className="h-full w-full flex flex-col items-center justify-end" style={{ backgroundColor: "#1a1411" }}>
-      {/* 示例房间压暗做底，原生相机还没起来时不至于一片漆黑 */}
-      <div className="absolute inset-0">
-        <ImageWithFallback
-          src={ROOM_IMG}
-          alt="room"
-          className="h-full w-full object-cover"
-          style={{ opacity: 0.26 }}
-        />
-        <div
-          className="absolute inset-0"
-          style={{ background: "radial-gradient(ellipse at center, rgba(0,0,0,0) 55%, rgba(0,0,0,0.55) 100%)" }}
-        />
-      </div>
+  const toggleRecord = async () => {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    setRecording(true);
+    setRecDuration(0);
+    recTimer.current = setInterval(() => setRecDuration((d) => d + 1), 1000);
+    try {
+      // 真实 AR 扫描由原生页完成，这里只负责把结果收进照片条。
+      const result = await nativeRequest<{ previews?: string[] }>("scan.open", { mode: "ar" });
+      const src = (result.previews ?? []).filter(Boolean)[0];
+      if (!src) {
+        setError("扫描没有生成画面，换一个角度再试一次");
+        return;
+      }
+      const newId = `v${Date.now()}`;
+      const newVideo: CapturedAsset = {
+        id: newId,
+        kind: "video",
+        src,
+        label: "AR扫描视频",
+        duration: Math.max(recDuration, 3),
+      };
+      setShots((arr) => {
+        const next = [...arr, newVideo];
+        setCurrentIdx(next.length - 1);
+        return next;
+      });
+      setFreshEntryId(newId);
+      setTimeout(() => setPreviewMode(true), 220);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "扫描未完成";
+      if (message !== "已取消") setError(message);
+    } finally {
+      clearInterval(recTimer.current);
+      setRecording(false);
+      setRecDuration(0);
+      setBusy(false);
+    }
+  };
 
-      {/* 顶栏 */}
+  const deleteShot = () => {
+    const newShots = shots.filter((_, i) => i !== currentIdx);
+    if (newShots.length === 0) {
+      setShots([]);
+      setPreviewMode(false);
+      setCurrentIdx(0);
+      return;
+    }
+    setShots(newShots);
+    setCurrentIdx(Math.min(currentIdx, newShots.length - 1));
+  };
+
+  const reshootCurrent = () => {
+    setReshootIdx(currentIdx);
+    setFreshEntryId(null);
+    setPreviewMode(false);
+  };
+
+  const addMore = () => {
+    setReshootIdx(null);
+    setFreshEntryId(null);
+    setPreviewMode(false);
+  };
+
+  const handleDragStart = (x: number) => {
+    dragStartX.current = x;
+    isDragging.current = true;
+  };
+
+  const handleDragMove = (x: number) => {
+    if (!isDragging.current || dragStartX.current === null) return;
+    setDragOffset(x - dragStartX.current);
+  };
+
+  const handleDragEnd = () => {
+    if (!isDragging.current) return;
+    isDragging.current = false;
+    const maxIdx = shots.length; // index shots.length = "+" card
+    if (dragOffset < -60) {
+      setCurrentIdx((i) => Math.min(i + 1, maxIdx));
+    } else if (dragOffset > 60) {
+      setCurrentIdx((i) => Math.max(i - 1, 0));
+    }
+    setDragOffset(0);
+    dragStartX.current = null;
+  };
+
+  /* ---- PREVIEW MODE ---- */
+  if (previewMode) {
+    const SLIDE_W = 390;
+    const totalSlides = shots.length + 1;
+    const isOnPlus = currentIdx === shots.length;
+    const translateX = -(currentIdx * SLIDE_W) + dragOffset;
+
+    return (
+      <div className="absolute inset-0" style={{ backgroundColor: "#0d0b09" }}>
+        {/* Shutter flash overlay */}
+        <AnimatePresence>
+          {shutter && (
+            <motion.div
+              className="absolute inset-0 pointer-events-none"
+              style={{ backgroundColor: WHITE, zIndex: 100 }}
+              initial={{ opacity: 0.9 }}
+              animate={{ opacity: 0 }}
+              transition={{ duration: 0.22 }}
+            />
+          )}
+        </AnimatePresence>
+
+        {/* Header */}
+        <div
+          className="absolute left-0 right-0 flex items-center justify-between px-5"
+          style={{ top: 0, paddingTop: 54, paddingBottom: 12, zIndex: 20 }}
+        >
+          <button
+            onClick={onClose}
+            className="h-10 w-10 rounded-full flex items-center justify-center"
+            style={{ backgroundColor: "rgba(255,255,255,0.10)" }}
+          >
+            <X size={18} color={WHITE} />
+          </button>
+          <motion.span
+            key={currentIdx}
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            style={{ color: WHITE, fontSize: 15, fontWeight: 600 }}
+          >
+            {isOnPlus ? "添加照片" : `${currentIdx + 1} / ${shots.length}`}
+          </motion.span>
+          <div style={{ width: 40 }} />
+        </div>
+
+        {/* Carousel */}
+        <div
+          className="absolute"
+          style={{ top: 108, bottom: 148, left: 0, right: 0, overflow: "hidden" }}
+          onMouseDown={(e) => handleDragStart(e.clientX)}
+          onMouseMove={(e) => handleDragMove(e.clientX)}
+          onMouseUp={handleDragEnd}
+          onMouseLeave={handleDragEnd}
+          onTouchStart={(e) => handleDragStart(e.touches[0].clientX)}
+          onTouchMove={(e) => {
+            e.preventDefault();
+            handleDragMove(e.touches[0].clientX);
+          }}
+          onTouchEnd={handleDragEnd}
+        >
+          <div
+            style={{
+              display: "flex",
+              width: `${totalSlides * SLIDE_W}px`,
+              height: "100%",
+              transform: `translateX(${translateX}px)`,
+              transition: isDragging.current ? "none" : "transform 0.32s cubic-bezier(0.22,1,0.36,1)",
+              userSelect: "none",
+              touchAction: "pan-y",
+            }}
+          >
+            {shots.map((shot, i) => (
+              <motion.div
+                key={shot.id}
+                initial={shot.id === freshEntryId ? { scale: 0.72, opacity: 0 } : false}
+                animate={{
+                  scale: i === currentIdx ? 1 : 0.88,
+                  opacity: i === currentIdx ? 1 : 0.45,
+                }}
+                transition={{ type: "spring", stiffness: 320, damping: 28 }}
+                style={{
+                  width: SLIDE_W,
+                  height: "100%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  padding: "0 22px",
+                  flexShrink: 0,
+                }}
+              >
+                <div
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    borderRadius: 14,
+                    overflow: "hidden",
+                    boxShadow:
+                      i === currentIdx
+                        ? "0 20px 60px rgba(0,0,0,0.65)"
+                        : "0 4px 16px rgba(0,0,0,0.3)",
+                  }}
+                >
+                  <img
+                    src={shot.src}
+                    alt={shot.label}
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      objectFit: "contain",
+                      backgroundColor: "#111",
+                      pointerEvents: "none",
+                      display: "block",
+                    }}
+                    draggable={false}
+                  />
+                </div>
+              </motion.div>
+            ))}
+
+            {/* "+" card */}
+            <div
+              style={{
+                width: SLIDE_W,
+                height: "100%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+                cursor: "pointer",
+              }}
+              onClick={addMore}
+            >
+              <motion.div
+                animate={{ opacity: isOnPlus ? 1 : 0.42, scale: isOnPlus ? 1 : 0.88 }}
+                transition={{ type: "spring", stiffness: 320, damping: 28 }}
+                style={{
+                  width: 150,
+                  height: 200,
+                  borderRadius: 18,
+                  border: "1.5px dashed rgba(255,255,255,0.32)",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 14,
+                }}
+              >
+                <div
+                  style={{
+                    width: 56,
+                    height: 56,
+                    borderRadius: 28,
+                    backgroundColor: "rgba(255,255,255,0.10)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Plus size={28} color={WHITE} />
+                </div>
+                <span style={{ color: "rgba(255,255,255,0.72)", fontSize: 13, fontWeight: 500 }}>
+                  添加照片
+                </span>
+              </motion.div>
+            </div>
+          </div>
+        </div>
+
+        {/* Dot indicators */}
+        <div
+          className="absolute flex items-center justify-center gap-1.5"
+          style={{ bottom: 156, left: 0, right: 0 }}
+        >
+          {[...shots, null].map((_, i) => (
+            <motion.div
+              key={i}
+              animate={{
+                width: i === currentIdx ? 20 : 5,
+                opacity: i === currentIdx ? 1 : 0.35,
+                backgroundColor:
+                  i === shots.length ? "rgba(255,255,255,0.5)" : WHITE,
+              }}
+              transition={{ duration: 0.22 }}
+              style={{ height: 5, borderRadius: 3 }}
+            />
+          ))}
+        </div>
+
+        {/* Bottom dock */}
+        <div
+          className="absolute bottom-0 left-0 right-0 flex items-center gap-2.5"
+          style={{
+            padding: "14px 16px 42px",
+            backgroundColor: "rgba(18,13,10,0.92)",
+            borderTop: "1px solid rgba(255,255,255,0.06)",
+          }}
+        >
+          <button
+            onClick={reshootCurrent}
+            disabled={isOnPlus}
+            className="flex-1 flex flex-col items-center gap-1.5 py-3 rounded-2xl"
+            style={{
+              backgroundColor: "rgba(255,255,255,0.07)",
+              opacity: isOnPlus ? 0.28 : 1,
+            }}
+          >
+            <RotateCcw size={17} color={WHITE} />
+            <span style={{ color: WHITE, fontSize: 11, fontWeight: 500 }}>重拍这张</span>
+          </button>
+          <button
+            onClick={deleteShot}
+            disabled={isOnPlus}
+            className="flex-1 flex flex-col items-center gap-1.5 py-3 rounded-2xl"
+            style={{
+              backgroundColor: "rgba(255,255,255,0.07)",
+              opacity: isOnPlus ? 0.28 : 1,
+            }}
+          >
+            <Trash2 size={17} color="#E06060" />
+            <span style={{ color: "#E06060", fontSize: 11, fontWeight: 500 }}>删除</span>
+          </button>
+          <button
+            onClick={() => on完成(shots)}
+            disabled={shots.length === 0}
+            className="flex-1 flex flex-col items-center gap-1.5 py-3 rounded-2xl"
+            style={{
+              backgroundColor: shots.length > 0 ? ORANGE : "rgba(255,255,255,0.12)",
+              opacity: shots.length === 0 ? 0.4 : 1,
+              boxShadow: shots.length > 0 ? "0 6px 22px rgba(250,136,58,0.38)" : "none",
+            }}
+          >
+            <Check size={17} color={WHITE} />
+            <span style={{ color: WHITE, fontSize: 11, fontWeight: 600 }}>完成</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  /* ---- CAMERA MODE ---- */
+  return (
+    <div className="relative h-full w-full overflow-hidden" style={{ backgroundColor: "#1a1411" }}>
+      {/* Live camera feed */}
+      <ImageWithFallback src={ROOM_IMG} alt="Camera" className="h-full w-full object-cover" />
+
+      {/* subtle vignette */}
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          background:
+            "radial-gradient(ellipse at center, rgba(0,0,0,0) 55%, rgba(0,0,0,0.35) 100%)",
+        }}
+      />
+
+      {/* Shutter flash */}
+      {shutter && (
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{ backgroundColor: WHITE, opacity: 0.85 }}
+        />
+      )}
+
+      {/* Top bar */}
       <div className="absolute top-0 left-0 right-0 px-5 pt-14 flex items-center justify-between">
         <button
           onClick={onClose}
@@ -1350,55 +1717,139 @@ function CaptureStep({
         </button>
         <div
           className="px-3.5 py-2 flex items-center gap-2"
-          style={{ backgroundColor: "rgba(255,255,255,0.92)", borderRadius: 999 }}
+          style={{
+            backgroundColor: recording ? "#E25555" : "rgba(255,255,255,0.92)",
+            borderRadius: 999,
+          }}
         >
-          <Sparkles size={13} color={ORANGE} />
-          <span style={{ color: COFFEE, fontSize: 12, fontWeight: 500 }}>
-            {busy ? "正在打开相机…" : "拍摄识别 · AI 整理"}
-          </span>
+          {recording ? (
+            <>
+              <div
+                className="h-2 w-2 rounded-full"
+                style={{ backgroundColor: WHITE, animation: "pulse 1s infinite" }}
+              />
+              <span style={{ color: WHITE, fontSize: 12, fontWeight: 600 }}>REC {fmt(recDuration)}</span>
+            </>
+          ) : (
+            <>
+              <Sparkles size={13} color={ORANGE} />
+              <span style={{ color: COFFEE, fontSize: 12, fontWeight: 500 }}>
+                {reshootIdx !== null
+                  ? `重拍第 ${reshootIdx + 1} 张`
+                  : mode === "photo"
+                  ? `已拍 ${shots.length} 张 · ${angleHint}`
+                  : "AR 扫描就绪"}
+              </span>
+            </>
+          )}
         </div>
       </div>
 
-      {/* 两个入口：点 AR 扫描就直接进实时识别，不用再按快门 */}
-      <div className="w-full px-5 pb-10">
-        <div className="flex justify-center mb-6">
-          <div
-            className="flex p-1"
-            style={{
-              backgroundColor: "rgba(0,0,0,0.45)",
-              borderRadius: 999,
-              backdropFilter: "blur(8px)",
-            }}
-          >
-            {([["photo", "多张连拍", Camera], ["ar", "AR 扫描", Box]] as const).map(
-              ([key, label, Icon]) => (
-                <button
-                  key={key}
-                  onClick={() => openStudio(key)}
-                  disabled={busy}
-                  className="px-5 py-2.5 flex items-center gap-1.5"
-                  style={{
-                    backgroundColor: "transparent",
-                    color: WHITE,
-                    borderRadius: 999,
-                    fontSize: 12,
-                    fontWeight: 600,
-                    opacity: busy ? 0.5 : 1,
-                  }}
-                >
-                  <Icon size={13} />
-                  {label}
-                </button>
-              )
-            )}
-          </div>
+      {/* Mode switcher */}
+      <div className="absolute left-1/2 -translate-x-1/2" style={{ top: 110 }}>
+        <div
+          className="flex p-1"
+          style={{ backgroundColor: "rgba(0,0,0,0.45)", borderRadius: 999, backdropFilter: "blur(8px)" }}
+        >
+          {(["photo", "video"] as const).map((m) => (
+            <button
+              key={m}
+              onClick={() => setMode(m)}
+              disabled={recording}
+              className="px-4 py-1.5 flex items-center gap-1.5"
+              style={{
+                backgroundColor: mode === m ? WHITE : "transparent",
+                color: mode === m ? COFFEE : WHITE,
+                borderRadius: 999,
+                fontSize: 11,
+                fontWeight: 600,
+              }}
+            >
+              {m === "photo" ? <Camera size={12} /> : <Box size={12} />}
+              {m === "photo" ? "多张连拍" : "AR 扫描"}
+            </button>
+          ))}
         </div>
+      </div>
 
-        {/* 快门的视觉保留，点它同样打开原生相机 */}
-        <div className="flex items-center justify-center">
+      {/* Framing guides — subtle corner brackets */}
+      <div className="absolute inset-x-10 top-32 bottom-52 pointer-events-none">
+        <CornerBracket pos="tl" />
+        <CornerBracket pos="tr" />
+        <CornerBracket pos="bl" />
+        <CornerBracket pos="br" />
+      </div>
+
+      {/* Flash button (mid-bottom over feed) */}
+      <button
+        onClick={() => setFlash((f) => !f)}
+        className="absolute h-9 w-9 rounded-full flex items-center justify-center"
+        style={{
+          left: "50%",
+          transform: "translateX(-50%)",
+          bottom: 188,
+          backgroundColor: flash ? ORANGE : "rgba(0,0,0,0.45)",
+          backdropFilter: "blur(6px)",
+        }}
+      >
+        <Zap size={16} color={WHITE} fill={flash ? WHITE : "none"} />
+      </button>
+
+      {/* Bottom dock */}
+      <div
+        className="absolute bottom-0 left-0 right-0 px-5 pt-4 pb-8"
+        style={{
+          backgroundColor: "rgba(246,241,235,0.95)",
+          borderTopLeftRadius: 28,
+          borderTopRightRadius: 28,
+          backdropFilter: "blur(10px)",
+        }}
+      >
+        {/* Thumbnail strip — tap to jump back into preview */}
+        {shots.length > 0 && (
+          <div className="flex gap-2 mb-3 overflow-x-auto -mx-1 px-1">
+            {shots.map((s, i) => (
+              <button
+                key={s.id}
+                onClick={() => { setCurrentIdx(i); setPreviewMode(true); }}
+                className="relative flex-shrink-0"
+                style={{ width: 52, height: 52, borderRadius: 10, overflow: "hidden", border: `2px solid ${ORANGE}` }}
+              >
+                <ImageWithFallback src={s.src} alt={s.label} className="h-full w-full object-cover" />
+                {s.kind === "video" && (
+                  <div
+                    className="absolute bottom-0 left-0 right-0 text-center"
+                    style={{ backgroundColor: "rgba(0,0,0,0.55)", color: WHITE, fontSize: 8, padding: 1 }}
+                  >
+                    {fmt(s.duration)}
+                  </div>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
+
+        <div className="flex items-center justify-between">
+          {/* Left: shot counter */}
           <button
-            onClick={() => openStudio("photo")}
-            disabled={busy}
+            onClick={() => shots.length > 0 && setPreviewMode(true)}
+            className="h-12 w-12 rounded-2xl flex flex-col items-center justify-center flex-shrink-0"
+            style={{ backgroundColor: WHITE }}
+          >
+            <span style={{ color: COFFEE, fontSize: 15, fontWeight: 700, lineHeight: 1 }}>
+              {shots.length}
+            </span>
+            <span style={{ color: COFFEE, opacity: 0.55, fontSize: 8, marginTop: 1 }}>
+              {mode === "photo" ? "张" : "段"}
+            </span>
+          </button>
+
+          {/* Shutter */}
+          <button
+            onMouseDown={() => setPressed(true)}
+            onMouseUp={() => setPressed(false)}
+            onMouseLeave={() => setPressed(false)}
+            onClick={mode === "photo" ? snapPhoto : toggleRecord}
             className="rounded-full flex items-center justify-center"
             style={{
               width: 72,
@@ -1406,32 +1857,61 @@ function CaptureStep({
               backgroundColor: "rgba(255,255,255,0.6)",
               border: `4px solid ${WHITE}`,
               boxShadow: "0 8px 24px rgba(123,92,72,0.25)",
-              opacity: busy ? 0.5 : 1,
+              transform: pressed ? "scale(0.92)" : "scale(1)",
+              transition: "transform 0.1s",
             }}
           >
-            <div className="rounded-full" style={{ width: 52, height: 52, backgroundColor: "#cfc6bb" }} />
+            {mode === "video" && recording ? (
+              <div className="rounded" style={{ width: 26, height: 26, backgroundColor: "#E25555" }} />
+            ) : mode === "video" ? (
+              <div className="rounded-full" style={{ width: 52, height: 52, backgroundColor: "#E25555" }} />
+            ) : (
+              <div
+                className="rounded-full"
+                style={{ width: 52, height: 52, backgroundColor: pressed ? COFFEE : "#cfc6bb" }}
+              />
+            )}
+          </button>
+
+          {/* Right: 完成 */}
+          <button
+            onClick={() => shots.length > 0 && on完成(shots)}
+            disabled={shots.length === 0}
+            className="h-12 px-3 rounded-2xl flex items-center gap-1 flex-shrink-0"
+            style={{
+              backgroundColor: shots.length > 0 ? ORANGE : SOFT,
+              opacity: shots.length > 0 ? 1 : 0.5,
+              boxShadow: shots.length > 0 ? "0 6px 16px rgba(250,136,58,0.35)" : "none",
+            }}
+          >
+            <Check size={15} color={WHITE} />
+            <span style={{ color: WHITE, fontSize: 12, fontWeight: 600 }}>完成</span>
           </button>
         </div>
 
         <p
-          className="mt-5 text-center whitespace-pre-line"
-          style={{ color: WHITE, opacity: 0.72, fontSize: 11, lineHeight: 1.6 }}
+          style={{
+            color: error ? "#C44545" : COFFEE,
+            opacity: error ? 1 : 0.5,
+            fontSize: 10,
+            marginTop: 8,
+            textAlign: "center",
+          }}
         >
           {error
             ? error
-            : hint
-            ? hint
             : busy
-            ? "正在打开原生相机…"
-            : "多张连拍：一次可拍多张，AI 会合并识别\nAR 扫描：进入即开始实时识别，无需再按快门"}
+            ? "正在打开相机…"
+            : reshootIdx !== null
+            ? `正在重拍第 ${reshootIdx + 1} 张 · 点击快门替换`
+            : mode === "photo"
+            ? `拍摄不同角度以提高识别精度 · 下一角度: ${angleHint}`
+            : "点击红色按钮开始 AR 扫描，缓慢环绕房间"}
         </p>
       </div>
     </div>
   );
 }
-
-/* ---------- 0b. Review captured assets ---------- */
-
 function ReviewStep({
   assets,
   onBack,

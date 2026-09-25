@@ -201,15 +201,19 @@ final class ScanStudioModel: ObservableObject {
 
 struct ScanStudioView: View {
     var initialMode: ScanStudioModel.Mode
+    /// 网页按一次快门只收一张：拍完立刻回传，不留在原生页里继续拍。
+    var singleShot: Bool
     var onCommit: (ScanStudioResult) -> Void
     var onCancel: () -> Void
 
     @StateObject private var model: ScanStudioModel
 
     init(initialMode: ScanStudioModel.Mode = .photo,
+         singleShot: Bool = false,
          onCommit: @escaping (ScanStudioResult) -> Void,
          onCancel: @escaping () -> Void) {
         self.initialMode = initialMode
+        self.singleShot = singleShot
         self.onCommit = onCommit
         self.onCancel = onCancel
         _model = StateObject(wrappedValue: ScanStudioModel(mode: initialMode))
@@ -337,7 +341,15 @@ struct ScanStudioView: View {
 
                 Spacer()
 
-                Button { Task { await model.snap() } } label: {
+                Button {
+                    Task {
+                        await model.snap()
+                        let single = singleShot
+                        await MainActor.run {
+                            if single, let result = model.finish() { onCommit(result) }
+                        }
+                    }
+                } label: {
                     ZStack {
                         Circle().stroke(Color.white, lineWidth: 4).frame(width: 72, height: 72)
                         Circle().fill(Color.spSoft).frame(width: 52, height: 52)

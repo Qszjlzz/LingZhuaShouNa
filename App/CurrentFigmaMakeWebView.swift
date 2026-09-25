@@ -127,8 +127,10 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
             pendingRequestID = requestID
             capturePurpose = "scan"
             let wantsAR = payload["mode"] as? String == "ar"
+            let single = payload["single"] as? Bool ?? false
             let studio = ScanStudioView(
                 initialMode: wantsAR ? .ar : .photo,
+                singleShot: single,
                 onCommit: { [weak self] result in
                     guard let self else { return }
                     self.topViewController()?.dismiss(animated: true)
