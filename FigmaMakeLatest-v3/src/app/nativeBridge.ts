@@ -1,6 +1,9 @@
+export type NativeHint = { x: number; y: number; width: number; height: number };
 export type NativeItem = {
   id: string; name: string; category: string; confidence: number;
   suggestedZone: string; isSelected: boolean;
+  /** 归一化定位框，AR/照片上叠标签用 */
+  arHint?: NativeHint;
 };
 
 export type NativeStep = { id: string; title: string; detail: string; zone: string; status: "pending" | "active" | "done" };

@@ -1,3 +1,3 @@
-build: index-B-kkpfRs.js
-source: 完成页打卡照改走内联相机(purpose=after不触发识别)；全屏覆盖页fixed定位修复高度塌陷
-synced: 2026-09-26 01:54
+build: index-Dm8x579S.js
+source: AR改实时扫描(只标签无mask) + 检查照片页按设计稿重做(标签叠照片上)
+synced: 2026-09-26 02:23

@@ -93,6 +93,10 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
             case "camera.preview.start": await startInlinePreview(requestID: requestID, payload: payload)
             case "camera.preview.frame": updateInlinePreviewFrame(payload: payload); respond(requestID, data: ["ok": true])
             case "camera.preview.stop": CameraPreviewOverlay.shared.stop(); respond(requestID, data: ["ok": true])
+            // AR 实时扫描：连续取帧 → 本地模型（不联网、不出 mask）→ 页面只叠加名称标签。
+            case "ar.scan.start": await startARScan(requestID: requestID)
+            case "ar.scan.poll": pollARScan(requestID: requestID)
+            case "ar.scan.stop": stopARScan(); respond(requestID, data: ["ok": true])
             case "camera.capture": await captureInline(requestID: requestID, payload: payload)
             case "scan.await": await scanQueueTask?.value; respondWithState(requestID)
             case "scan.diagnose":
@@ -372,6 +376,90 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
         private func mutateCommunity(_ payload: [String: Any], requestID: String, action: (UUID) -> Void) {
             guard let id = uuid(payload["id"]) else { return fail(requestID, "案例 ID 无效") }
             action(id); respondWithState(requestID)
+        }
+
+        // MARK: - AR 实时扫描（网页用）
+
+        /// 网页 AR 实时通道：这一层只负责"喂帧 + 累积结果"，
+        /// 识别本体沿用原生那套已验证的本地实时管线（`RecognitionRouter.scanLiveImage`）。
+        private struct AREntry {
+            var name: String
+            var confidence: Double
+            var hint: ARHint?
+            var lastSeen: Date
+        }
+
+        private var arEntries: [AREntry] = []
+        private var arRecognizing = false
+        private let arPalette = ["#FA883A", "#7FA8C9", "#8B6F47", "#7BB89A", "#A8B8CC", "#E8B894", "#C98B8B", "#B4C7DC"]
+
+        private func startARScan(requestID: String) async {
+            let engine = CameraEngine.shared
+            // AR 是连续识别，必须自己把相机跑起来（页面可能还没起画面）。
+            if !engine.isRunning {
+                await engine.start()
+                _ = await engine.waitUntilReady(timeout: 2)
+            }
+            guard engine.isRunning else {
+                let reason = engine.permissionDenied ? "没有相机权限：去「设置 → 灵爪收纳」里打开相机" : "相机还没准备好，稍等一下再试"
+                return fail(requestID, reason)
+            }
+            arEntries = []
+            arRecognizing = false
+            engine.liveFrameInterval = 0.55
+            engine.onLiveFrame = { [weak self] image in
+                guard let self else { return }
+                Task { self.consumeARFrame(image) }
+            }
+            respond(requestID, data: ["ok": true])
+        }
+
+        private func consumeARFrame(_ image: UIImage) {
+            guard !arRecognizing else { return }
+            arRecognizing = true
+            Task {
+                let results = await RecognitionRouter.shared.scanLiveImage(image)
+                self.arRecognizing = false
+                self.mergeARResults(results)
+            }
+        }
+
+        /// 跨帧累物：同名保留置信度最高的一帧、位置跟着最新一帧走，2.5 秒没再出现就撤掉。
+        private func mergeARResults(_ incoming: [DetectedItem]) {
+            for item in incoming {
+                if let index = arEntries.firstIndex(where: { $0.name == item.name }) {
+                    if item.confidence >= arEntries[index].confidence {
+                        arEntries[index].confidence = item.confidence
+                        arEntries[index].hint = item.arHint ?? arEntries[index].hint
+                    }
+                    arEntries[index].lastSeen = Date()
+                } else {
+                    arEntries.append(AREntry(name: item.name, confidence: item.confidence, hint: item.arHint, lastSeen: Date()))
+                }
+            }
+            let cutoff = Date().addingTimeInterval(-2.5)
+            arEntries = Array(arEntries.filter { $0.lastSeen > cutoff }.sorted { $0.confidence > $1.confidence }.prefix(8))
+        }
+
+        private func pollARScan(requestID: String) {
+            let items: [[String: Any]] = arEntries.enumerated().map { index, entry in
+                var dict: [String: Any] = [
+                    "name": entry.name,
+                    "confidence": entry.confidence,
+                    "color": arPalette[index % arPalette.count],
+                ]
+                if let hint = entry.hint {
+                    dict["hint"] = ["x": hint.x, "y": hint.y, "width": hint.width, "height": hint.height]
+                }
+                return dict
+            }
+            respond(requestID, data: ["items": items, "count": items.count])
+        }
+
+        private func stopARScan() {
+            CameraEngine.shared.onLiveFrame = nil
+            arEntries = []
+            arRecognizing = false
         }
 
         private func stateObject() -> Any {

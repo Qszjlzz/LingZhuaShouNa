@@ -265,6 +265,11 @@ export function ShootFlow({
           onBack={() => setStep("capture")}
           onNext={() => setStep("confirm")}
           onRetake={() => setStep("capture")}
+          onDelete={(id) => {
+            const next = assets.filter((x) => x.id !== id);
+            setAssets(next);
+            if (next.length === 0) setStep("capture");
+          }}
         />
       )}
       {step === "confirm" && (
@@ -1438,6 +1443,10 @@ function CaptureStep({
   // 取景失败只在这页里提示 + 重试，绝不跳到系统相机页。
   const [camFailed, setCamFailed] = useState(false);
   const [camReason, setCamReason] = useState<string | null>(null);
+  // AR 页签 = 真·实时扫描：逐帧过本地模型，结果只作为名称标签叠在取景框上（无轮廓）。
+  const [arTags, setArTags] = useState<{ name: string; color: string; x: number; y: number }[]>([]);
+  const [arCount, setArCount] = useState(0);
+  const [arError, setArError] = useState<string | null>(null);
 
   // Swipe / drag state
   const dragStartX = useRef<number | null>(null);
@@ -1515,6 +1524,86 @@ function CaptureStep({
       document.body.style.background = savedBody;
     };
   }, [liveFeed]);
+
+  // 切到 AR 页签就起实时扫描；离开就停，避免后台一直跑模型。
+  useEffect(() => {
+    if (mode !== "video") {
+      void nativeRequest("ar.scan.stop", {}).catch(() => undefined);
+      setArTags([]);
+      setArCount(0);
+      return;
+    }
+    let alive = true;
+    let timer = 0;
+    (async () => {
+      try {
+        await nativeRequest("ar.scan.start", {});
+        if (!alive) return;
+        const poll = async () => {
+          try {
+            const res = await nativeRequest<{
+              items?: { name: string; color: string; hint?: { x: number; y: number } }[];
+              count?: number;
+            }>("ar.scan.poll", {});
+            if (!alive) return;
+            setArCount(res.count ?? 0);
+            setArTags(
+              (res.items ?? []).map((it, i) => ({
+                name: it.name,
+                color: it.color || "#FA883A",
+                // 模型没给位置时做一点错位，别让标签全叠在正中间。
+                x: it.hint?.x ?? 0.3 + (i % 3) * 0.2,
+                y: it.hint?.y ?? 0.3 + Math.floor(i / 3) * 0.16,
+              })),
+            );
+          } catch {
+            /* 轮询失败不打断画面 */
+          }
+        };
+        await poll();
+        timer = window.setInterval(poll, 400);
+      } catch (e) {
+        if (alive) setArError((e as Error).message);
+      }
+    })();
+    return () => {
+      alive = false;
+      if (timer) window.clearInterval(timer);
+      void nativeRequest("ar.scan.stop", {}).catch(() => undefined);
+    };
+  }, [mode]);
+
+  // AR 扫描结束：抓一帧当环境照，和拍照通道汇合到同一条后续流程。
+  const finishARScan = async () => {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      if (!liveFeed) {
+        setError("相机还没准备好，点一下画面里的重试");
+        void startPreview().then((ok) => setCamFailed(!ok));
+        return;
+      }
+      const shot = await nativeRequest<{ preview?: string }>("camera.capture", {});
+      if (!shot.preview) {
+        setError("没有拿到画面，换一个角度再试一次");
+        return;
+      }
+      await nativeRequest("ar.scan.stop", {}).catch(() => undefined);
+      const asset: CapturedAsset = {
+        id: `ar${Date.now()}`,
+        kind: "photo",
+        src: shot.preview,
+        label: "AR 实时扫描",
+      };
+      on完成([...shots, asset]);
+    } catch (e) {
+      const message = (e as Error).message;
+      if (message !== "已取消") setError(message);
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const snapPhoto = async () => {
     if (busy) return;
@@ -1980,7 +2069,9 @@ function CaptureStep({
                   ? `重拍第 ${reshootIdx + 1} 张`
                   : mode === "photo"
                   ? `已拍 ${shots.length} 张 · ${angleHint}`
-                  : "AR 扫描就绪"}
+                  : arError
+                  ? arError
+                  : `AR 实时扫描 · ${arCount} 件`}
               </span>
             </>
           )}
@@ -2021,6 +2112,31 @@ function CaptureStep({
         <CornerBracket pos="bl" />
         <CornerBracket pos="br" />
       </div>
+
+      {/* AR 实时标签：只有名称 + 一个小圆点，刻意不画识别轮廓 */}
+      {mode === "video" &&
+        arTags.map((t, i) => (
+          <div
+            key={`${t.name}-${i}`}
+            className="absolute pointer-events-none flex flex-col items-center"
+            style={{ left: `${Math.min(88, Math.max(12, t.x * 100))}%`, top: `${Math.min(88, Math.max(12, t.y * 100))}%`, transform: "translate(-50%, -50%)" }}
+          >
+            <span
+              className="px-2 py-0.5 whitespace-nowrap"
+              style={{
+                backgroundColor: "rgba(255,255,255,0.94)",
+                color: COFFEE,
+                borderRadius: 999,
+                fontSize: 11,
+                fontWeight: 600,
+                boxShadow: "0 2px 8px rgba(0,0,0,0.25)",
+              }}
+            >
+              {t.name}
+            </span>
+            <span style={{ width: 6, height: 6, borderRadius: 999, backgroundColor: t.color, marginTop: 3 }} />
+          </div>
+        ))}
 
       {/* Flash button (mid-bottom over feed) */}
       <button
@@ -2091,7 +2207,7 @@ function CaptureStep({
             onMouseDown={() => setPressed(true)}
             onMouseUp={() => setPressed(false)}
             onMouseLeave={() => setPressed(false)}
-            onClick={mode === "photo" ? snapPhoto : toggleRecord}
+            onClick={mode === "photo" ? snapPhoto : finishARScan}
             className="rounded-full flex items-center justify-center"
             style={{
               width: 72,
@@ -2103,10 +2219,10 @@ function CaptureStep({
               transition: "transform 0.1s",
             }}
           >
-            {mode === "video" && recording ? (
-              <div className="rounded" style={{ width: 26, height: 26, backgroundColor: "#E25555" }} />
-            ) : mode === "video" ? (
-              <div className="rounded-full" style={{ width: 52, height: 52, backgroundColor: "#E25555" }} />
+            {mode === "video" ? (
+              <div className="rounded-full flex items-center justify-center" style={{ width: 52, height: 52, backgroundColor: WHITE, border: `4px solid ${ORANGE}` }}>
+                <Check size={22} color={ORANGE} />
+              </div>
             ) : (
               <div
                 className="rounded-full"
@@ -2148,7 +2264,9 @@ function CaptureStep({
             ? `正在重拍第 ${reshootIdx + 1} 张 · 点击快门替换`
             : mode === "photo"
             ? `拍摄不同角度以提高识别精度 · 下一角度: ${angleHint}`
-            : "点击红色按钮开始 AR 扫描，缓慢环绕房间"}
+            : arCount > 0
+            ? `AR 实时扫描中 · 已识别 ${arCount} 件，缓慢环绕后点完成`
+            : "AR 实时扫描中 · 缓慢环绕房间，识别结果会直接显示"}
         </p>
       </div>
     </div>
@@ -2159,147 +2277,196 @@ function ReviewStep({
   onBack,
   onNext,
   onRetake,
+  onDelete,
 }: {
   assets: CapturedAsset[];
   onBack: () => void;
   onNext: () => void;
   onRetake: () => void;
+  onDelete: (id: string) => void;
 }) {
   const [primary, setPrimary] = useState(0);
-  const a = assets[primary];
+  const [loadingTags, setLoadingTags] = useState(true);
+  // 识别结果直接作为标签叠在照片上，位置优先用模型给的检测框。
+  const [tags, setTags] = useState<{ name: string; x: number; y: number }[]>([]);
+  const a = assets[Math.min(primary, Math.max(0, assets.length - 1))];
+
+  useEffect(() => {
+    let alive = true;
+    // 识别在后台跑（快门不等它），进这一步时先把结果等出来。
+    (async () => {
+      try {
+        await nativeRequest("scan.await", {});
+        const state = await nativeRequest<NativeState>("state.get");
+        if (!alive) return;
+        setTags(
+          (state.scannedItems ?? []).slice(0, 8).map((item, i) => ({
+            name: item.name,
+            x: item.arHint?.x ?? 0.28 + (i % 3) * 0.22,
+            y: item.arHint?.y ?? 0.26 + Math.floor(i / 3) * 0.17,
+          })),
+        );
+      } catch {
+        /* 取不到就不显示标签，页面仍可用 */
+      } finally {
+        if (alive) setLoadingTags(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [primary]);
 
   return (
-    <div className="h-full w-full flex flex-col" style={{ backgroundColor: LINEN }}>
+    <div className="h-full w-full flex flex-col" style={{ backgroundColor: "#16130F" }}>
+      {/* Top bar */}
       <div className="px-5 pt-14 pb-3 flex items-center justify-between">
         <button
           onClick={onBack}
           className="h-10 w-10 rounded-full flex items-center justify-center"
-          style={{ backgroundColor: WHITE }}
+          style={{ backgroundColor: "rgba(255,255,255,0.14)" }}
         >
-          <ArrowLeft size={18} color={COFFEE} />
+          <ArrowLeft size={18} color={WHITE} />
         </button>
         <div className="text-center">
-          <p style={{ color: COFFEE, fontSize: 15, fontWeight: 600 }}>查看拍摄</p>
-          <p style={{ color: COFFEE, opacity: 0.55, fontSize: 11 }}>
-            {assets.length} {assets.length === 1 ? "asset" : "assets"} ready
+          <p style={{ color: WHITE, fontSize: 15, fontWeight: 600 }}>检查照片</p>
+          <p style={{ color: "rgba(255,255,255,0.55)", fontSize: 11 }}>
+            {loadingTags
+              ? "正在识别刚刚拍到的物品…"
+              : tags.length > 0
+              ? `识别到 ${tags.length} 件物品`
+              : "还没有识别到物品"}
           </p>
         </div>
         <button
           onClick={onRetake}
           className="h-10 px-3 rounded-full flex items-center gap-1"
-          style={{ backgroundColor: WHITE }}
+          style={{ backgroundColor: "rgba(255,255,255,0.14)" }}
         >
-          <Camera size={13} color={COFFEE} />
-          <span style={{ color: COFFEE, fontSize: 11, fontWeight: 600 }}>添加</span>
+          <Plus size={14} color={WHITE} />
+          <span style={{ color: WHITE, fontSize: 11, fontWeight: 600 }}>添加</span>
         </button>
       </div>
 
-      <div className="mx-5 mt-2 relative overflow-hidden" style={{ borderRadius: 22, aspectRatio: "4/5" }}>
+      {/* Photo + recognition labels */}
+      <div className="mx-6 mt-2 relative overflow-hidden flex-1" style={{ borderRadius: 24, backgroundColor: "#0B0908" }}>
         {a ? (
           <>
-            <ImageWithFallback src={a.src} alt={a.label} className="h-full w-full object-cover" />
-            <span
-              className="absolute top-3 left-3 px-2.5 py-1"
-              style={{
-                backgroundColor: a.kind === "video" ? "#E25555" : "rgba(255,255,255,0.92)",
-                color: a.kind === "video" ? WHITE : COFFEE,
-                borderRadius: 999,
-                fontSize: 10,
-                fontWeight: 600,
-              }}
-            >
-              {a.kind === "video" ? `▶ AR scan · ${a.duration}s` : a.label}
-            </span>
+            <ImageWithFallback src={a.src} alt={a.label} className="absolute inset-0 h-full w-full object-cover" />
+            {tags.map((t, i) => (
+              <div
+                key={`${t.name}-${i}`}
+                className="absolute pointer-events-none"
+                style={{
+                  left: `${Math.min(86, Math.max(14, t.x * 100))}%`,
+                  top: `${Math.min(88, Math.max(10, t.y * 100))}%`,
+                  transform: "translate(-50%, -50%)",
+                }}
+              >
+                <span
+                  className="px-2.5 py-1 whitespace-nowrap"
+                  style={{
+                    backgroundColor: "rgba(255,255,255,0.94)",
+                    color: COFFEE,
+                    borderRadius: 999,
+                    fontSize: 11.5,
+                    fontWeight: 600,
+                    boxShadow: "0 3px 10px rgba(0,0,0,0.3)",
+                  }}
+                >
+                  {t.name}
+                </span>
+              </div>
+            ))}
+            {loadingTags && (
+              <div
+                className="absolute inset-0 flex items-end justify-center pb-4"
+                style={{ backgroundColor: "rgba(0,0,0,0.18)" }}
+              >
+                <span
+                  className="px-3 py-1.5"
+                  style={{ backgroundColor: "rgba(0,0,0,0.55)", color: WHITE, borderRadius: 999, fontSize: 11 }}
+                >
+                  正在识别中…
+                </span>
+              </div>
+            )}
           </>
         ) : (
-          <div className="h-full w-full flex items-center justify-center" style={{ backgroundColor: WHITE }}>
-            <p style={{ color: COFFEE, opacity: 0.5, fontSize: 12 }}>还没有拍摄</p>
-          </div>
+          <button
+            onClick={onRetake}
+            className="absolute inset-0 flex flex-col items-center justify-center gap-2"
+            style={{
+              backgroundColor: "rgba(255,255,255,0.05)",
+              border: "2px dashed rgba(255,255,255,0.28)",
+              borderRadius: 24,
+            }}
+          >
+            <div
+              className="h-12 w-12 rounded-full flex items-center justify-center"
+              style={{ backgroundColor: "rgba(255,255,255,0.14)" }}
+            >
+              <Plus size={22} color={WHITE} />
+            </div>
+            <span style={{ color: WHITE, fontSize: 12.5, fontWeight: 600 }}>添加照片</span>
+          </button>
         )}
       </div>
 
-      <div className="px-5 mt-3 flex gap-2 overflow-x-auto">
-        {assets.map((s, i) => (
-          <button
-            key={s.id}
-            onClick={() => setPrimary(i)}
-            className="relative flex-shrink-0 overflow-hidden"
-            style={{
-              width: 56,
-              height: 56,
-              borderRadius: 12,
-              border: i === primary ? `2.5px solid ${ORANGE}` : `2px solid ${WHITE}`,
-            }}
-          >
-            <ImageWithFallback src={s.src} alt={s.label} className="h-full w-full object-cover" />
-            {s.kind === "video" && (
-              <div
-                className="absolute inset-0 flex items-center justify-center"
-                style={{ backgroundColor: "rgba(0,0,0,0.35)" }}
-              >
-                <div
-                  className="h-5 w-5 rounded-full flex items-center justify-center"
-                  style={{ backgroundColor: "rgba(255,255,255,0.92)" }}
-                >
-                  <div
-                    style={{
-                      width: 0,
-                      height: 0,
-                      borderLeft: "6px solid #E25555",
-                      borderTop: "4px solid transparent",
-                      borderBottom: "4px solid transparent",
-                      marginLeft: 2,
-                    }}
-                  />
-                </div>
-              </div>
-            )}
-          </button>
-        ))}
-      </div>
-
-      <div className="px-5 mt-5">
-        <div
-          className="p-3 flex items-start gap-3"
-          style={{ backgroundColor: WHITE, borderRadius: 16 }}
-        >
-          <div
-            className="h-9 w-9 rounded-xl flex items-center justify-center flex-shrink-0"
-            style={{ backgroundColor: BLUE }}
-          >
-            <Sparkles size={16} color={WHITE} />
-          </div>
-          <div className="flex-1">
-            <p style={{ color: COFFEE, fontSize: 12.5, fontWeight: 600 }}>AR 扫描就绪</p>
-            <p style={{ color: COFFEE, opacity: 0.6, fontSize: 11, marginTop: 2 }}>
-              {assets.some((x) => x.kind === "video")
-                ? "视频扫描会重建成三维网格，用于还原空间结构。"
-                : "将拼接多个角度以分析空间纵深。"}
-            </p>
-          </div>
+      {/* Thumbnail strip for multi-shot */}
+      {assets.length > 1 && (
+        <div className="px-5 pt-3 flex gap-2 overflow-x-auto">
+          {assets.map((s, i) => (
+            <button
+              key={s.id}
+              onClick={() => setPrimary(i)}
+              className="relative flex-shrink-0 overflow-hidden"
+              style={{
+                width: 52,
+                height: 52,
+                borderRadius: 12,
+                border: i === primary ? `2.5px solid ${ORANGE}` : "2px solid rgba(255,255,255,0.25)",
+              }}
+            >
+              <ImageWithFallback src={s.src} alt={s.label} className="h-full w-full object-cover" />
+            </button>
+          ))}
         </div>
-      </div>
+      )}
 
-      <div className="mt-auto px-5 pt-3 pb-6" style={{ backgroundColor: WHITE, borderTop: `1px solid ${SOFT}` }}>
+      {/* Bottom controls: 重新拍摄 / 删除 / 下一步 */}
+      <div className="px-6 pt-4 pb-7 flex items-center justify-between">
+        <button onClick={onRetake} className="flex flex-col items-center gap-1" style={{ width: 72 }}>
+          <RotateCcw size={20} color={WHITE} />
+          <span style={{ color: WHITE, fontSize: 11 }}>重新拍摄</span>
+        </button>
+        <button
+          onClick={() => a && onDelete(a.id)}
+          className="h-11 w-11 rounded-full flex items-center justify-center"
+          style={{ backgroundColor: "rgba(255,255,255,0.14)" }}
+        >
+          <Trash2 size={19} color={WHITE} />
+        </button>
         <button
           onClick={onNext}
           disabled={assets.length === 0}
-          className="w-full py-3.5"
+          className="px-6 py-3 flex items-center gap-1.5"
           style={{
-            backgroundColor: assets.length > 0 ? ORANGE : SOFT,
-            color: WHITE,
+            backgroundColor: assets.length > 0 ? ORANGE : "rgba(255,255,255,0.18)",
+            color: assets.length > 0 ? WHITE : "rgba(255,255,255,0.5)",
             borderRadius: 999,
             fontSize: 14,
             fontWeight: 600,
             boxShadow: assets.length > 0 ? "0 8px 22px rgba(250,136,58,0.32)" : "none",
-            opacity: assets.length > 0 ? 1 : 0.6,
           }}
         >
-          确认并识别物品 →
+          下一步
+          <ChevronRight size={16} />
         </button>
       </div>
     </div>
   );
+
 }
 
 /* ---------- 1. Item confirmation ---------- */
