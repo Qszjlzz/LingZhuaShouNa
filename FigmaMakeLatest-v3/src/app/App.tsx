@@ -29,30 +29,36 @@ export default function App() {
   return (
     <div
       className="relative size-full overflow-hidden"
-      style={{ backgroundColor: "#EDE5DA" }}
+      style={{ backgroundColor: shooting ? "transparent" : "#EDE5DA" }}
     >
       <div className="relative size-full overflow-hidden">
-        {tab === "spatial" && (
-          <SpatialScreen
-            nativeSpaces={nativeState?.spaces}
-            selectedSpaceID={nativeState?.selectedSpaceID}
-            onNativeChange={refresh}
-            onReshoot={openShoot}
-            scanDone={scanDone}
-            onScanAck={() => setScanDone(false)}
-            onRelightRequest={(id, name, vivid) => {
-              setRelightSpace({ id, name, vivid });
-              setTab("spatial");
-            }}
-            relitSpaceId={relitSpaceId}
-            onRelitAck={() => setRelitSpaceId(null)}
-          />
-        )}
-        {tab === "classification" && <ClassificationScreen nativeState={nativeState} onNativeChange={refresh} />}
-        {tab === "community" && <CommunityScreen nativeState={nativeState} onNativeChange={refresh} />}
-        {tab === "mine" && <MineScreen nativeState={nativeState} onNativeChange={refresh} />}
+        {/* 拍摄时把首页整层卸载：拍摄页的取景靠"页面透明 + 原生相机画面从底下透出"，
+            首页若还挂在底下，会不透明地盖住相机画面（截图里透出空间地图就是这个原因）。 */}
+        {!shooting && (
+          <>
+            {tab === "spatial" && (
+              <SpatialScreen
+                nativeSpaces={nativeState?.spaces}
+                selectedSpaceID={nativeState?.selectedSpaceID}
+                onNativeChange={refresh}
+                onReshoot={openShoot}
+                scanDone={scanDone}
+                onScanAck={() => setScanDone(false)}
+                onRelightRequest={(id, name, vivid) => {
+                  setRelightSpace({ id, name, vivid });
+                  setTab("spatial");
+                }}
+                relitSpaceId={relitSpaceId}
+                onRelitAck={() => setRelitSpaceId(null)}
+              />
+            )}
+            {tab === "classification" && <ClassificationScreen nativeState={nativeState} onNativeChange={refresh} />}
+            {tab === "community" && <CommunityScreen nativeState={nativeState} onNativeChange={refresh} />}
+            {tab === "mine" && <MineScreen nativeState={nativeState} onNativeChange={refresh} />}
 
-        <BottomNav active={tab} onChange={setTab} onCamera={openShoot} />
+            <BottomNav active={tab} onChange={setTab} onCamera={openShoot} />
+          </>
+        )}
 
         {shooting && (
           <ShootFlow
