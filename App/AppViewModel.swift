@@ -174,7 +174,15 @@ final class AppViewModel: ObservableObject {
         // 只打印接口与模型名，不打印密钥。
         print("SMARTPAW_BOOT models=\(YOLOSegmentationScanService.loadedModelCount) names=\(YOLOSegmentationScanService.loadedModelNames.joined(separator: "、"))")
         print("SMARTPAW_BOOT llm_enabled=\(llmSettings.isEnabled) endpoint=\(llmSettings.endpoint) model=\(llmSettings.model) hasKey=\(!llmSettings.apiKey.isEmpty) visionEndpoint=\(llmSettings.visionEndpoint ?? "(复用主接口)") visionModel=\(llmSettings.visionModel ?? "(复用主模型)") canRequestVision=\(llmSettings.canRequestVision)")
-        writeDiagnostics(note: "启动", itemCount: 0)
+        writeDiagnostics(note: "启动", items: [])
+        #if DEBUG
+        // 启动时用 bundle 里的真实测试图跑一遍本地识别，结果落到文件，方便排查识别链路。
+        Task.detached(priority: .utility) {
+            let text = await YOLOSegmentationScanService.runSelfTest()
+            let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            try? text.write(to: documents.appendingPathComponent("smartpaw-selftest.txt"), atomically: true, encoding: .utf8)
+        }
+        #endif
         Task { [weak self] in
             await self?.refreshNotificationAuthorizationState()
             await self?.reconcileScheduleNotifications()
@@ -359,7 +367,7 @@ final class AppViewModel: ObservableObject {
             // 非 accumulate 但已有更新的一轮在跑：同样叠加，避免旧结果盖掉新结果。
             let base = (accumulate || !isLatest) ? scannedItems : []
             scannedItems = Self.merging(base, with: mergedItems)
-            writeDiagnostics(note: "拍照识别（\(images.count) 张）", itemCount: scannedItems.count)
+            writeDiagnostics(note: "拍照识别（\(images.count) 张）", items: scannedItems)
 
             if let selectedSpaceID, let index = spaces.firstIndex(where: { $0.id == selectedSpaceID }) {
                 spaces[index].detectedItems = scannedItems
@@ -1196,10 +1204,11 @@ final class AppViewModel: ObservableObject {
 
     /// 把识别家底写进 App 的 Documents 目录，方便排查"为什么没识别出来"。
     /// 只写接口地址与模型名，绝不落盘密钥。
-    private func writeDiagnostics(note: String, itemCount: Int) {
+    private func writeDiagnostics(note: String, items: [DetectedItem]) {
         var lines: [String] = [
             "时间: \(Date())",
             "场景: \(note)",
+            "本次物品: \(items.map { "\($0.name)\(Int($0.confidence * 100))%[\($0.category.rawValue)]" }.joined(separator: "、"))",
             "本地模型数: \(YOLOSegmentationScanService.loadedModelCount)",
             "本地模型: \(YOLOSegmentationScanService.loadedModelNames.joined(separator: "、"))",
             "云端开关: \(llmSettings.isEnabled)",
@@ -1209,7 +1218,7 @@ final class AppViewModel: ObservableObject {
             "视觉模型: \(llmSettings.visionModel ?? "(复用主模型)")",
             "有密钥: \(!llmSettings.apiKey.isEmpty)",
             "可请求视觉: \(llmSettings.canRequestVision)",
-            "本次结果数: \(itemCount)",
+            "本次结果数: \(items.count)",
         ]
         if let router = dependencies.scanService as? RecognitionRouter {
             lines.append("本次明细: \(router.diagnostics)")

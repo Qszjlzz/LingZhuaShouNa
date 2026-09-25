@@ -1024,6 +1024,33 @@ struct YOLOSegmentationScanService: ScanService {
         }.value
     }
 
+    /// 自检：拿 bundle 里的真实测试图把整条本地管线跑一遍，逐层打印数量与名称。
+    /// 用来定位"明明拍得到却识别不出来"到底卡在哪一层（原始检测 / 清洗 / 展示口径 / 完整管线）。
+    static func runSelfTest() async -> String {
+        let names = ["external-messy-desk-note", "external-cluttered-study-pexels", "external-trash-room-imweb"]
+        var lines: [String] = ["自检时间: \(Date())", "模型数: \(cachedModels.count) 名称: \(loadedModelNames.joined(separator: "、"))"]
+        for name in names {
+            guard let image = UIImage(named: name) else {
+                lines.append("--- \(name): bundle 里找不到这张图 ---")
+                continue
+            }
+            guard let cg = image.normalizedCGImage else {
+                lines.append("--- \(name): 转 CGImage 失败 ---")
+                continue
+            }
+            let raw = await Self.detectItems(in: cg, live: false)
+            let cleaned = Self.cleanedItems(raw)
+            let presented = Self.presentationItems(cleaned, mode: .still)
+            let full = (try? await YOLOSegmentationScanService().scanImage(image)) ?? []
+            lines.append("--- \(name) ---")
+            lines.append("原始检测 \(raw.count): \(raw.prefix(10).map { "\($0.name)\(Int($0.confidence * 100))%" }.joined(separator: "、"))")
+            lines.append("清洗后 \(cleaned.count): \(cleaned.prefix(10).map { "\($0.name)\(Int($0.confidence * 100))%" }.joined(separator: "、"))")
+            lines.append("展示口径 \(presented.count): \(presented.prefix(10).map { "\($0.name)\(Int($0.confidence * 100))%" }.joined(separator: "、"))")
+            lines.append("完整管线 \(full.count): \(full.map { "\($0.name)\(Int($0.confidence * 100))%" }.joined(separator: "、"))")
+        }
+        return lines.joined(separator: "\n") + "\n"
+    }
+
     private static func mergeModelCandidates(_ items: [DetectedItem]) -> [DetectedItem] {
         var kept: [DetectedItem] = []
         for item in items {
