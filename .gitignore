@@ -12,12 +12,11 @@ xcuserdata/
 .AppleDouble
 .LSOverride
 
-# Python and Core ML experimentation environments
-.venv-yolo/
+# Python / ML experimentation environments
+.venv*/
 __pycache__/
 *.py[cod]
 .pytest_cache/
-app-analysis/yolo-python-v1/
 *.pt
 
 # Generated or temporary ML output
@@ -33,27 +32,19 @@ app-analysis/yolo-python-v1/
 *.pem
 *.p12
 
-# Local distributables and generated handoff exports
+# Local distributables and presentation exports
 *.ipa
 *.docx
-FigmaMakeCurrent/node_modules/
-SmartPaw-iOS16-export/
-
-# Unreferenced local presentation/source exports
-a8cdb40dca5bc04cacabdb4ce433760e.png
-smart paw-汇报.pptx
-灵爪收纳.docx
+*.pptx
 
 # Node dependencies (huge, reinstall with npm/pnpm install)
-# Note: trailing-slash patterns only match directories; FigmaMakeLatest-v3/node_modules
-# is a symlink, so it needs an explicit entry below.
+# MakePreview/node_modules is a symlink into FigmaMakeLatest-v3/node_modules,
+# so it needs an explicit entry (directory patterns skip symlinks).
 node_modules/
-FigmaMakeLatest*/node_modules
 MakePreview/node_modules
 
 # Web build output (runtime copy lives in Resources/FigmaMakeLatestWeb)
-FigmaMakeLatest/dist/
-FigmaMakeLatest*/dist/
+FigmaMakeLatest-v3/dist/
 
 # Local screenshots and scratch exports
 outputs/

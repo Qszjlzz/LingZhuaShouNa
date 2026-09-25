@@ -99,16 +99,19 @@ Cmd+R 直接跑。首次构建会编译 Core ML 模型，需要几分钟。
 ```
 ├── App/                        # 原生层：WebView 壳、AppViewModel、相机、Keychain
 ├── Services/                   # 识别、方案生成、LLM 兼容层、持久化、示例数据
-├── FigmaMakeLatest/            # 网页 UI 源码（React + Vite）
+├── FigmaMakeLatest-v3/         # 网页 UI 源码（React + Vite）—— 唯一在维护的版本
+├── MakePreview/                # Figma Make 设计稿基线（改 UI 前对照用，node_modules 指向 v3）
 ├── Resources/
-│   ├── FigmaMakeLatestWeb/     # 打包进 App 的 UI 构建产物
+│   ├── FigmaMakeLatestWeb/     # 打包进 App 的 UI 构建产物（由 v3/dist 覆盖同步）
 │   └── Models/                 # Core ML 模型
 ├── SmartPawTests/              # 单元测试（识别管线、方案质量对比）
-└── Legacy/                     # 早期原生 SwiftUI 版本存档
+└── docs/                       # 设计稿映射、识别基线、验收记录
 ```
+
+改 UI 的流程：改 `FigmaMakeLatest-v3/src` → `npm run build` → 把 `dist/assets` 和 `dist/index.html` 覆盖到 `Resources/FigmaMakeLatestWeb/`。
 
 ## 已知限制
 
 - 通用分割模型对杂物间这类场景召回偏低（垃圾袋、纸箱等不在常见类别里），需要微调才有明显改善
-- 拍摄功能依赖摄像头，模拟器无摄像头时会自动降级为选图
+- 拍摄用真实摄像头画面垫在 WebView 底下取景；模拟器无摄像头时自动降级为选图
 - AR 实景摆放尚未实现
