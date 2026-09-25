@@ -75,7 +75,7 @@ export type GenPlan = {
 const GEN_PLANS: GenPlan[] = [
   {
     id: "breathe",
-    name: "舒适留白",
+    name: "快速整理",
     vibe: "减少视觉杂乱，让常用物品保持易取",
     image:
       "https://images.unsplash.com/photo-1586023492125-27b2c045efd7?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=800",
@@ -91,7 +91,7 @@ const GEN_PLANS: GenPlan[] = [
   },
   {
     id: "efficient",
-    name: "高效收纳",
+    name: "快速整理",
     vibe: "最大化利用垂直与隐藏空间",
     image:
       "https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=800",
@@ -107,7 +107,7 @@ const GEN_PLANS: GenPlan[] = [
   },
   {
     id: "living",
-    name: "生活感",
+    name: "快速整理",
     vibe: "保留日常物品的可见性，让空间更有生活痕迹",
     image:
       "https://images.unsplash.com/photo-1556912998-c57cc6b63cd7?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=800",
@@ -324,6 +324,7 @@ export function ShootFlow({
         <ZoneSelectStep
           photo={photo}
           items={confirmedItems}
+          shotCount={assets.length || 1}
           onBack={() => setStep("plandeck")}
           onNext={(zs) => {
             setZoneList(zs);
@@ -727,9 +728,26 @@ function PlanDeckStep({
   const plan = plans[0];
 
   return (
-    <div className="h-full w-full flex flex-col" style={{ backgroundColor: LINEN }}>
-      {/* ── Hero photo ── */}
-      <div className="relative flex-1 overflow-hidden" style={{ minHeight: 0 }}>
+    <div
+      className="h-full w-full flex flex-col overflow-y-auto"
+      style={{ backgroundColor: LINEN }}
+    >
+      {/* ── 顶部留白 + 返回，不再让照片顶到状态栏 ── */}
+      <div className="px-5 pt-14 pb-4 flex items-center">
+        <button
+          onClick={onClose}
+          className="h-9 w-9 rounded-full flex items-center justify-center"
+          style={{ backgroundColor: WHITE, boxShadow: "0 2px 8px rgba(123,92,72,0.12)" }}
+        >
+          <X size={16} color={COFFEE} />
+        </button>
+      </div>
+
+      {/* ── 照片：只露出中间一段，四周留空 ── */}
+      <div
+        className="mx-5 relative overflow-hidden"
+        style={{ height: 216, borderRadius: 22, boxShadow: "0 6px 20px rgba(123,92,72,0.16)" }}
+      >
         <ImageWithFallback
           src={photo || plan.image}
           alt={plan.name}
@@ -739,27 +757,20 @@ function PlanDeckStep({
           className="absolute inset-0 pointer-events-none"
           style={{
             background:
-              "linear-gradient(180deg, rgba(0,0,0,0.18) 0%, rgba(0,0,0,0) 40%)",
+              "linear-gradient(180deg, rgba(0,0,0,0.16) 0%, rgba(0,0,0,0) 45%)",
           }}
         />
-        <button
-          onClick={onClose}
-          className="absolute top-14 left-5 h-9 w-9 rounded-full flex items-center justify-center"
-          style={{ backgroundColor: "rgba(255,255,255,0.92)", boxShadow: "0 2px 8px rgba(0,0,0,0.12)" }}
-        >
-          <X size={16} color={COFFEE} />
-        </button>
       </div>
 
-      {/* ── Plan card ── */}
+      {/* ── Plan card：四周都留空隙，不再压在照片上 ── */}
       <div
-        className="flex flex-col overflow-hidden"
+        className="flex flex-col"
         style={{
           backgroundColor: WHITE,
-          borderRadius: "28px 28px 0 0",
-          marginTop: -24,
-          padding: "22px 24px 26px",
-          boxShadow: "0 -10px 34px rgba(123,92,72,0.14)",
+          borderRadius: 22,
+          margin: "18px 20px 26px",
+          padding: "20px 20px 22px",
+          boxShadow: "0 8px 26px rgba(123,92,72,0.12)",
         }}
       >
         {/* name */}
@@ -4934,22 +4945,33 @@ const CATEGORY_HOME: Record<string, string> = {
   "餐具": "厨房橱柜", "杯子": "厨房台面", "文件资料": "文件夹", "工具": "工具箱", "鞋履": "鞋柜",
 };
 
-function buildFlowZones(items: NativeItem[]): FlowZone[] {
+function buildFlowZones(items: NativeItem[], zoneCount = 1): FlowZone[] {
+  // 区域数 = 这次拍了几张照片：一张就一个区域，两张两个，最多三个。
+  const n = Math.max(1, Math.min(3, zoneCount || 1));
+  const picked = (items ?? []).filter((it) => it.isSelected !== false);
+
   const groups = new Map<string, string[]>();
-  for (const it of items ?? []) {
-    if (it.isSelected === false) continue;
+  for (const it of picked) {
     const key = it.category || "收纳工具";
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key)!.push(it.name);
   }
-  // 一张都没认出来时退回设计稿的三个区域，页面不至于空着。
+  // 一样都没认出来时按张数给默认区域，页面不至于空着。
   if (groups.size === 0) {
-    return SELECTABLE_ZONES.map((z) => ({ ...z, names: [], home: "固定收纳位" }));
+    return SELECTABLE_ZONES.slice(0, n).map((z) => ({ ...z, names: [], home: "固定收纳位" }));
   }
-  const ranked = [...groups.entries()].sort((a, b) => b[1].length - a[1].length).slice(0, 3);
-  return ranked.map(([cat, names], i) => ({
+
+  let entries = [...groups.entries()].sort((a, b) => b[1].length - a[1].length);
+  // 类别比区域数多：多出来的合进最后一个区域。
+  if (entries.length > n) {
+    const head = entries.slice(0, n - 1);
+    const rest = entries.slice(n - 1).flatMap(([, names]) => names);
+    entries = [...head, ["其他物品", rest]];
+  }
+
+  return entries.map(([cat, names], i) => ({
     n: i + 1,
-    label: `${cat}区`,
+    label: n === 1 ? "收纳区域" : `${cat}区`,
     color: ZONE_PALETTE[i % ZONE_PALETTE.length],
     ...ZONE_LAYOUT[i % ZONE_LAYOUT.length],
     items: names.length,
@@ -4976,15 +4998,17 @@ function buildZoneTasks(zones: FlowZone[]): { zone: number; label: string; color
 function ZoneSelectStep({
   photo,
   items,
+  shotCount = 1,
   onBack,
   onNext,
 }: {
   photo?: string;
   items: NativeItem[];
+  shotCount?: number;
   onBack: () => void;
   onNext: (zones: FlowZone[]) => void;
 }) {
-  const zones = buildFlowZones(items);
+  const zones = buildFlowZones(items, shotCount);
   const [selected, setSelected] = useState<number[]>(zones.map((z) => z.n));
 
   const toggle = (n: number) =>
