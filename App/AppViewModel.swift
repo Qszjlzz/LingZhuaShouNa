@@ -63,6 +63,8 @@ final class AppViewModel: ObservableObject {
     private static let communityFollowsKey = "SmartPaw.community.followedAuthors"
     private static let languageKey = "SmartPaw.appLanguage"
     private var activeScanID: UUID?
+    /// 连拍时每张照片都会起一轮扫描，用递增代号区分先后，避免旧一轮的结果覆盖新一轮。
+    private var scanGeneration = 0
 
     init(dependencies: AppDependencies) {
         self.dependencies = dependencies
@@ -305,19 +307,21 @@ final class AppViewModel: ObservableObject {
         guard let primaryImage = images.first else { return }
         let scanID = UUID()
         activeScanID = scanID
+        scanGeneration += 1
+        let generation = scanGeneration
         capturedImage = primaryImage
         isScanning = true
         defer {
-            if activeScanID == scanID {
-                isScanning = false
-            }
+            // 只有最后一轮结束时才收起 loading，否则前面几张一回来就把状态清掉了。
+            if generation == scanGeneration { isScanning = false }
         }
 
         do {
             var mergedItems: [DetectedItem] = []
             for image in images {
                 let results = try await dependencies.scanService.scanImage(image)
-                guard activeScanID == scanID else { return }
+                // 这里不再用 activeScanID 提前退出：连拍时新一轮会把上一轮的代号顶掉，
+                // 旧写法会让前面几张的识别结果直接作废，最后方案里只剩最后一张的东西。
                 for item in results {
                     if let index = mergedItems.firstIndex(where: {
                         $0.name == item.name && $0.category == item.category
@@ -329,32 +333,41 @@ final class AppViewModel: ObservableObject {
                 }
             }
 
-            // 连拍时每张都要并入结果：直接替换会让前面几张白拍。
-            if accumulate {
-                var base = scannedItems
-                for item in mergedItems {
-                    if let index = base.firstIndex(where: {
-                        $0.name == item.name && $0.category == item.category
-                    }) {
-                        base[index].confidence = max(base[index].confidence, item.confidence)
-                    } else {
-                        base.append(item)
-                    }
-                }
-                scannedItems = base
-            } else {
-                scannedItems = mergedItems
-            }
+            let isLatest = generation == scanGeneration
+            // accumulate：始终叠加，直接替换会让前面几张白拍。
+            // 非 accumulate 但已有更新的一轮在跑：同样叠加，避免旧结果盖掉新结果。
+            let base = (accumulate || !isLatest) ? scannedItems : []
+            scannedItems = Self.merging(base, with: mergedItems)
+
             if let selectedSpaceID, let index = spaces.firstIndex(where: { $0.id == selectedSpaceID }) {
                 spaces[index].detectedItems = scannedItems
-                spaces[index].beforeImageName = try saveImage(primaryImage, prefix: "before")
+                // before 图只认最后拍的那张，防止慢一轮的旧回调把图换回去。
+                if isLatest {
+                    spaces[index].beforeImageName = try saveImage(primaryImage, prefix: "before")
+                }
                 persist()
             }
         } catch {
-            guard activeScanID == scanID else { return }
-            scannedItems = []
+            guard generation == scanGeneration else { return }
+            // 连拍中单张失败不清空已攒下的结果，否则整段拍摄白费。
+            if !accumulate { scannedItems = [] }
             message = "扫描失败：\(error.localizedDescription)"
         }
+    }
+
+    /// 合并两批识别结果：同名同类保留置信度更高的那个。
+    private static func merging(_ base: [DetectedItem], with newItems: [DetectedItem]) -> [DetectedItem] {
+        var merged = base
+        for item in newItems {
+            if let index = merged.firstIndex(where: {
+                $0.name == item.name && $0.category == item.category
+            }) {
+                merged[index].confidence = max(merged[index].confidence, item.confidence)
+            } else {
+                merged.append(item)
+            }
+        }
+        return merged
     }
 
     func scanBundledSample(assetName: String) async {

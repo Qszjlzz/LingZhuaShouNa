@@ -31,7 +31,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { Raccoon } from "./Raccoon";
 import { COFFEE, ORANGE, LINEN, BLUE, WHITE, SOFT } from "./theme";
-import { nativeRequest, type NativeState } from "../nativeBridge";
+import { nativeRequest, type NativeState, type NativeItem } from "../nativeBridge";
 
 const ROOM_IMG =
   "https://images.unsplash.com/photo-1768548273848-ebab6f26b48c?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080";
@@ -122,6 +122,99 @@ const GEN_PLANS: GenPlan[] = [
   },
 ];
 
+// 每个分类给三条风格不同的建议，用来替换方案卡里的文案。
+// 只换文字和时长，卡片的名字、配色、标签、配图一律保持设计稿原样。
+const PLAN_CATEGORY_ADVICE: Record<string, { breathe: string; efficient: string; living: string }> = {
+  "书籍": {
+    breathe: "台面只留下正在读的几本，其余收进书架",
+    efficient: "按开本高度分层，常翻的一层与视线齐平",
+    living: "常翻的书摊开摆放，让阅读痕迹留在手边",
+  },
+  "电子产品": {
+    breathe: "线缆收进理线盒，台面只留一块充电位",
+    efficient: "设备统一进充电站，线材贴标签固定走位",
+    living: "常用设备留在桌面顺手处，不必刻意藏起来",
+  },
+  "文具": {
+    breathe: "笔筒只留常写的三支，其余进抽屉",
+    efficient: "抽屉加分隔件，按用途分成固定格位",
+    living: "好看的文具摆在桌面上，就当桌面风景",
+  },
+  "衣物": {
+    breathe: "当季外穿的挂起来，换季的压缩收进柜顶",
+    efficient: "按穿着频率分三区，常穿的挂最外层",
+    living: "常穿的外套搭在挂钩上，随手就能拿",
+  },
+  "玩偶杂物": {
+    breathe: "只展示最喜欢的两三个，其余收进箱子",
+    efficient: "按尺寸分层收纳，小件统一进透明盒",
+    living: "玩偶留在床头或沙发上，保留生活气息",
+  },
+  "待丢弃": {
+    breathe: "先清出明确不要的，空间立刻轻一截",
+    efficient: "设一个暂存箱，攒满一批再一次性处理",
+    living: "有感情的小物件留一件，其余放手",
+  },
+  "收纳工具": {
+    breathe: "收纳盒本身也要精简，别为收纳再买收纳",
+    efficient: "统一盒型与标签，堆叠时不会东倒西歪",
+    living: "用顺眼的篮子装，随手一放也算整齐",
+  },
+};
+
+function personalizePlans(items: NativeItem[]): GenPlan[] {
+  if (!items || items.length === 0) return GEN_PLANS;
+
+  const byCategory = new Map<string, number>();
+  for (const item of items) {
+    const key = item.category || "收纳工具";
+    byCategory.set(key, (byCategory.get(key) ?? 0) + 1);
+  }
+  const ranked = [...byCategory.entries()].sort((a, b) => b[1] - a[1]);
+  const top = ranked[0]?.[0] ?? "收纳工具";
+  const second = ranked[1]?.[0] ?? top;
+  const advice = (key: string) => PLAN_CATEGORY_ADVICE[key] ?? PLAN_CATEGORY_ADVICE["收纳工具"];
+  const a1 = advice(top);
+  const a2 = ranked.length > 1 ? advice(second) : null;
+  // 时长跟着物品量走：东西越多越久，但不低于 15 分钟、不超过一小时。
+  const scale = (base: number) => Math.min(60, Math.max(15, Math.round((base + items.length * 2) / 5) * 5));
+
+  return GEN_PLANS.map((plan) => {
+    const minutes = scale(plan.minutes);
+    if (plan.id === "breathe") {
+      return {
+        ...plan,
+        changes: [
+          a1.breathe,
+          a2 ? `其次是${second}：${a2.breathe}` : "闲置物品分类归入储物区",
+          "开放区域留出空白，减少视觉压迫",
+        ],
+        minutes,
+      };
+    }
+    if (plan.id === "efficient") {
+      return {
+        ...plan,
+        changes: [
+          "垂直空间加层架，把地面面积让出来",
+          a1.efficient,
+          a2 ? a2.efficient : "抽屉加装分隔件，建立固定归位习惯",
+        ],
+        minutes,
+      };
+    }
+    return {
+      ...plan,
+      changes: [
+        a1.living,
+        "软装与绿植点缀，让空间有生活痕迹",
+        a2 ? a2.living : "以区域功能为主，不强求分类精确",
+      ],
+      minutes,
+    };
+  });
+}
+
 export function ShootFlow({
   onClose,
   onFinish,
@@ -136,6 +229,16 @@ export function ShootFlow({
   // where the generating animation should land when it finishes
   const [genReturn, setGenReturn] = useState<Step>("plandeck");
 
+  // 生成方案前重新拉一次识别结果，让方案卡里的建议跟着这次拍到的物品走。
+  const refreshPlans = async () => {
+    try {
+      const state = await nativeRequest<NativeState>("state.get");
+      setPlans(personalizePlans(state?.scannedItems ?? []));
+    } catch {
+      setPlans(GEN_PLANS);
+    }
+  };
+
   const tier = chosen.tier;
 
   return (
@@ -146,7 +249,8 @@ export function ShootFlow({
           on完成={(captured) => {
             setAssets(captured);
             setGenReturn("plandeck");
-            setStep("generating");
+            // 设计稿流程：拍完先看照片，再确认识别出的物品，最后才生成方案。
+            setStep("review");
           }}
         />
       )}
@@ -160,10 +264,13 @@ export function ShootFlow({
       )}
       {step === "confirm" && (
         <ConfirmStep
+          assets={assets}
           onBack={() => setStep("review")}
           onNext={() => {
-            setGenReturn("plandeck");
-            setStep("generating");
+            void refreshPlans().finally(() => {
+              setGenReturn("plandeck");
+              setStep("generating");
+            });
           }}
         />
       )}
@@ -2148,7 +2255,7 @@ type BlindSpot = {
   resolved?: boolean;
 };
 
-function ConfirmStep({ onBack, onNext }: { onBack: () => void; onNext: () => void }) {
+function ConfirmStep({ assets, onBack, onNext }: { assets: CapturedAsset[]; onBack: () => void; onNext: () => void }) {
   const [loadingItems, setLoadingItems] = useState(true);
   const [items, setItems] = useState<DetectedItem[]>([]);
   const [adding, set添加ing] = useState(false);
@@ -2213,7 +2320,7 @@ function ConfirmStep({ onBack, onNext }: { onBack: () => void; onNext: () => voi
     <div className="h-full w-full flex flex-col" style={{ backgroundColor: LINEN }}>
       {/* Image with overlays */}
       <div className="relative w-full" style={{ height: "42%" }}>
-        <ImageWithFallback src={ROOM_IMG} alt="已拍摄" className="h-full w-full object-cover" />
+        <ImageWithFallback src={assets[0]?.src ?? ROOM_IMG} alt="已拍摄" className="h-full w-full object-cover" />
         <div
           className="absolute inset-0"
           style={{
@@ -2236,7 +2343,7 @@ function ConfirmStep({ onBack, onNext }: { onBack: () => void; onNext: () => voi
           >
             <Sparkles size={13} color={ORANGE} />
             <span style={{ color: COFFEE, fontSize: 12, fontWeight: 500 }}>
-              {items.length} items · {blindSpots.length} blind spots
+              识别到 {items.length} 件 · {blindSpots.length} 处待确认
             </span>
           </div>
         </div>
@@ -2297,12 +2404,11 @@ function ConfirmStep({ onBack, onNext }: { onBack: () => void; onNext: () => voi
             style={{ backgroundColor: LINEN, borderRadius: 16, borderTopLeftRadius: 4 }}
           >
             <p style={{ color: COFFEE, fontSize: 12.5, lineHeight: 1.5 }}>
-              I detected {items.length} items. Please confirm, then help me with{" "}
+              我从这次拍摄里认出了 {items.length} 件物品，请确认一下；还有{" "}
               <span style={{ color: ORANGE, fontWeight: 600 }}>
-                {blindSpots.filter((b) => !b.resolved).length} unclear area
-                {blindSpots.filter((b) => !b.resolved).length === 1 ? "" : "s"}
+                {blindSpots.filter((b) => !b.resolved).length} 处
               </span>
-              .
+              看得不太准，需要你帮我定夺。
             </p>
           </div>
         </div>
@@ -2341,6 +2447,25 @@ function ConfirmStep({ onBack, onNext }: { onBack: () => void; onNext: () => voi
                   </button>
                 ))}
             </div>
+          </div>
+        )}
+
+        {!loadingItems && items.length === 0 && (
+          <div
+            className="mb-4 p-3.5"
+            style={{
+              backgroundColor: "rgba(250,136,58,0.08)",
+              border: `1px solid rgba(250,136,58,0.25)`,
+              borderRadius: 16,
+            }}
+          >
+            <div className="flex items-center gap-2 mb-1.5">
+              <AlertTriangle size={14} color={ORANGE} />
+              <p style={{ color: COFFEE, fontSize: 12, fontWeight: 600 }}>这次没认出东西来</p>
+            </div>
+            <p style={{ color: COFFEE, opacity: 0.7, fontSize: 12, lineHeight: 1.6 }}>
+              可能是光线偏暗或角度太杂。可以退回补拍一张，也可以直接手动添加物品 —— 后面的方案会按你填的生成。
+            </p>
           </div>
         )}
 
