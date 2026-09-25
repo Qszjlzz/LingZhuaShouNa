@@ -170,6 +170,11 @@ final class AppViewModel: ObservableObject {
         if let router = dependencies.scanService as? RecognitionRouter {
             router.settingsProvider = { [weak self] in self?.llmSettings ?? .default }
         }
+        // 启动时把识别家底打出来：本地模型有没有加载、云端接口有没有配好。
+        // 只打印接口与模型名，不打印密钥。
+        print("SMARTPAW_BOOT models=\(YOLOSegmentationScanService.loadedModelCount) names=\(YOLOSegmentationScanService.loadedModelNames.joined(separator: "、"))")
+        print("SMARTPAW_BOOT llm_enabled=\(llmSettings.isEnabled) endpoint=\(llmSettings.endpoint) model=\(llmSettings.model) hasKey=\(!llmSettings.apiKey.isEmpty) visionEndpoint=\(llmSettings.visionEndpoint ?? "(复用主接口)") visionModel=\(llmSettings.visionModel ?? "(复用主模型)") canRequestVision=\(llmSettings.canRequestVision)")
+        writeDiagnostics(note: "启动", itemCount: 0)
         Task { [weak self] in
             await self?.refreshNotificationAuthorizationState()
             await self?.reconcileScheduleNotifications()
@@ -354,6 +359,7 @@ final class AppViewModel: ObservableObject {
             // 非 accumulate 但已有更新的一轮在跑：同样叠加，避免旧结果盖掉新结果。
             let base = (accumulate || !isLatest) ? scannedItems : []
             scannedItems = Self.merging(base, with: mergedItems)
+            writeDiagnostics(note: "拍照识别（\(images.count) 张）", itemCount: scannedItems.count)
 
             if let selectedSpaceID, let index = spaces.firstIndex(where: { $0.id == selectedSpaceID }) {
                 spaces[index].detectedItems = scannedItems
@@ -1186,6 +1192,31 @@ final class AppViewModel: ObservableObject {
     private func cleanupStoredImages() {
         guard FileManager.default.fileExists(atPath: imageDirectory.path) else { return }
         try? FileManager.default.removeItem(at: imageDirectory)
+    }
+
+    /// 把识别家底写进 App 的 Documents 目录，方便排查"为什么没识别出来"。
+    /// 只写接口地址与模型名，绝不落盘密钥。
+    private func writeDiagnostics(note: String, itemCount: Int) {
+        var lines: [String] = [
+            "时间: \(Date())",
+            "场景: \(note)",
+            "本地模型数: \(YOLOSegmentationScanService.loadedModelCount)",
+            "本地模型: \(YOLOSegmentationScanService.loadedModelNames.joined(separator: "、"))",
+            "云端开关: \(llmSettings.isEnabled)",
+            "云端接口: \(llmSettings.endpoint)",
+            "云端模型: \(llmSettings.model)",
+            "视觉接口: \(llmSettings.visionEndpoint ?? "(复用主接口)")",
+            "视觉模型: \(llmSettings.visionModel ?? "(复用主模型)")",
+            "有密钥: \(!llmSettings.apiKey.isEmpty)",
+            "可请求视觉: \(llmSettings.canRequestVision)",
+            "本次结果数: \(itemCount)",
+        ]
+        if let router = dependencies.scanService as? RecognitionRouter {
+            lines.append("本次明细: \(router.diagnostics)")
+        }
+        let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let url = documents.appendingPathComponent("smartpaw-diagnostics.txt")
+        try? (lines.joined(separator: "\n") + "\n").write(to: url, atomically: true, encoding: .utf8)
     }
 
     private func persist() {

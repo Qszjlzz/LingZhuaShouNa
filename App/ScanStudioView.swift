@@ -35,8 +35,11 @@ final class ScanStudioModel: ObservableObject {
     private static let hints = ["广角", "左侧", "右侧", "俯视"]
 
     private let engine = CameraEngine.shared
-    /// 用统一的识别路由：本地轮廓 + 云端多模态兜底，AR 实时扫描也不会出现"扫不出东西"。
-    private let scanService = RecognitionRouter.shared
+    /// AR 是实时叠加，只用设备上的本地模型：云端往返要几秒，跟不上画面，
+    /// 而且 AR 气泡必须贴着真实轮廓，云端只给名字不给轮廓。
+    /// 拍照识别走的是另一条链路（AppViewModel → RecognitionRouter，照片 + 云端多模态），
+    /// 两条通道刻意分开，不共用模型也不共用阈值。
+    private let scanService = YOLOSegmentationScanService()
 
     @Published var mode: Mode
     @Published var shots: [UIImage] = []

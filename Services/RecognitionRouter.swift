@@ -17,9 +17,6 @@ final class RecognitionRouter: ScanService, @unchecked Sendable {
     private let cloud = CloudVisionRecognitionService()
     private let lock = NSLock()
     private var report: [String: String] = [:]
-    private var cachedCloudLive: [DetectedItem] = []
-    private var cachedCloudLiveAt = Date.distantPast
-    private var cloudLiveInFlight = false
 
     private init() {}
 
@@ -48,45 +45,23 @@ final class RecognitionRouter: ScanService, @unchecked Sendable {
     }
 
     // MARK: - AR 实时扫描
+    //
+    // AR 是逐帧实时叠加，只能用设备上的本地模型：一来云端往返（数秒）跟不上
+    // 实时画面，二来 AR 的气泡必须贴着真实轮廓走，云端只给名字不给轮廓。
+    // 所以这里与拍照识别完全分开，不请求任何网络、不读 AI 设置。
 
-    /// 本地逐帧跑保证实时性；云端每 4 秒补一次，用它的名称覆盖本地的不确定标签。
     func scanLiveImage(_ image: UIImage) async -> [DetectedItem] {
-        let settings = settingsProvider?() ?? .default
-        let useCloud = settings.canRequestVision
-        if useCloud { scheduleCloudLive(image, settings) }
-        async let localItems = local.scanLiveImage(image)
-        let local = await localItems
-        lock.lock()
-        let fresh = Date().timeIntervalSince(cachedCloudLiveAt) < 8 ? cachedCloudLive : []
-        lock.unlock()
-        return Self.combine(local: local, cloud: fresh, live: true) { [weak self] summary in
-            self?.record(summary, cloudEnabled: useCloud)
-        }
-    }
-
-    private func scheduleCloudLive(_ image: UIImage, _ settings: LLMSettings) {
-        lock.lock()
-        let now = Date()
-        guard now.timeIntervalSince(cachedCloudLiveAt) > 4, !cloudLiveInFlight else {
-            lock.unlock()
-            return
-        }
-        cloudLiveInFlight = true
-        lock.unlock()
-        let cloud = self.cloud
-        Task.detached(priority: .utility) { [weak self] in
-            let items = (try? await cloud.recognize(image: image, settings: settings)) ?? []
-            guard let self else { return }
-            self.lock.lock()
-            self.cloudLiveInFlight = false
-            if !items.isEmpty {
-                self.cachedCloudLive = items
-                self.cachedCloudLiveAt = Date()
-            }
-            let cloudCount = items.count
-            self.lock.unlock()
-            print("SMARTPAW_SCAN live-cloud=\(cloudCount)")
-        }
+        let local = await local.scanLiveImage(image)
+        lock.lock(); defer { lock.unlock() }
+        let summary = [
+            "source": local.isEmpty ? "空" : "本地实时",
+            "本地": "\(local.count)",
+            "云端": "未启用",
+        ]
+        report = summary
+        report["云端已配置"] = "不适用（AR 走本地实时）"
+        report["本地模型"] = "\(YOLOSegmentationScanService.loadedModelNames.joined(separator: "、"))"
+        return Array(local.prefix(8))
     }
 
     // MARK: - 结果合并
