@@ -4313,7 +4313,7 @@ function TaskStep({ onBack, onComplete }: { onBack: () => void; onComplete: () =
                   opacity: n === 1 ? 1 : 0.5,
                 }}
               >
-                Zone {n}
+                区域 {n}
               </span>
             </div>
             {i < 2 && (
@@ -5027,7 +5027,7 @@ function ZoneSelectStep({
               opacity: selected.length > 0 ? 1 : 0.6,
             }}
           >
-            Start →
+            开始整理 →
           </button>
         </div>
       </div>
@@ -5179,6 +5179,7 @@ function ARPreviewStep({
 
       {AR_ARROWS.map((a, i) => {
         const [tx, ty] = a.to.split(",");
+        const realName = previewZones[i]?.names?.[i] ?? previewZones[i]?.names?.[0];
         return (
           <div
             key={i}
@@ -5194,7 +5195,7 @@ function ARPreviewStep({
               transform: "translate(-50%, 4px)",
             }}
           >
-            {a.label}
+            {realName || a.label}
           </div>
         );
       })}
@@ -5225,7 +5226,7 @@ function ARPreviewStep({
             }}
             style={{ color: ORANGE, fontSize: 11, fontWeight: 600 }}
           >
-            Revise
+            返回调整
           </button>
         </div>
       )}
@@ -5252,7 +5253,7 @@ function ARPreviewStep({
             fontWeight: 600,
           }}
         >
-          <Camera size={13} /> AR Demo
+          <Camera size={13} /> AR 演示
         </button>
         <button
           onClick={onBack}
@@ -5265,7 +5266,7 @@ function ARPreviewStep({
             fontWeight: 600,
           }}
         >
-          Revise
+          返回调整
         </button>
         <button
           onClick={onNext}
@@ -5279,7 +5280,7 @@ function ARPreviewStep({
             boxShadow: "0 6px 16px rgba(250,136,58,0.4)",
           }}
         >
-          Start →
+          开始整理 →
         </button>
       </div>
 
@@ -5293,7 +5294,7 @@ function ARPreviewStep({
           color: "rgba(255,255,255,0.85)",
         }}
       >
-        Drag · Pinch · 2-finger pan
+        拖动 · 双指缩放 · 双指平移
       </div>
     </div>
   );
@@ -5491,7 +5492,7 @@ function ARGuideStep({
                   }}
                 >
                   <span style={{ color: WHITE, fontSize: 10, fontWeight: 600, textShadow: "0 1px 2px rgba(0,0,0,0.7)" }}>
-                    Box
+                    目标位置
                   </span>
                 </div>
               </>
@@ -5522,7 +5523,7 @@ function ARGuideStep({
           >
             <Sparkles size={13} color={ORANGE} />
             <span style={{ color: COFFEE, fontSize: 12, fontWeight: 600 }}>
-              Zone {zoneInfo.zone}/{totalZones} · {Math.min(doneCount + 1, total)}/{total}
+              区域 {zoneInfo.zone}/{totalZones} · 第 {Math.min(doneCount + 1, total)}/{total} 步
             </span>
           </div>
           <div className="w-10" />
@@ -5557,7 +5558,7 @@ function ARGuideStep({
         {/* Progress */}
         <div className="flex items-center gap-2 mb-2">
           <span style={{ color: COFFEE, opacity: 0.6, fontSize: 11, fontWeight: 600 }}>
-            {zoneInfo.label} · Step {Math.min(doneCount + 1, total)}/{total}
+            {zoneInfo.label} · 第 {Math.min(doneCount + 1, total)}/{total} 步
           </span>
           <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: LINEN }}>
             <div
@@ -5589,7 +5590,7 @@ function ARGuideStep({
                   fontWeight: 600,
                 }}
               >
-                <GitCompare size={13} /> Compare
+                <GitCompare size={13} /> 对比
               </button>
               <button
                 onClick={() => setSkipping(true)}
@@ -5602,7 +5603,7 @@ function ARGuideStep({
                   fontWeight: 600,
                 }}
               >
-                <SkipForward size={13} /> Skip
+                <SkipForward size={13} /> 跳过
               </button>
               <button
                 onClick={complete}
@@ -5624,7 +5625,7 @@ function ARGuideStep({
               className="text-center mt-3"
               style={{ color: COFFEE, opacity: 0.45, fontSize: 10 }}
             >
-              Tap & hold the camera to peek the original
+              长按画面可对照整理前的样子
             </p>
           </>
         ) : (
@@ -5685,7 +5686,7 @@ function ARGuideStep({
           >
             <Check size={28} color={WHITE} strokeWidth={3} />
           </div>
-          <p style={{ color: WHITE, fontSize: 18, fontWeight: 700 }}>Zone {zoneIdx + 1} complete!</p>
+          <p style={{ color: WHITE, fontSize: 18, fontWeight: 700 }}>第 {zoneIdx + 1} 个区域完成！</p>
           <p style={{ color: WHITE, opacity: 0.75, fontSize: 13, marginTop: 6, textAlign: "center" }}>
             正在前往 {zoneTasks[zoneIdx + 1]?.label}…
           </p>
@@ -5712,10 +5713,10 @@ function ARGuideStep({
               <div className="h-1 w-10 rounded-full" style={{ backgroundColor: SOFT }} />
             </div>
             <p style={{ color: COFFEE, fontSize: 14, fontWeight: 600, marginBottom: 4 }}>
-              Why skip?
+              为什么跳过？
             </p>
             <p style={{ color: COFFEE, opacity: 0.55, fontSize: 12, marginBottom: 14 }}>
-              We'll remember this for next time.
+              我们会记住，下次不再推荐这一步。
             </p>
             {["物品没识别到", "不想收拾", "稍后再说"].map((r) => (
               <button

@@ -1,3 +1,3 @@
-build: index-ua98Z7-y.js
-source: Figma Make v3 方案步骤全部使用真实照片（方案卡/微调/3D预览/完成页）
-synced: 2026-09-26 01:12
+build: index-CnF38uMW.js
+source: Figma Make v3 流程全中文+真实物品标签
+synced: 2026-09-26 01:32
