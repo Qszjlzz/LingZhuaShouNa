@@ -5,7 +5,7 @@ import { CommunityScreen } from "./components/CommunityScreen";
 import { MineScreen } from "./components/MineScreen";
 import { ShootFlow, RelightFlow } from "./components/ShootFlow";
 import { BottomNav, type Tab } from "./components/BottomNav";
-import { getNativeState, type NativeState } from "./nativeBridge";
+import { getNativeState, nativeRequest, type NativeState } from "./nativeBridge";
 
 export default function App() {
   const [tab, setTab] = useState<Tab>("spatial");
@@ -15,6 +15,13 @@ export default function App() {
   const [relitSpaceId, setRelitSpaceId] = useState<string | null>(null);
   const [nativeState, setNativeState] = useState<NativeState | null>(null);
   const refresh = () => getNativeState().then(setNativeState).catch(() => undefined);
+
+  // 点下去的这一刻就让原生把摄像头加电，别等 React 把拍摄页渲染完才开工 ——
+  // 相机硬件启动和页面渲染并行跑，页面挂好时画面通常已经在了。
+  const openShoot = () => {
+    void nativeRequest("camera.preview.warm", {}).catch(() => undefined);
+    setShooting(true);
+  };
 
   useEffect(() => { void refresh(); }, []);
   useEffect(() => { void refresh(); }, [tab]);
@@ -30,7 +37,7 @@ export default function App() {
             nativeSpaces={nativeState?.spaces}
             selectedSpaceID={nativeState?.selectedSpaceID}
             onNativeChange={refresh}
-            onReshoot={() => setShooting(true)}
+            onReshoot={openShoot}
             scanDone={scanDone}
             onScanAck={() => setScanDone(false)}
             onRelightRequest={(id, name, vivid) => {
@@ -45,7 +52,7 @@ export default function App() {
         {tab === "community" && <CommunityScreen nativeState={nativeState} onNativeChange={refresh} />}
         {tab === "mine" && <MineScreen nativeState={nativeState} onNativeChange={refresh} />}
 
-        <BottomNav active={tab} onChange={setTab} onCamera={() => setShooting(true)} />
+        <BottomNav active={tab} onChange={setTab} onCamera={openShoot} />
 
         {shooting && (
           <ShootFlow

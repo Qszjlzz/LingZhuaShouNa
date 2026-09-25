@@ -1409,6 +1409,9 @@ function CaptureStep({
   // 真实取景：相机画面垫在 WebView 底下，页面原地透明透出来，UI 一个像素都不动。
   const previewRef = useRef<HTMLDivElement>(null);
   const [liveFeed, setLiveFeed] = useState(false);
+  // 占位用的房间图是远程图，下载要等网络。相机正常时画面几百毫秒就到，
+  // 没必要先去下载它 —— 等一下还没画面才显示，避免"卡在加载假图"上。
+  const [showStatic, setShowStatic] = useState(false);
 
   // Swipe / drag state
   const dragStartX = useRef<number | null>(null);
@@ -1445,6 +1448,12 @@ function CaptureStep({
       void nativeRequest("camera.preview.stop", {}).catch(() => {});
     };
   }, []);
+
+  useEffect(() => {
+    if (liveFeed) return;
+    const t = setTimeout(() => setShowStatic(true), 500);
+    return () => clearTimeout(t);
+  }, [liveFeed]);
 
   // 画面要透上来，得把预览区以上这条链路的背景临时改成透明，离开时还原。
   useEffect(() => {
@@ -1866,7 +1875,7 @@ function CaptureStep({
       style={{ backgroundColor: liveFeed ? "transparent" : "#1a1411" }}
     >
       {/* Live camera feed —— 真机上是垫在底下的真实画面，拿不到时才用占位图 */}
-      {!liveFeed && (
+      {!liveFeed && showStatic && (
         <ImageWithFallback src={ROOM_IMG} alt="Camera" className="h-full w-full object-cover" />
       )}
 

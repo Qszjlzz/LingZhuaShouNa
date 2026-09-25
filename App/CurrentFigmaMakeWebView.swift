@@ -62,6 +62,9 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
                 respond(requestID, data: ["state": String(describing: viewModel.llmConnectionState)])
             case "capture.open": openCapture(requestID: requestID, payload: payload)
             case "scan.open": openScanStudio(requestID: requestID, payload: payload)
+            case "camera.preview.warm":
+                await CameraPreviewOverlay.shared.warmUp()
+                respond(requestID, data: ["ok": CameraEngine.shared.isReady])
             case "camera.preview.start": await startInlinePreview(requestID: requestID, payload: payload)
             case "camera.preview.frame": updateInlinePreviewFrame(payload: payload); respond(requestID, data: ["ok": true])
             case "camera.preview.stop": CameraPreviewOverlay.shared.stop(); respond(requestID, data: ["ok": true])

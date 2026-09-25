@@ -20,8 +20,30 @@ final class CameraPreviewOverlay {
     /// 这次是不是我们把它开起来的。如果进来之前扫描页已经在用，
     /// 就别抢着关掉人家的 session。
     private var startedByOverlay = false
+    /// 只暖机、还没接管画面的自动收尾任务。
+    private var warmTask: Task<Void, Never>?
 
     var isReady: Bool { CameraEngine.shared.isReady }
+
+    /// 点击拍摄按钮的瞬间调用：只把摄像头加电跑起来，不显示画面、不改透明。
+    ///
+    /// 相机硬件加电要几百毫秒，以前这段时间是等网页把拍摄页渲染完才开始算的，
+    /// 两段串行所以看起来"要加载"。现在点击即暖机，和网页渲染并行跑，
+    /// 等页面挂载好来接管时画面通常已经在了。
+    @MainActor
+    func warmUp() async {
+        warmTask?.cancel()
+        let engine = CameraEngine.shared
+        if !engine.isRunning { startedByOverlay = true }
+        await engine.start()
+
+        // 暖机后如果没人来接管（比如误触、或网页没起来），别让相机一直空转。
+        warmTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 6_000_000_000)
+            guard let self else { return }
+            if self.surface == nil { self.stop() }
+        }
+    }
 
     @MainActor
     func start(in webView: WKWebView, frame: CGRect) async -> Bool {
@@ -33,7 +55,11 @@ final class CameraPreviewOverlay {
         // 那样网页就误以为"没有相机"退回去弹原生页了，所以这里要等它就绪。
         guard await engine.waitUntilReady() else { return false }
 
-        startedByOverlay = !alreadyRunning
+        // 可能是点击时先暖过机，那次已经把相机跑起来了，这里不要把它改回 false，
+        // 否则关闭拍摄页时会漏掉收尾、相机一直开着。
+        if !alreadyRunning { startedByOverlay = true }
+        warmTask?.cancel()
+        warmTask = nil
 
         // 重复 start（比如页面重新挂载）时先清掉上一块画面，避免叠层。
         surface?.removeFromSuperview()
@@ -63,6 +89,8 @@ final class CameraPreviewOverlay {
 
     @MainActor
     func stop() {
+        warmTask?.cancel()
+        warmTask = nil
         surface?.removeFromSuperview()
         surface = nil
 
