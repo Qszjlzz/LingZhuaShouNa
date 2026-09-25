@@ -26,6 +26,7 @@ import {
   ChevronUp,
   Vibrate,
   MoveHorizontal,
+  Loader2,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
@@ -224,6 +225,10 @@ export function ShootFlow({
 }) {
   const [step, setStep] = useState<Step>("capture");
   const [assets, setAssets] = useState<CapturedAsset[]>([]);
+  // 确认过要收的物品、以及由这些物品生成并勾选的区域，后面每一步都用它。
+  const [confirmedItems, setConfirmedItems] = useState<NativeItem[]>([]);
+  const [zoneList, setZoneList] = useState<FlowZone[]>([]);
+  const photo = assets[0]?.src;
   const [plans, setPlans] = useState<GenPlan[]>(GEN_PLANS);
   const [chosen, setChosen] = useState<GenPlan>(GEN_PLANS[0]);
   // where the generating animation should land when it finishes
@@ -266,7 +271,8 @@ export function ShootFlow({
         <ConfirmStep
           assets={assets}
           onBack={() => setStep("review")}
-          onNext={() => {
+          onNext={(confirmed) => {
+            setConfirmedItems(confirmed);
             void refreshPlans().finally(() => {
               setGenReturn("plandeck");
               setStep("generating");
@@ -311,24 +317,34 @@ export function ShootFlow({
       )}
       {step === "zones" && (
         <ZoneSelectStep
+          photo={photo}
+          items={confirmedItems}
           onBack={() => setStep("plandeck")}
-          onNext={() => setStep(tier === "basic" ? "arPreview" : "tools")}
+          onNext={(zs) => {
+            setZoneList(zs);
+            setStep(tier === "basic" ? "arPreview" : "tools");
+          }}
         />
       )}
       {step === "tools" && (
         <ToolsStep
+          items={confirmedItems}
           onBack={() => setStep("zones")}
           onNext={() => setStep("arPreview")}
         />
       )}
       {step === "arPreview" && (
         <ARPreviewStep
+          photo={photo}
+          zones={zoneList}
           onBack={() => setStep(tier === "pro" ? "tools" : "zones")}
           onNext={() => setStep("arGuide")}
         />
       )}
       {step === "arGuide" && (
         <ARGuideStep
+          photo={photo}
+          zones={zoneList}
           tier={tier}
           onBack={() => setStep("arPreview")}
           onComplete={() => {
@@ -336,7 +352,7 @@ export function ShootFlow({
           }}
         />
       )}
-      {step === "reward" && <RewardStep onClose={onFinish || onClose} />}
+      {step === "reward" && <RewardStep photo={photo} onClose={onFinish || onClose} />}
     </div>
   );
 }
@@ -2294,7 +2310,7 @@ type BlindSpot = {
   resolved?: boolean;
 };
 
-function ConfirmStep({ assets, onBack, onNext }: { assets: CapturedAsset[]; onBack: () => void; onNext: () => void }) {
+function ConfirmStep({ assets, onBack, onNext }: { assets: CapturedAsset[]; onBack: () => void; onNext: (items: NativeItem[]) => void }) {
   const [loadingItems, setLoadingItems] = useState(true);
   const [items, setItems] = useState<DetectedItem[]>([]);
   const [adding, set添加ing] = useState(false);
@@ -2326,8 +2342,9 @@ function ConfirmStep({ assets, onBack, onNext }: { assets: CapturedAsset[]; onBa
   }, []);
 
   const confirmAndContinue = async () => {
-    await nativeRequest("items.save", { items: items.map((item) => ({ ...item, category: item.category || "收纳工具", suggestedZone: item.suggestedZone || "手边工具区", isSelected: item.isSelected ?? true })) });
-    onNext();
+    const payload = items.map((item) => ({ ...item, category: item.category || "收纳工具", suggestedZone: item.suggestedZone || "手边工具区", isSelected: item.isSelected ?? true }));
+    await nativeRequest("items.save", { items: payload });
+    onNext(payload);
   };
 
   const allResolved = blindSpots.every((b) => b.resolved);
@@ -2424,10 +2441,19 @@ function ConfirmStep({ assets, onBack, onNext }: { assets: CapturedAsset[]; onBa
             className="px-3.5 py-2 flex items-center gap-2"
             style={{ backgroundColor: "rgba(255,255,255,0.92)", borderRadius: 999 }}
           >
-            <Sparkles size={13} color={ORANGE} />
-            <span style={{ color: COFFEE, fontSize: 12, fontWeight: 500 }}>
-              识别到 {items.length} 件 · {blindSpots.length} 处待确认
-            </span>
+            {loadingItems ? (
+              <>
+                <Loader2 size={13} color={ORANGE} className="animate-spin" />
+                <span style={{ color: COFFEE, fontSize: 12, fontWeight: 500 }}>正在识别中…</span>
+              </>
+            ) : (
+              <>
+                <Sparkles size={13} color={ORANGE} />
+                <span style={{ color: COFFEE, fontSize: 12, fontWeight: 500 }}>
+                  识别到 {items.length} 件 · {blindSpots.length} 处待确认
+                </span>
+              </>
+            )}
           </div>
         </div>
 
@@ -2574,7 +2600,12 @@ function ConfirmStep({ assets, onBack, onNext }: { assets: CapturedAsset[]; onBa
           </button>
         </div>
         <div className="flex flex-wrap gap-2">
-          {items.map((it) => (
+          {loadingItems ? (
+            <div className="flex items-center gap-2 py-1" style={{ color: COFFEE, opacity: 0.55, fontSize: 12 }}>
+              <Loader2 size={12} className="animate-spin" /> 正在识别这张照片里的物品…
+            </div>
+          ) : (
+            items.map((it) => (
             <div
               key={it.id}
               className="flex items-center gap-2 pl-2.5 pr-1.5 py-1.5"
@@ -2600,7 +2631,8 @@ function ConfirmStep({ assets, onBack, onNext }: { assets: CapturedAsset[]; onBa
                 <X size={11} color={COFFEE} />
               </button>
             </div>
-          ))}
+            ))
+          )}
         </div>
 
         <button
@@ -3060,7 +3092,7 @@ function PromptStep({ onBack, onNext }: { onBack: () => void; onNext: () => void
           }}
         >
           <div className="h-12 w-12 overflow-hidden flex-shrink-0" style={{ borderRadius: 12 }}>
-            <ImageWithFallback src={ROOM_IMG} alt="空间场景" className="h-full w-full object-cover" />
+            <ImageWithFallback src={photo || ROOM_IMG} alt="空间场景" className="h-full w-full object-cover" />
           </div>
           <div className="flex-1 min-w-0">
             <p style={{ color: COFFEE, fontSize: 12, fontWeight: 600 }}>客厅扫描</p>
@@ -3702,6 +3734,7 @@ const TOOLS = [
     price: "¥89",
     img: "https://images.unsplash.com/photo-1772475385491-f3cf64d4131a?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=400",
     use: "用于整理搁板上的零散小物品",
+    cats: ["玩偶杂物", "衣物", "收纳工具"],
     brand: "无印良品",
     size: "26×37×12cm",
     material: "亚麻布 + 纸板",
@@ -3714,6 +3747,7 @@ const TOOLS = [
     price: "¥68",
     img: "https://images.unsplash.com/photo-1764588037085-a78240016f8b?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=400",
     use: "将书籍和装饰品分层摆放",
+    cats: ["书籍", "文具", "收纳工具"],
     brand: "宜家",
     size: "40×20×8cm",
     material: "相思木",
@@ -3726,6 +3760,7 @@ const TOOLS = [
     price: "¥29",
     img: "https://images.unsplash.com/photo-1775029918191-32e44ee20d06?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=400",
     use: "整理充电器和台灯线缆",
+    cats: ["电子产品", "工具", "文具"],
     brand: "绿联",
     size: "1.5m×3cm",
     material: "尼龙",
@@ -3733,13 +3768,35 @@ const TOOLS = [
   },
 ];
 
-function ToolsStep({ onBack, onNext }: { onBack: () => void; onNext: () => void }) {
+/** 工具按这次拍到的物品类别排序，用途说明也改成这次真实拍到的东西。 */
+function orderTools(items: NativeItem[]) {
+  const cats = new Set((items ?? []).map((i) => i.category));
+  const names = (items ?? []).map((i) => i.name);
+  return TOOLS.map((t) => ({ ...t, hit: t.cats.filter((c) => cats.has(c)).length }))
+    .sort((a, b) => b.hit - a.hit)
+    .map((t) =>
+      t.hit > 0 && names.length > 0
+        ? { ...t, use: `用于整理这次拍到的${names.slice(0, 3).join("、")}等 ${names.length} 件物品` }
+        : t,
+    );
+}
+
+function ToolsStep({
+  items,
+  onBack,
+  onNext,
+}: {
+  items: NativeItem[];
+  onBack: () => void;
+  onNext: () => void;
+}) {
+  const tools = orderTools(items);
   const [have, setHave] = useState<Record<string, boolean>>({});
   const [viewingTool, setViewingTool] = useState<string | null>(null);
   const toggle = (id: string) => setHave((h) => ({ ...h, [id]: !h[id] }));
   const haveCount = Object.values(have).filter(Boolean).length;
 
-  const currentTool = TOOLS.find(t => t.id === viewingTool);
+  const currentTool = tools.find(t => t.id === viewingTool);
 
   if (currentTool) {
     return <ToolPurchaseDetail tool={currentTool} onBack={() => setViewingTool(null)} />;
@@ -3785,7 +3842,7 @@ function ToolsStep({ onBack, onNext }: { onBack: () => void; onNext: () => void 
       </div>
 
       <div className="px-6 mt-5 space-y-3">
-        {TOOLS.map((t) => {
+        {tools.map((t) => {
           const owned = have[t.id];
           return (
             <div
@@ -3857,7 +3914,7 @@ function ToolsStep({ onBack, onNext }: { onBack: () => void; onNext: () => void 
         >
           <CheckCircle2 size={14} color={ORANGE} />
           <span style={{ color: COFFEE, opacity: 0.7, fontSize: 11 }}>
-            已有 {haveCount}/{TOOLS.length} · 还需 {TOOLS.length - haveCount} 件
+            已有 {haveCount}/{tools.length} · 还需 {tools.length - haveCount} 件
           </span>
         </div>
       </div>
@@ -4315,7 +4372,7 @@ function TaskStep({ onBack, onComplete }: { onBack: () => void; onComplete: () =
 const AFTER_IMG =
   "https://images.unsplash.com/photo-1749705319317-f9a2bf24fe3d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080";
 
-function RewardStep({ onClose }: { onClose: () => void }) {
+function RewardStep({ photo, onClose }: { photo?: string; onClose: () => void }) {
   const [afterPhoto, setAfterPhoto] = useState<string | null>(null);
   const [showComparison, setShowComparison] = useState(false);
   const [slider, setSlider] = useState(50);
@@ -4455,7 +4512,7 @@ function RewardStep({ onClose }: { onClose: () => void }) {
                 style={{ width: `${slider}%` }}
               >
                 <ImageWithFallback
-                  src={ROOM_IMG}
+                  src={photo || ROOM_IMG}
                   alt="整理前"
                   className="h-full object-cover"
                   style={{ width: `${(100 / slider) * 100}%`, minWidth: "100%" }}
@@ -4704,15 +4761,85 @@ const SELECTABLE_ZONES = [
   { n: 3, label: "书架角落", color: "#A88370", left: "6%", top: "8%", w: "30%", h: "26%", items: 4, mins: 3 },
 ];
 
-function ZoneSelectStep({ onBack, onNext }: { onBack: () => void; onNext: () => void }) {
-  const [selected, setSelected] = useState<number[]>([1, 2]);
+/** 区域由这次真实识别到的物品按类别生成：名称、件数、预计分钟都来自真实结果。 */
+type FlowZone = {
+  n: number; label: string; color: string;
+  left: string; top: string; w: string; h: string;
+  items: number; mins: number; names: string[]; home: string;
+};
+
+const ZONE_PALETTE = [ORANGE, BLUE, "#A88370", "#7BB28F", "#C97B84", "#8E7CC3"];
+const ZONE_LAYOUT = [
+  { left: "10%", top: "44%", w: "34%", h: "26%" },
+  { left: "44%", top: "30%", w: "40%", h: "42%" },
+  { left: "6%", top: "8%", w: "30%", h: "26%" },
+];
+/** 每类物品该回到哪里，用来生成"把XX归到YY"这样的具体步骤。 */
+const CATEGORY_HOME: Record<string, string> = {
+  "书籍": "书架", "电子产品": "充电站", "文具": "文具抽屉", "衣物": "衣柜",
+  "玩偶杂物": "收纳箱", "待丢弃": "暂存箱", "收纳工具": "储物柜",
+  "餐具": "厨房橱柜", "杯子": "厨房台面", "文件资料": "文件夹", "工具": "工具箱", "鞋履": "鞋柜",
+};
+
+function buildFlowZones(items: NativeItem[]): FlowZone[] {
+  const groups = new Map<string, string[]>();
+  for (const it of items ?? []) {
+    if (it.isSelected === false) continue;
+    const key = it.category || "收纳工具";
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(it.name);
+  }
+  // 一张都没认出来时退回设计稿的三个区域，页面不至于空着。
+  if (groups.size === 0) {
+    return SELECTABLE_ZONES.map((z) => ({ ...z, names: [], home: "固定收纳位" }));
+  }
+  const ranked = [...groups.entries()].sort((a, b) => b[1].length - a[1].length).slice(0, 3);
+  return ranked.map(([cat, names], i) => ({
+    n: i + 1,
+    label: `${cat}区`,
+    color: ZONE_PALETTE[i % ZONE_PALETTE.length],
+    ...ZONE_LAYOUT[i % ZONE_LAYOUT.length],
+    items: names.length,
+    mins: Math.max(2, Math.round(names.length * 1.5)),
+    names,
+    home: CATEGORY_HOME[cat] ?? "固定收纳位",
+  }));
+}
+
+/** 每个区域的步骤 = 该区域真实拍到的物品，一件一条归位动作。 */
+function buildZoneTasks(zones: FlowZone[]): { zone: number; label: string; color: string; tasks: SubTask[] }[] {
+  const source = zones.length > 0 ? zones : SELECTABLE_ZONES.map((z) => ({ ...z, names: [], home: "固定收纳位" }));
+  return source.map((z) => {
+    const tasks: SubTask[] = z.names.slice(0, 5).map((name, i) => ({
+      id: `z${z.n}t${i + 1}`,
+      text: `把「${name}」归到${z.home}`,
+    }));
+    if (tasks.length === 0) tasks.push({ id: `z${z.n}t1`, text: `${z.label}先清空台面再分类` });
+    tasks.push({ id: `z${z.n}clean`, text: `${z.label}收完后再擦一遍台面` });
+    return { zone: z.n, label: z.label, color: z.color, tasks };
+  });
+}
+
+function ZoneSelectStep({
+  photo,
+  items,
+  onBack,
+  onNext,
+}: {
+  photo?: string;
+  items: NativeItem[];
+  onBack: () => void;
+  onNext: (zones: FlowZone[]) => void;
+}) {
+  const zones = buildFlowZones(items);
+  const [selected, setSelected] = useState<number[]>(zones.map((z) => z.n));
 
   const toggle = (n: number) =>
     setSelected((arr) => (arr.includes(n) ? arr.filter((x) => x !== n) : [...arr, n]));
-  const selectAll = () => setSelected(SELECTABLE_ZONES.map((z) => z.n));
+  const selectAll = () => setSelected(zones.map((z) => z.n));
   const clearAll = () => setSelected([]);
-  const totalItems = SELECTABLE_ZONES.filter((z) => selected.includes(z.n)).reduce((s, z) => s + z.items, 0);
-  const totalMins = SELECTABLE_ZONES.filter((z) => selected.includes(z.n)).reduce((s, z) => s + z.mins, 0);
+  const totalItems = zones.filter((z) => selected.includes(z.n)).reduce((s, z) => s + z.items, 0);
+  const totalMins = zones.filter((z) => selected.includes(z.n)).reduce((s, z) => s + z.mins, 0);
 
   return (
     <div className="h-full w-full flex flex-col" style={{ backgroundColor: LINEN }}>
@@ -4733,10 +4860,10 @@ function ZoneSelectStep({ onBack, onNext }: { onBack: () => void; onNext: () => 
 
       {/* Photo with zone overlays */}
       <div className="mx-5 mt-3 relative overflow-hidden" style={{ borderRadius: 22, aspectRatio: "3/4" }}>
-        <ImageWithFallback src={ROOM_IMG} alt="空间场景" className="h-full w-full object-cover" />
+        <ImageWithFallback src={photo || ROOM_IMG} alt="空间场景" className="h-full w-full object-cover" />
         <div className="absolute inset-0" style={{ backgroundColor: "rgba(26,20,17,0.28)" }} />
 
-        {SELECTABLE_ZONES.map((z) => {
+        {zones.map((z) => {
           const isSel = selected.includes(z.n);
           return (
             <button
@@ -4783,7 +4910,7 @@ function ZoneSelectStep({ onBack, onNext }: { onBack: () => void; onNext: () => 
 
       {/* Zone summary list */}
       <div className="px-5 mt-4 space-y-2">
-        {SELECTABLE_ZONES.map((z) => {
+        {zones.map((z) => {
           const isSel = selected.includes(z.n);
           return (
             <button
@@ -4807,7 +4934,7 @@ function ZoneSelectStep({ onBack, onNext }: { onBack: () => void; onNext: () => 
                 {z.label}
               </span>
               <span style={{ color: COFFEE, opacity: 0.55, fontSize: 11 }}>
-                {z.items} items · {z.mins}m
+                {z.items} 件 · {z.mins} 分钟
               </span>
               <div
                 className="h-5 w-5 rounded-full flex items-center justify-center"
@@ -4827,7 +4954,7 @@ function ZoneSelectStep({ onBack, onNext }: { onBack: () => void; onNext: () => 
       >
         {selected.length > 0 && (
           <p style={{ color: COFFEE, opacity: 0.65, fontSize: 11, marginBottom: 8, textAlign: "center" }}>
-            {selected.length} zones · {totalItems} items · ~{totalMins} min
+            已选 {selected.length} 个区域 · {totalItems} 件 · 约 {totalMins} 分钟
           </p>
         )}
         <div className="flex gap-2">
@@ -4843,7 +4970,7 @@ function ZoneSelectStep({ onBack, onNext }: { onBack: () => void; onNext: () => 
               fontWeight: 600,
             }}
           >
-            Select all
+            全选
           </button>
           <button
             onClick={clearAll}
@@ -4857,10 +4984,10 @@ function ZoneSelectStep({ onBack, onNext }: { onBack: () => void; onNext: () => 
               fontWeight: 600,
             }}
           >
-            Clear
+            清空
           </button>
           <button
-            onClick={onNext}
+            onClick={() => onNext(zones.filter((z) => selected.includes(z.n)))}
             disabled={selected.length === 0}
             className="flex-[1.4] py-3"
             style={{
@@ -4889,7 +5016,18 @@ const AR_ARROWS = [
   { from: "45%,68%", to: "22%,82%", label: "书籍" },
 ];
 
-function ARPreviewStep({ onBack, onNext }: { onBack: () => void; onNext: () => void }) {
+function ARPreviewStep({
+  photo,
+  zones,
+  onBack,
+  onNext,
+}: {
+  photo?: string;
+  zones: FlowZone[];
+  onBack: () => void;
+  onNext: () => void;
+}) {
+  const previewZones = zones.length > 0 ? zones : SELECTABLE_ZONES.map((z) => ({ ...z, names: [], home: "固定收纳位" }));
   const [demo, setDemo] = useState(false);
   const [warn, setWarn] = useState(true);
   const arSupported = true; // toggle for demo
@@ -4960,7 +5098,7 @@ function ARPreviewStep({ onBack, onNext }: { onBack: () => void; onNext: () => v
       )}
 
       {/* Zone slabs */}
-      {SELECTABLE_ZONES.slice(0, 2).map((z) => (
+      {previewZones.slice(0, 2).map((z) => (
         <div
           key={z.n}
           className="absolute"
@@ -5173,19 +5311,25 @@ const AR_ZONE_TASKS: { zone: number; label: string; color: string; tasks: SubTas
 ];
 
 function ARGuideStep({
+  photo,
+  zones,
   tier = "smart",
   onBack,
   onComplete,
 }: {
+  photo?: string;
+  zones: FlowZone[];
   tier?: PlanTier;
   onBack: () => void;
   onComplete: () => void;
 }) {
+  // 每个区域的步骤由这次真实拍到的物品生成，一件一条归位动作。
+  const zoneTasks = buildZoneTasks(zones);
   const [zoneIdx, setZoneIdx] = useState(0);
-  const [tasks, setTasks] = useState<SubTask[]>(AR_ZONE_TASKS[0].tasks);
+  const [tasks, setTasks] = useState<SubTask[]>(zoneTasks[0].tasks);
   const [zoneTransition, setZoneTransition] = useState(false);
-  const totalZones = AR_ZONE_TASKS.length;
-  const zoneInfo = AR_ZONE_TASKS[zoneIdx];
+  const totalZones = zoneTasks.length;
+  const zoneInfo = zoneTasks[zoneIdx];
   const [compare, setCompare] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [skipping, setSkipping] = useState(false);
@@ -5208,7 +5352,7 @@ function ARGuideStep({
         setZoneTransition(true);
         setTimeout(() => {
           setZoneIdx((i) => i + 1);
-          setTasks(AR_ZONE_TASKS[zoneIdx + 1].tasks);
+          setTasks(zoneTasks[zoneIdx + 1].tasks);
           setZoneTransition(false);
         }, 1400);
       } else {
@@ -5250,7 +5394,7 @@ function ARGuideStep({
         {compare ? (
           <div className="flex h-full w-full">
             <div className="flex-1 relative overflow-hidden border-r" style={{ borderColor: "rgba(255,255,255,0.2)" }}>
-              <ImageWithFallback src={ROOM_IMG} alt="整理前" className="h-full w-full object-cover" />
+              <ImageWithFallback src={photo || ROOM_IMG} alt="整理前" className="h-full w-full object-cover" />
               <span
                 className="absolute top-20 left-3 px-2 py-0.5"
                 style={{ backgroundColor: "rgba(0,0,0,0.55)", color: WHITE, borderRadius: 6, fontSize: 10, fontWeight: 600 }}
@@ -5259,7 +5403,7 @@ function ARGuideStep({
               </span>
             </div>
             <div className="flex-1 relative overflow-hidden">
-              <ImageWithFallback src={ROOM_IMG} alt="目标区域" className="h-full w-full object-cover" />
+              <ImageWithFallback src={photo || ROOM_IMG} alt="目标区域" className="h-full w-full object-cover" />
               <div className="absolute inset-0" style={{ backgroundColor: "rgba(250,136,58,0.18)" }} />
               <span
                 className="absolute top-20 left-3 px-2 py-0.5"
@@ -5271,7 +5415,7 @@ function ARGuideStep({
           </div>
         ) : (
           <>
-            <ImageWithFallback src={ROOM_IMG} alt="实时画面" className="h-full w-full object-cover" />
+            <ImageWithFallback src={photo || ROOM_IMG} alt="实时画面" className="h-full w-full object-cover" />
             {!longPress && (
               <>
                 {/* Highlight slab */}
@@ -5516,7 +5660,7 @@ function ARGuideStep({
           </div>
           <p style={{ color: WHITE, fontSize: 18, fontWeight: 700 }}>Zone {zoneIdx + 1} complete!</p>
           <p style={{ color: WHITE, opacity: 0.75, fontSize: 13, marginTop: 6, textAlign: "center" }}>
-            Heading to {AR_ZONE_TASKS[zoneIdx + 1]?.label}…
+            正在前往 {zoneTasks[zoneIdx + 1]?.label}…
           </p>
         </div>
       )}
