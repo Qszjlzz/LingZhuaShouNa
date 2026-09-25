@@ -392,13 +392,22 @@ const W_SOFT = "rgba(123,92,72,0.24)";
 const W_GHOST = "rgba(123,92,72,0.07)";
 
 async function completeNativePlan() {
-  let state = await nativeRequest<NativeState>("state.get");
-  let selected = state.spaces.find((space) => space.id === state.selectedSpaceID);
-  for (let guard = 0; guard < 100; guard += 1) {
-    const active = selected?.activePlan?.steps.find((step) => step.status === "active");
-    if (!active) break;
-    state = await nativeRequest<NativeState>("plan.step.complete", { id: active.id });
-    selected = state.spaces.find((space) => space.id === state.selectedSpaceID);
+  // 原生请求万一不回包，不能把用户卡在最后一步：最多等 6 秒就直接去完成页。
+  const guard = new Promise<void>((resolve) => window.setTimeout(resolve, 6000));
+  const work = (async () => {
+    let state = await nativeRequest<NativeState>("state.get");
+    let selected = state.spaces.find((space) => space.id === state.selectedSpaceID);
+    for (let i = 0; i < 100; i += 1) {
+      const active = selected?.activePlan?.steps.find((step) => step.status === "active");
+      if (!active) break;
+      state = await nativeRequest<NativeState>("plan.step.complete", { id: active.id });
+      selected = state.spaces.find((space) => space.id === state.selectedSpaceID);
+    }
+  })();
+  try {
+    await Promise.race([work, guard]);
+  } catch {
+    /* 失败也不影响进完成页 */
   }
 }
 
@@ -1573,36 +1582,17 @@ function CaptureStep({
     };
   }, [mode]);
 
-  // AR 扫描结束：抓一帧当环境照，和拍照通道汇合到同一条后续流程。
-  const finishARScan = async () => {
-    if (busy) return;
-    setBusy(true);
-    setError(null);
-    try {
-      if (!liveFeed) {
-        setError("相机还没准备好，点一下画面里的重试");
-        void startPreview().then((ok) => setCamFailed(!ok));
-        return;
-      }
-      const shot = await nativeRequest<{ preview?: string }>("camera.capture", {});
-      if (!shot.preview) {
-        setError("没有拿到画面，换一个角度再试一次");
-        return;
-      }
-      await nativeRequest("ar.scan.stop", {}).catch(() => undefined);
-      const asset: CapturedAsset = {
-        id: `ar${Date.now()}`,
-        kind: "photo",
-        src: shot.preview,
-        label: "AR 实时扫描",
-      };
-      on完成([...shots, asset]);
-    } catch (e) {
-      const message = (e as Error).message;
-      if (message !== "已取消") setError(message);
-    } finally {
-      setBusy(false);
-    }
+  // AR 只是一个实时扫描能力：不出结果、不存照片、不进整理流程，退出即回到拍照。
+  const exitAR = () => {
+    void nativeRequest("ar.scan.stop", {}).catch(() => undefined);
+    setArTags([]);
+    setArCount(0);
+    setMode("photo");
+  };
+
+  const retryCamera = () => {
+    setCamFailed(false);
+    void startPreview().then((ok) => setCamFailed(!ok));
   };
 
   const snapPhoto = async () => {
@@ -2105,13 +2095,15 @@ function CaptureStep({
         </div>
       </div>
 
-      {/* Framing guides — subtle corner brackets */}
-      <div className="absolute inset-x-10 top-32 bottom-52 pointer-events-none">
-        <CornerBracket pos="tl" />
-        <CornerBracket pos="tr" />
-        <CornerBracket pos="bl" />
-        <CornerBracket pos="br" />
-      </div>
+      {/* Framing guides — subtle corner brackets（AR 是全屏扫描，不需要取景框） */}
+      {mode === "photo" && (
+        <div className="absolute inset-x-10 top-32 bottom-52 pointer-events-none">
+          <CornerBracket pos="tl" />
+          <CornerBracket pos="tr" />
+          <CornerBracket pos="bl" />
+          <CornerBracket pos="br" />
+        </div>
+      )}
 
       {/* AR 实时标签：只有名称 + 一个小圆点，刻意不画识别轮廓 */}
       {mode === "video" &&
@@ -2138,7 +2130,8 @@ function CaptureStep({
           </div>
         ))}
 
-      {/* Flash button (mid-bottom over feed) */}
+      {/* Flash button (mid-bottom over feed) — AR 不需要 */}
+      {mode === "photo" && (
       <button
         onClick={() => setFlash((f) => !f)}
         className="absolute h-9 w-9 rounded-full flex items-center justify-center"
@@ -2152,8 +2145,10 @@ function CaptureStep({
       >
         <Zap size={16} color={WHITE} fill={flash ? WHITE : "none"} />
       </button>
+      )}
 
-      {/* Bottom dock */}
+      {/* Bottom dock — 只有拍照通道才有多张连拍的这一套；AR 是全屏实时扫描，不要这些 */}
+      {mode === "photo" && (
       <div
         className="absolute bottom-0 left-0 right-0 px-5 pt-4 pb-8"
         style={{
@@ -2207,7 +2202,7 @@ function CaptureStep({
             onMouseDown={() => setPressed(true)}
             onMouseUp={() => setPressed(false)}
             onMouseLeave={() => setPressed(false)}
-            onClick={mode === "photo" ? snapPhoto : finishARScan}
+            onClick={snapPhoto}
             className="rounded-full flex items-center justify-center"
             style={{
               width: 72,
@@ -2269,6 +2264,36 @@ function CaptureStep({
             : "AR 实时扫描中 · 缓慢环绕房间，识别结果会直接显示"}
         </p>
       </div>
+      )}
+
+      {/* AR 模式底部：只有一个退出按钮，保持全屏扫描画面 */}
+      {mode === "video" && (
+        <div className="absolute bottom-0 left-0 right-0 pb-12 flex flex-col items-center gap-2.5">
+          {camFailed && (
+            <button
+              onClick={retryCamera}
+              className="px-4 py-2"
+              style={{ backgroundColor: "rgba(0,0,0,0.55)", color: WHITE, borderRadius: 999, fontSize: 11 }}
+            >
+              相机未启动 · 点击重试
+            </button>
+          )}
+          <button
+            onClick={exitAR}
+            className="h-16 w-16 rounded-full flex items-center justify-center"
+            style={{
+              backgroundColor: WHITE,
+              border: "3px solid rgba(255,255,255,0.55)",
+              boxShadow: "0 8px 24px rgba(0,0,0,0.28)",
+            }}
+          >
+            <ArrowLeft size={24} color={COFFEE} />
+          </button>
+          <span style={{ color: WHITE, fontSize: 11, fontWeight: 600, textShadow: "0 1px 4px rgba(0,0,0,0.6)" }}>
+            退出 AR 扫描
+          </span>
+        </div>
+      )}
     </div>
   );
 }
@@ -5615,28 +5640,44 @@ function ARGuideStep({
   const total = tasks.length;
   const progress = (doneCount / total) * 100;
 
-  const complete = () => {
-    if (!current) return;
-    const updated = tasks.map((t) => (t.id === current.id ? { ...t, done: true } : t));
-    setTasks(updated);
-    const all完成InZone = updated.every((t) => t.done || t.skipped);
-    if (all完成InZone) {
-      if (zoneIdx + 1 < totalZones) {
-        setZoneTransition(true);
-        setTimeout(() => {
-          setZoneIdx((i) => i + 1);
-          setTasks(zoneTasks[zoneIdx + 1].tasks);
-          setZoneTransition(false);
-        }, 1400);
-      } else {
-        setTimeout(onComplete, 500);
-      }
+  const advancing = useRef(false);
+
+  // 一个区域里所有步骤都完成/跳过就自动往下走：不管是点"完成"、点"跳过"，
+  // 还是手动把清单全勾上，都走这一条路，避免点了按钮卡在原地。
+  useEffect(() => {
+    if (zoneTransition || advancing.current) return;
+    const allSettled = tasks.length === 0 || tasks.every((t) => t.done || t.skipped);
+    if (!allSettled) return;
+    advancing.current = true;
+    if (zoneIdx + 1 < totalZones) {
+      setZoneTransition(true);
+      window.setTimeout(() => {
+        setZoneIdx((i) => i + 1);
+        setTasks(zoneTasks[zoneIdx + 1].tasks);
+        setZoneTransition(false);
+        advancing.current = false;
+      }, 1200);
+    } else {
+      window.setTimeout(() => {
+        advancing.current = false;
+        onComplete();
+      }, 400);
     }
+  }, [tasks, zoneIdx, zoneTransition]);
+
+  const complete = () => {
+    if (!current) {
+      // 清单里已经全勾完了：直接推进，别让按钮变成死的。
+      if (tasks.every((t) => t.done || t.skipped)) advancing.current = false;
+      return;
+    }
+    setTasks((arr) => arr.map((t) => (t.id === current.id ? { ...t, done: true } : t)));
   };
 
   const skipReason = (reason: string) => {
-    if (!current) return;
-    setTasks((arr) => arr.map((t) => (t.id === current.id ? { ...t, skipped: true } : t)));
+    if (current) {
+      setTasks((arr) => arr.map((t) => (t.id === current.id ? { ...t, skipped: true } : t)));
+    }
     setSkipping(false);
   };
 
