@@ -107,6 +107,17 @@ final class CameraEngine: NSObject, ObservableObject {
         AVCaptureDevice.authorizationStatus(for: .video) == .authorized
     }
 
+    /// 预热：已经拿到相机权限的话，提前把采集链路配好（只配置，不 startRunning）。
+    ///
+    /// 配置一次要锁设备、加输入输出，是进拍摄页时等待感的主要来源；
+    /// 提前做完之后，进页面只剩下 startRunning 这一步，画面几乎立刻出来。
+    /// 只在已授权时做 —— 不主动弹系统授权框，免得一开 App 就要权限。
+    func prepareIfAuthorized() async {
+        guard isAuthorized else { return }
+        configureIfNeeded()
+        await waitUntilReady(timeout: 2)
+    }
+
     /// configure 之后 `isReady` 是回主线程异步刷新的，`start()` 一返回就立刻读
     /// 会读到 false。需要确认相机真的能用时，用这个方法等它就绪。
     @MainActor

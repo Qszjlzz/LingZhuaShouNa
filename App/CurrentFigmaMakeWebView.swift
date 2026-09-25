@@ -18,6 +18,9 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
         webView.scrollView.bounces = false
         context.coordinator.webView = webView
         loadBundle(in: webView)
+        // 相机预热：已授权就把采集链路提前配好（不 startRunning，不会亮系统的相机指示灯），
+        // 这样点进拍摄页时只差最后一步，画面几乎立刻出来，不用盯着占位图等。
+        Task { await CameraEngine.shared.prepareIfAuthorized() }
         return webView
     }
 
