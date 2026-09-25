@@ -741,263 +741,137 @@ function PlanDeckStep({
   onStart: (p: GenPlan) => void;
   onTune: (p: GenPlan) => void;
 }) {
-  const [idx, setIdx] = useState(0);
-  const active = plans[idx];
-
-  const go = (next: number) => {
-    if (next >= 0 && next < plans.length) setIdx(next);
-  };
+  // 现在只定一种方案：进来就是这一个，要么微调、要么确认继续。
+  const plan = plans[0];
 
   return (
     <div className="h-full w-full flex flex-col" style={{ backgroundColor: LINEN }}>
-
-      {/* ── Header ── */}
-      <div style={{ paddingTop: 60, paddingLeft: 24, paddingRight: 24, paddingBottom: 14 }}>
-        <div className="flex items-start gap-3">
-          <div className="flex-1">
-            <p
-              style={{
-                color: COFFEE,
-                fontSize: 27,
-                fontWeight: 700,
-                letterSpacing: "-0.032em",
-                lineHeight: 1.2,
-              }}
-            >
-              你的空间，
-              <br />
-              可以这样整理
-            </p>
-            <p
-              style={{
-                color: COFFEE,
-                opacity: 0.44,
-                fontSize: 11.5,
-                marginTop: 8,
-                lineHeight: 1.6,
-              }}
-            >
-              AI 根据空间结构与物品分布，为你生成了 {plans.length} 种整理方案
-            </p>
-          </div>
-          <button
-            onClick={onClose}
-            className="h-9 w-9 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5"
-            style={{ backgroundColor: WHITE, boxShadow: "0 2px 8px rgba(123,92,72,0.10)" }}
-          >
-            <X size={16} color={COFFEE} />
-          </button>
-        </div>
-      </div>
-
-      {/* ── Carousel ── */}
+      {/* ── Hero photo ── */}
       <div className="relative flex-1 overflow-hidden" style={{ minHeight: 0 }}>
-        {plans.map((p, i) => {
-          const isActive = i === idx;
-          const dist = Math.abs(i - idx);
-          const xPos = PEEK + (i - idx) * CARD_STEP;
-          const scale = isActive ? 1.0 : dist === 1 ? 0.91 : 0.83;
-          const opacity = isActive ? 1.0 : dist === 1 ? 0.68 : 0.38;
-
-          return (
-            <motion.div
-              key={p.id}
-              className="absolute top-2 bottom-0"
-              style={{ width: CARD_W, left: 0 }}
-              animate={{ x: xPos, scale, opacity }}
-              transition={{ type: "spring", stiffness: 360, damping: 36 }}
-              drag={isActive ? "x" : false}
-              dragConstraints={{ left: 0, right: 0 }}
-              dragElastic={0.2}
-              onDragEnd={(_, info) => {
-                if (info.offset.x < -58) go(idx + 1);
-                else if (info.offset.x > 58) go(idx - 1);
-              }}
-              onTap={() => { if (!isActive) setIdx(i); }}
-            >
-              <div
-                className="h-full w-full overflow-hidden flex flex-col"
-                style={{
-                  backgroundColor: WHITE,
-                  borderRadius: 28,
-                  boxShadow: isActive
-                    ? "0 24px 64px rgba(123,92,72,0.22), 0 4px 18px rgba(123,92,72,0.10)"
-                    : "0 6px 24px rgba(123,92,72,0.08)",
-                }}
-              >
-                {/* ── Hero image ── */}
-                <div className="relative flex-shrink-0" style={{ height: "57%" }}>
-                  <ImageWithFallback
-                    src={photo || p.image}
-                    alt={p.name}
-                    className="h-full w-full object-cover"
-                  />
-                  <div
-                    className="absolute inset-0 pointer-events-none"
-                    style={{
-                      background:
-                        "linear-gradient(180deg, rgba(0,0,0,0.22) 0%, rgba(0,0,0,0) 44%)",
-                    }}
-                  />
-                  {/* plan number pill */}
-                  <span
-                    className="absolute top-4 left-4"
-                    style={{
-                      backgroundColor: "rgba(255,255,255,0.92)",
-                      backdropFilter: "blur(8px)",
-                      borderRadius: 999,
-                      fontSize: 9.5,
-                      fontWeight: 700,
-                      color: COFFEE,
-                      letterSpacing: "0.06em",
-                      padding: "4px 10px",
-                    }}
-                  >
-                    方案 0{i + 1}
-                  </span>
-                  {/* time pill */}
-                  <span
-                    className="absolute top-4 right-4 flex items-center gap-1"
-                    style={{
-                      backgroundColor: p.accent,
-                      borderRadius: 999,
-                      fontSize: 9.5,
-                      fontWeight: 600,
-                      color: WHITE,
-                      padding: "4px 10px",
-                    }}
-                  >
-                    约 {p.minutes} 分钟
-                  </span>
-                </div>
-
-                {/* ── Plan info ── */}
-                <div
-                  className="flex-1 flex flex-col justify-between overflow-hidden"
-                  style={{ padding: "17px 20px 20px" }}
-                >
-                  {/* name + vibe */}
-                  <div>
-                    <div className="flex items-center gap-2 mb-1.5">
-                      <span
-                        style={{
-                          width: 8,
-                          height: 8,
-                          borderRadius: 999,
-                          backgroundColor: p.accent,
-                          flexShrink: 0,
-                          display: "inline-block",
-                        }}
-                      />
-                      <p
-                        style={{
-                          color: COFFEE,
-                          fontSize: 22,
-                          fontWeight: 700,
-                          letterSpacing: "-0.025em",
-                          lineHeight: 1.15,
-                        }}
-                      >
-                        {p.name}
-                      </p>
-                    </div>
-                    <p
-                      style={{
-                        color: COFFEE,
-                        opacity: 0.5,
-                        fontSize: 12,
-                        lineHeight: 1.6,
-                        paddingLeft: 16,
-                      }}
-                    >
-                      {p.vibe}
-                    </p>
-                  </div>
-
-                  {/* strategy bullets */}
-                  <div className="space-y-1.5">
-                    {p.changes.map((c, ci) => (
-                      <div key={ci} className="flex items-start gap-2.5">
-                        <div
-                          style={{
-                            width: 4,
-                            height: 4,
-                            borderRadius: 999,
-                            backgroundColor: p.accent,
-                            opacity: 0.72,
-                            flexShrink: 0,
-                            marginTop: 7,
-                          }}
-                        />
-                        <span
-                          style={{
-                            color: COFFEE,
-                            opacity: 0.68,
-                            fontSize: 11.5,
-                            lineHeight: 1.55,
-                          }}
-                        >
-                          {c}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* tags */}
-                  <div className="flex gap-1.5 flex-wrap">
-                    {p.tags.map((t) => (
-                      <span
-                        key={t}
-                        style={{
-                          backgroundColor: LINEN,
-                          color: COFFEE,
-                          borderRadius: 999,
-                          fontSize: 10.5,
-                          fontWeight: 600,
-                          padding: "4px 10px",
-                        }}
-                      >
-                        {t}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </motion.div>
-          );
-        })}
+        <ImageWithFallback
+          src={photo || plan.image}
+          alt={plan.name}
+          className="h-full w-full object-cover"
+        />
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            background:
+              "linear-gradient(180deg, rgba(0,0,0,0.18) 0%, rgba(0,0,0,0) 40%)",
+          }}
+        />
+        <button
+          onClick={onClose}
+          className="absolute top-14 left-5 h-9 w-9 rounded-full flex items-center justify-center"
+          style={{ backgroundColor: "rgba(255,255,255,0.92)", boxShadow: "0 2px 8px rgba(0,0,0,0.12)" }}
+        >
+          <X size={16} color={COFFEE} />
+        </button>
       </div>
 
-      {/* ── Dots + CTA ── */}
+      {/* ── Plan card ── */}
       <div
+        className="flex flex-col overflow-hidden"
         style={{
-          paddingTop: 16,
-          paddingBottom: 32,
-          paddingLeft: 20,
-          paddingRight: 20,
           backgroundColor: WHITE,
-          borderTop: `1px solid ${SOFT}`,
-          marginTop: 12,
+          borderRadius: "28px 28px 0 0",
+          marginTop: -24,
+          padding: "22px 24px 26px",
+          boxShadow: "0 -10px 34px rgba(123,92,72,0.14)",
         }}
       >
-        {/* animated dots */}
-        <div className="flex justify-center gap-1.5 mb-5">
-          {plans.map((_, i) => (
-            <motion.button
-              key={i}
-              onClick={() => setIdx(i)}
-              animate={{
-                width: i === idx ? 24 : 7,
-                backgroundColor: i === idx ? ORANGE : "rgba(123,92,72,0.2)",
-              }}
-              style={{ height: 7, borderRadius: 999 }}
-              transition={{ type: "spring", stiffness: 380, damping: 32 }}
-            />
+        {/* name */}
+        <div className="flex items-center gap-2 mb-2">
+          <Zap size={15} color={ORANGE} fill={ORANGE} />
+          <p
+            style={{
+              color: COFFEE,
+              fontSize: 21,
+              fontWeight: 700,
+              letterSpacing: "-0.025em",
+            }}
+          >
+            {plan.name}
+          </p>
+          <span
+            className="ml-auto"
+            style={{
+              backgroundColor: plan.accent,
+              borderRadius: 999,
+              fontSize: 9.5,
+              fontWeight: 600,
+              color: WHITE,
+              padding: "4px 10px",
+            }}
+          >
+            约 {plan.minutes} 分钟
+          </span>
+        </div>
+
+        {/* summary */}
+        <p
+          style={{
+            color: COFFEE,
+            opacity: 0.55,
+            fontSize: 12,
+            lineHeight: 1.6,
+            marginBottom: 12,
+          }}
+        >
+          {plan.vibe}
+        </p>
+
+        {/* strategy bullets */}
+        <div className="space-y-1.5 mb-3.5">
+          {plan.changes.map((c, ci) => (
+            <div key={ci} className="flex items-start gap-2.5">
+              <div
+                style={{
+                  width: 4,
+                  height: 4,
+                  borderRadius: 999,
+                  backgroundColor: plan.accent,
+                  opacity: 0.72,
+                  flexShrink: 0,
+                  marginTop: 7,
+                }}
+              />
+              <span
+                style={{
+                  color: COFFEE,
+                  opacity: 0.68,
+                  fontSize: 11.5,
+                  lineHeight: 1.55,
+                }}
+              >
+                {c}
+              </span>
+            </div>
           ))}
         </div>
 
+        {/* tags */}
+        <div className="flex gap-1.5 flex-wrap mb-4">
+          {plan.tags.map((t) => (
+            <span
+              key={t}
+              style={{
+                backgroundColor: LINEN,
+                color: COFFEE,
+                borderRadius: 999,
+                fontSize: 10.5,
+                fontWeight: 600,
+                padding: "4px 10px",
+              }}
+            >
+              {t}
+            </span>
+          ))}
+        </div>
+
+        {/* actions：确认继续 / 微调 */}
         <button
-          onClick={() => onStart(active)}
+          onClick={() => onStart(plan)}
           className="w-full py-4 flex items-center justify-center gap-2 active:scale-[0.98] transition-transform"
           style={{
             backgroundColor: ORANGE,
@@ -1008,21 +882,21 @@ function PlanDeckStep({
             boxShadow: "0 10px 28px rgba(250,136,58,0.34)",
           }}
         >
-          <Check size={16} />
-          选择此方案
+          <Zap size={15} />
+          确认方案，开始整理
         </button>
         <button
-          onClick={() => onTune(active)}
-          className="w-full py-3 mt-2.5 flex items-center justify-center gap-2 active:scale-[0.98] transition-transform"
+          onClick={() => onTune(plan)}
+          className="w-full py-3 mt-2 flex items-center justify-center gap-1.5 active:scale-[0.98] transition-transform"
           style={{
-            backgroundColor: LINEN,
+            backgroundColor: "transparent",
             color: COFFEE,
-            borderRadius: 999,
-            fontSize: 13,
+            opacity: 0.55,
+            fontSize: 12.5,
             fontWeight: 600,
           }}
         >
-          <Sparkles size={14} color={ORANGE} />
+          <Sparkles size={13} color={ORANGE} />
           微调方案
         </button>
       </div>
@@ -5297,7 +5171,7 @@ function ZoneSelectStep({
               opacity: selected.length > 0 ? 1 : 0.6,
             }}
           >
-            开始整理 →
+            确定 →
           </button>
         </div>
       </div>

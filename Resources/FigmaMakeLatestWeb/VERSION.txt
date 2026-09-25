@@ -1,3 +1,3 @@
-build: index-lWRmWonb.js
-source: AR页签改纯全屏实时扫描(无底部UI不产生结果) + AR引导区域推进修复
-synced: 2026-09-26 02:31
+build: index-C9FsHlGP.js
+source: 定版：方案页改单一方案(确认/微调)，区域页底部按钮改确定
+synced: 2026-09-26 02:40
