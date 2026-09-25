@@ -1412,6 +1412,9 @@ function CaptureStep({
   // 占位用的房间图是远程图，下载要等网络。相机正常时画面几百毫秒就到，
   // 没必要先去下载它 —— 等一下还没画面才显示，避免"卡在加载假图"上。
   const [showStatic, setShowStatic] = useState(false);
+  // 取景失败只在这页里提示 + 重试，绝不跳到系统相机页。
+  const [camFailed, setCamFailed] = useState(false);
+  const [camReason, setCamReason] = useState<string | null>(null);
 
   // Swipe / drag state
   const dragStartX = useRef<number | null>(null);
@@ -1421,22 +1424,39 @@ function CaptureStep({
   const angleHint = ANGLE_HINTS[Math.min(shots.length, ANGLE_HINTS.length - 1)];
   const fmt = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 
-  // 进入拍摄页就起真相机；离开时关掉。拿不到原生层（模拟器/未授权）就用占位图。
+  // 进入拍摄页就起真相机；离开时关掉。
+  // 没画面时只在这一页里重试 + 提示，绝不跳到系统相机页。
+  const rectOf = () => {
+    const r = previewRef.current?.getBoundingClientRect();
+    return r
+      ? { x: r.x, y: r.y, width: r.width, height: r.height }
+      : { x: 0, y: 0, width: window.innerWidth, height: window.innerHeight };
+  };
+
+  const startPreview = async (): Promise<boolean> => {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const res = await nativeRequest<{ ok: boolean; reason?: string }>("camera.preview.start", rectOf());
+        if (res.ok === true) {
+          setLiveFeed(true);
+          setCamReason(null);
+          return true;
+        }
+        setCamReason(res.reason ?? "unavailable");
+      } catch {
+        setCamReason("unavailable");
+      }
+      // 相机可能刚被别的应用占着，缓一下再试。
+      await new Promise((r) => setTimeout(r, 600));
+    }
+    return false;
+  };
+
   useEffect(() => {
     let stopped = false;
-    const rectOf = () => {
-      const r = previewRef.current?.getBoundingClientRect();
-      return r
-        ? { x: r.x, y: r.y, width: r.width, height: r.height }
-        : { x: 0, y: 0, width: window.innerWidth, height: window.innerHeight };
-    };
     (async () => {
-      try {
-        const res = await nativeRequest<{ ok: boolean }>("camera.preview.start", rectOf());
-        if (!stopped) setLiveFeed(res.ok === true);
-      } catch {
-        /* 没有原生层就沿用占位图 */
-      }
+      const ok = await startPreview();
+      if (!stopped && !ok) setCamFailed(true);
     })();
     const sync = () => {
       void nativeRequest("camera.preview.frame", rectOf()).catch(() => {});
@@ -1484,19 +1504,14 @@ function CaptureStep({
     setBusy(true);
     setError(null);
     try {
-      let src: string | undefined;
-      // 有实时画面就原地拍一张，全程不离开这个页面。
-      if (liveFeed) {
-        const shot = await nativeRequest<{ preview?: string }>("camera.capture", {});
-        src = shot.preview;
+      // 只在有实时画面时原地拍；没有画面就提示重试，绝不跳出去开系统相机。
+      if (!liveFeed) {
+        setError(camReason === "denied" ? "没有相机权限：去「设置 → 灵爪收纳」里打开相机" : "相机还没准备好，点一下画面里的重试");
+        void startPreview().then((ok) => setCamFailed(!ok));
+        return;
       }
-      if (!src) {
-        const result = await nativeRequest<{ previews?: string[] }>("scan.open", {
-          mode: "photo",
-          single: true,
-        });
-        src = (result.previews ?? []).filter(Boolean)[0];
-      }
+      const shot = await nativeRequest<{ preview?: string }>("camera.capture", {});
+      const src = shot.preview;
       if (!src) {
         setError("没有拿到照片，光线亮一点再试一次");
         return;
@@ -1541,16 +1556,14 @@ function CaptureStep({
     setRecDuration(0);
     recTimer.current = setInterval(() => setRecDuration((d) => d + 1), 1000);
     try {
-      // 真实 AR 扫描由原生页完成，这里只负责把结果收进照片条。
-      let src: string | undefined;
-      if (liveFeed) {
-        const shot = await nativeRequest<{ preview?: string }>("camera.capture", {});
-        src = shot.preview;
+      // 真实 AR 扫描就在这一页里抓帧；没画面只提示重试，不跳原生页。
+      if (!liveFeed) {
+        setError("相机还没准备好，点一下画面里的重试");
+        void startPreview().then((ok) => setCamFailed(!ok));
+        return;
       }
-      if (!src) {
-        const result = await nativeRequest<{ previews?: string[] }>("scan.open", { mode: "ar" });
-        src = (result.previews ?? []).filter(Boolean)[0];
-      }
+      const shot = await nativeRequest<{ preview?: string }>("camera.capture", {});
+      const src = shot.preview;
       if (!src) {
         setError("扫描没有生成画面，换一个角度再试一次");
         return;
@@ -1877,6 +1890,28 @@ function CaptureStep({
       {/* Live camera feed —— 真机上是垫在底下的真实画面，拿不到时才用占位图 */}
       {!liveFeed && showStatic && (
         <ImageWithFallback src={ROOM_IMG} alt="Camera" className="h-full w-full object-cover" />
+      )}
+
+      {/* 取景没起来：只在这页里提示 + 重试，不跳系统相机 */}
+      {camFailed && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-8" style={{ backgroundColor: "#1a1411" }}>
+          <p style={{ color: "#FFFFFF", fontSize: 14, textAlign: "center" }}>
+            {camReason === "denied"
+              ? "没有相机权限，去「设置 → 灵爪收纳」里允许使用相机"
+              : "相机暂时没起来，可能刚被别的应用占用"}
+          </p>
+          <button
+            onClick={async () => {
+              setCamFailed(false);
+              const ok = await startPreview();
+              setCamFailed(!ok);
+            }}
+            className="px-5 py-2.5 rounded-full"
+            style={{ backgroundColor: ORANGE, color: WHITE, fontSize: 13, fontWeight: 600 }}
+          >
+            重试
+          </button>
+        </div>
       )}
 
       {/* subtle vignette */}

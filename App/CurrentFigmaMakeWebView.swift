@@ -175,7 +175,9 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
             }
             let ok = await CameraPreviewOverlay.shared.start(in: webView, frame: frame)
             if ok { await MainActor.run { viewModel.scannedItems = [] } }
-            respond(requestID, data: ["ok": ok])
+            // 起不来时把原因告诉网页：没授权和"被别的 App 占着"要给不同提示。
+            let reason = ok ? "" : (CameraEngine.shared.permissionDenied ? "denied" : "unavailable")
+            respond(requestID, data: ["ok": ok, "reason": reason])
         }
 
         private func updateInlinePreviewFrame(payload: [String: Any]) {

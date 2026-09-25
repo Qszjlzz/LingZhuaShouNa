@@ -48,7 +48,38 @@ final class CameraEngine: NSObject, ObservableObject {
     @Published private(set) var permissionDenied = false
     @Published var torchEnabled = false
 
-    private override init() { super.init() }
+    private override init() {
+        super.init()
+        installSessionObservers()
+    }
+
+    /// 相机被别的 App 抢走、或系统中断之后，session 会自己停掉，
+    /// 但我们的 `running` 标记还留在 true，于是再也起不来。这里监听并自愈。
+    private func installSessionObservers() {
+        let center = NotificationCenter.default
+        for name in [Notification.Name.AVCaptureSessionRuntimeError,
+                     .AVCaptureSessionWasInterrupted,
+                     .AVCaptureSessionInterruptionEnded] {
+            center.addObserver(forName: name, object: session, queue: .main) { [weak self] _ in
+                self?.recoverFromInterruption()
+            }
+        }
+    }
+
+    private func recoverFromInterruption() {
+        running = false
+        isRunning = false
+        Task { @MainActor in self.finishAllCaptures(with: nil) }
+        sessionQueue.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+            guard let self, self.configured, !self.session.isRunning else { return }
+            self.session.startRunning()
+            let nowRunning = self.session.isRunning
+            DispatchQueue.main.async {
+                self.running = nowRunning
+                self.isRunning = nowRunning
+            }
+        }
+    }
 
     // MARK: - Session lifecycle
 
