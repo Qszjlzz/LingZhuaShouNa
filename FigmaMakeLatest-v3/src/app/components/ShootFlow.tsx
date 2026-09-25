@@ -2513,11 +2513,24 @@ function ConfirmStep({ assets, onBack, onNext }: { assets: CapturedAsset[]; onBa
             style={{ backgroundColor: LINEN, borderRadius: 16, borderTopLeftRadius: 4 }}
           >
             <p style={{ color: COFFEE, fontSize: 12.5, lineHeight: 1.5 }}>
-              我从这次拍摄里认出了 {items.length} 件物品，请确认一下；还有{" "}
-              <span style={{ color: ORANGE, fontWeight: 600 }}>
-                {blindSpots.filter((b) => !b.resolved).length} 处
-              </span>
-              看得不太准，需要你帮我定夺。
+              {loadingItems ? (
+                <>
+                  <Loader2
+                    size={12}
+                    color={ORANGE}
+                    className="animate-spin inline-block align-middle mr-1"
+                  />
+                  我正在看你拍的这张照片，正在识别中…
+                </>
+              ) : (
+                <>
+                  我从这次拍摄里认出了 {items.length} 件物品，请确认一下；还有{" "}
+                  <span style={{ color: ORANGE, fontWeight: 600 }}>
+                    {blindSpots.filter((b) => !b.resolved).length} 处
+                  </span>
+                  看得不太准，需要你帮我定夺。
+                </>
+              )}
             </p>
           </div>
         </div>
@@ -2637,22 +2650,30 @@ function ConfirmStep({ assets, onBack, onNext }: { assets: CapturedAsset[]; onBa
 
         <button
           onClick={() => void confirmAndContinue()}
-          disabled={!allResolved}
+          disabled={loadingItems || !allResolved}
           className="w-full py-3.5 mt-5"
           style={{
-            backgroundColor: allResolved ? ORANGE : SOFT,
+            backgroundColor: !loadingItems && allResolved ? ORANGE : SOFT,
             color: WHITE,
             borderRadius: 999,
             fontSize: 14,
             fontWeight: 600,
-            boxShadow: allResolved ? "0 8px 22px rgba(250,136,58,0.32)" : "none",
+            boxShadow: !loadingItems && allResolved ? "0 8px 22px rgba(250,136,58,0.32)" : "none",
           }}
         >
-          {allResolved
-            ? items.length > 0
-              ? `确认这 ${items.length} 件并生成方案`
-              : "仍然继续，手动添加物品"
-            : `还有 ${blindSpots.filter((b) => !b.resolved).length} 处待确认`}
+          {loadingItems ? (
+            <span className="inline-flex items-center justify-center gap-1.5">
+              <Loader2 size={13} className="animate-spin" /> 正在识别中…
+            </span>
+          ) : allResolved ? (
+            items.length > 0 ? (
+              `确认这 ${items.length} 件并生成方案`
+            ) : (
+              "仍然继续，手动添加物品"
+            )
+          ) : (
+            `还有 ${blindSpots.filter((b) => !b.resolved).length} 处待确认`
+          )}
         </button>
       </div>
 
