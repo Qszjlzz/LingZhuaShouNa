@@ -425,7 +425,6 @@ export function SpatialScreen({
   const [bornId, setBornId] = useState<string | null>(null);
   const [bornPos, setBornPos] = useState<{ cx: number; cy: number } | null>(null);
   const [openProgress, setOpenProgress] = useState(false);
-  const [retidy, setRetidy] = useState(false);
   const [relitId, setRelitId] = useState<string | null>(null);
   const boardRef = useRef<HTMLDivElement>(null);
 
@@ -450,7 +449,6 @@ export function SpatialScreen({
   }, [relitSpaceId]);
 
   function reshoot(mode: "compare" | "same" | "new") {
-    setRetidy(false);
     setSelected(null);
     onReshoot?.(mode);
   }
@@ -458,10 +456,11 @@ export function SpatialScreen({
   const current = pieces.find((p) => p.id === selected) ?? null;
   const toDelete = pieces.find((p) => p.id === confirmDelete) ?? null;
 
+  // B 线唯一入口：空间卡详情 → 直接进这条线自己的整理流程（拍照→…→完成点亮），
+  // 不经过主线的拍摄流程。
   function handleRelight() {
     if (!current) return;
     setSelected(null);
-    setRetidy(false);
     onRelightRequest?.(current.id, current.name, current.vivid);
   }
 
@@ -509,12 +508,6 @@ export function SpatialScreen({
       void nativeRequest("space.rename", { id: current.id, name: draft.trim() }).then(onNativeChange);
     }
     setRenaming(false);
-  }
-
-  function reviewNow() {
-    if (!current) return;
-    patch(current.id, { lastDays: 0 });
-    setSelected(null);
   }
 
   function doDelete() {
@@ -805,7 +798,7 @@ export function SpatialScreen({
 
               {/* recolour — user picks the space's hue */}
               <div className="mt-5 flex items-center gap-2">
-                <span style={{ color: COFFEE, opacity: 0.5, fontSize: 12, fontWeight: 600, marginRight: 2 }}>配色</span>
+                <span style={{ color: COFFEE, opacity: 0.5, fontSize: 12, fontWeight: 600, marginRight: 2 }}>颜色</span>
                 {PALETTE.map((c) => {
                   const on = current.vivid.toLowerCase() === c.toLowerCase();
                   return (
@@ -873,94 +866,13 @@ export function SpatialScreen({
                 ))}
               </div>
 
-              {current.lastDays >= 14 ? (
-                <div className="mt-5 flex gap-2.5">
-                  <button
-                    onClick={handleRelight}
-                    className="flex-1 py-3.5 flex items-center justify-center gap-1.5 active:scale-[0.98] transition-transform"
-                    style={{ backgroundColor: LINEN, color: COFFEE, borderRadius: 18, fontSize: 14, fontWeight: 600 }}
-                  >
-                    <Camera size={16} color={COFFEE} /> 重新拍照比对
-                  </button>
-                  <button
-                    onClick={() => setRetidy(true)}
-                    className="flex-1 py-3.5 flex items-center justify-center gap-1.5 active:scale-[0.98] transition-transform"
-                    style={{ backgroundColor: ORANGE, color: WHITE, borderRadius: 18, fontSize: 14, fontWeight: 600, boxShadow: "0 6px 18px rgba(250,136,58,0.3)" }}
-                  >
-                    <RotateCw size={16} color={WHITE} /> 再次整理
-                  </button>
-                </div>
-              ) : (
-                <button
-                  onClick={reviewNow}
-                  className="w-full mt-5 py-3.5 active:scale-[0.98] transition-transform"
-                  style={{ backgroundColor: ORANGE, color: WHITE, borderRadius: 18, fontSize: 15, fontWeight: 600 }}
-                >
-                  进入这个空间
-                </button>
-              )}
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
-
-      {/* ----------------  re-tidy choice (原方案 / 新方案)  ---------------- */}
-      <AnimatePresence>
-        {retidy && current && (
-          <>
-            <motion.div
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              onClick={() => setRetidy(false)}
-              className="absolute inset-0 z-[75]" style={{ backgroundColor: "rgba(42,32,26,0.4)" }}
-            />
-            <motion.div
-              initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
-              transition={{ type: "spring", stiffness: 320, damping: 32 }}
-              className="absolute left-0 right-0 bottom-0 z-[80] px-6 pt-3 pb-8"
-              style={{ backgroundColor: WHITE, borderTopLeftRadius: 30, borderTopRightRadius: 30 }}
-            >
-              <div className="mx-auto mb-4 rounded-full" style={{ width: 40, height: 4, backgroundColor: SOFT }} />
-              <p style={{ color: COFFEE, fontSize: 17, fontWeight: 700 }}>再次整理「{current.name}」</p>
-              <p style={{ color: COFFEE, opacity: 0.55, fontSize: 12.5, marginTop: 4, lineHeight: 1.5 }}>
-                重新拍摄这个空间，选择沿用原来的方案，或让小助手生成新的方案。整理完这块碎片会重新点亮，无需新增拼图。
-              </p>
-
+              {/* B 线唯一动作：重新整理 = 走这条线自己的流程（拍照→…→完成点亮） */}
               <button
-                onClick={() => reshoot("same")}
-                className="w-full mt-5 p-3.5 flex items-center gap-3 text-left active:scale-[0.99] transition-transform"
-                style={{ backgroundColor: LINEN, borderRadius: 18 }}
+                onClick={handleRelight}
+                className="w-full mt-5 py-3.5 flex items-center justify-center gap-1.5 active:scale-[0.98] transition-transform"
+                style={{ backgroundColor: ORANGE, color: WHITE, borderRadius: 18, fontSize: 15, fontWeight: 600, boxShadow: "0 6px 18px rgba(250,136,58,0.3)" }}
               >
-                <div className="h-10 w-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: current.vivid }}>
-                  <RotateCw size={18} color={WHITE} />
-                </div>
-                <div className="flex-1">
-                  <p style={{ color: COFFEE, fontSize: 14, fontWeight: 600 }}>沿用原方案</p>
-                  <p style={{ color: COFFEE, opacity: 0.55, fontSize: 11.5 }}>按上次的方案快速复位</p>
-                </div>
-                <ChevronRight size={18} color={COFFEE} style={{ opacity: 0.4 }} />
-              </button>
-
-              <button
-                onClick={() => reshoot("new")}
-                className="w-full mt-2.5 p-3.5 flex items-center gap-3 text-left active:scale-[0.99] transition-transform"
-                style={{ backgroundColor: LINEN, borderRadius: 18 }}
-              >
-                <div className="h-10 w-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: BLUE }}>
-                  <Sparkles size={18} color={WHITE} />
-                </div>
-                <div className="flex-1">
-                  <p style={{ color: COFFEE, fontSize: 14, fontWeight: 600 }}>生成新方案</p>
-                  <p style={{ color: COFFEE, opacity: 0.55, fontSize: 11.5 }}>重新拍摄，探索新的整理风格</p>
-                </div>
-                <ChevronRight size={18} color={COFFEE} style={{ opacity: 0.4 }} />
-              </button>
-
-              <button
-                onClick={() => setRetidy(false)}
-                className="w-full mt-4 py-3"
-                style={{ color: COFFEE, opacity: 0.6, fontSize: 13, fontWeight: 500 }}
-              >
-                取消
+                <Camera size={16} color={WHITE} /> 再次整理 · 重新拍照
               </button>
             </motion.div>
           </>
