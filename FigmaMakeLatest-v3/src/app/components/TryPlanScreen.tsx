@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   Play,
   ListChecks,
+  Plus,
 } from "lucide-react";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { COFFEE, ORANGE, LINEN, BLUE, WHITE, SOFT } from "./theme";
@@ -37,9 +38,9 @@ const steps = [
 ];
 
 const durations = [
-  { id: "fast", label: "快速模式", minutes: 5, sub: "5分钟", desc: "只做最快见效的部分" },
-  { id: "standard", label: "标准方案", minutes: 10, sub: "10分钟", desc: "完成主要区域归位" },
-  { id: "deep", label: "深度整理", minutes: 60, sub: "60分钟", desc: "全区域完整复盘" },
+  { id: "fast", label: "灵感整理", minutes: 5, sub: "5分钟", desc: "只做最快见效的部分" },
+  { id: "standard", label: "换季大衣橱", minutes: 10, sub: "10分钟", desc: "完成主要区域归位" },
+  { id: "deep", label: "清爽极简", minutes: 60, sub: "60分钟", desc: "全区域完整复盘" },
 ];
 
 export function TryPlanScreen({
@@ -160,9 +161,15 @@ export function TryPlanScreen({
 
         {/* Linked space picker */}
         <div className="px-5 mt-5">
-          <p style={{ color: COFFEE, fontSize: 13, fontWeight: 600, marginBottom: 8 }}>
-            应用到空间
-          </p>
+          <div className="flex items-center justify-between mb-2">
+            <p style={{ color: COFFEE, fontSize: 13, fontWeight: 600 }}>应用空间</p>
+            <span
+              className="px-3 py-1 flex items-center gap-1"
+              style={{ backgroundColor: ORANGE, color: WHITE, borderRadius: 999, fontSize: 10, fontWeight: 600 }}
+            >
+              <Plus size={11} /> 新空间
+            </span>
+          </div>
           <div className="flex gap-2 overflow-x-auto">
             {spaceOptions.map((s) => {
               const active = s === linkedSpace;
@@ -186,10 +193,10 @@ export function TryPlanScreen({
           </div>
         </div>
 
-        {/* Duration plans */}
+        {/* Duration plans（设计稿：选择风格，选中行橙色填充） */}
         <div className="px-5 mt-6">
           <p style={{ color: COFFEE, fontSize: 13, fontWeight: 600, marginBottom: 10 }}>
-            选择节奏
+            选择风格
           </p>
           <div className="space-y-2">
             {durations.map((d) => {
@@ -200,18 +207,18 @@ export function TryPlanScreen({
                   onClick={() => setDuration(d.id)}
                   className="w-full flex items-center gap-3 px-4 py-3 text-left"
                   style={{
-                    backgroundColor: WHITE,
+                    backgroundColor: active ? ORANGE : WHITE,
                     borderRadius: 18,
                     boxShadow: active
-                      ? `0 0 0 2px ${ORANGE}, 0 6px 16px rgba(250,136,58,0.18)`
+                      ? "0 6px 18px rgba(250,136,58,0.28)"
                       : "0 4px 14px rgba(123,92,72,0.04)",
-                    transition: "box-shadow 0.15s",
+                    transition: "all 0.15s",
                   }}
                 >
                   <div
                     className="h-10 w-10 rounded-2xl flex items-center justify-center"
                     style={{
-                      backgroundColor: active ? ORANGE : LINEN,
+                      backgroundColor: active ? "rgba(255,255,255,0.22)" : LINEN,
                       color: active ? WHITE : COFFEE,
                       fontSize: 11,
                       fontWeight: 600,
@@ -220,19 +227,19 @@ export function TryPlanScreen({
                     {d.sub.split(" ")[0]}
                   </div>
                   <div className="flex-1">
-                    <p style={{ color: COFFEE, fontSize: 13, fontWeight: 600 }}>{d.label}</p>
-                    <p style={{ color: COFFEE, opacity: 0.55, fontSize: 11, marginTop: 1 }}>
+                    <p style={{ color: active ? WHITE : COFFEE, fontSize: 13, fontWeight: 600 }}>{d.label}</p>
+                    <p style={{ color: active ? "rgba(255,255,255,0.85)" : COFFEE, opacity: active ? 1 : 0.55, fontSize: 11, marginTop: 1 }}>
                       {d.desc}
                     </p>
                   </div>
                   <div
                     className="h-5 w-5 rounded-full flex items-center justify-center"
                     style={{
-                      backgroundColor: active ? ORANGE : "transparent",
+                      backgroundColor: active ? WHITE : "transparent",
                       border: active ? "none" : `2px solid ${SOFT}`,
                     }}
                   >
-                    {active && <CheckCircle2 size={14} color={WHITE} />}
+                    {active && <CheckCircle2 size={14} color={ORANGE} />}
                   </div>
                 </button>
               );
@@ -240,10 +247,10 @@ export function TryPlanScreen({
           </div>
         </div>
 
-        {/* Zones breakdown */}
+        {/* Zones breakdown（设计稿：区域指南） */}
         <div className="px-5 mt-7 mb-3 flex items-center justify-between">
-          <p style={{ color: COFFEE, fontSize: 16, fontWeight: 600 }}>区域分解</p>
-          <span style={{ color: ORANGE, fontSize: 12 }}>自定义</span>
+          <p style={{ color: COFFEE, fontSize: 16, fontWeight: 600 }}>区域指南</p>
+          <span style={{ color: ORANGE, fontSize: 12 }}>编辑</span>
         </div>
         <div className="px-5 space-y-2">
           {zones.map((z, i) => (
@@ -289,9 +296,9 @@ export function TryPlanScreen({
           ))}
         </div>
 
-        {/* Method (5 steps) */}
+        {/* Method (5 steps)（设计稿：整理步骤） */}
         <div className="px-5 mt-7 mb-3">
-          <p style={{ color: COFFEE, fontSize: 16, fontWeight: 600 }}>整理方法</p>
+          <p style={{ color: COFFEE, fontSize: 16, fontWeight: 600 }}>整理步骤</p>
           <p style={{ color: COFFEE, opacity: 0.55, fontSize: 11, marginTop: 2 }}>
             贯穿始终的5条原则
           </p>
@@ -318,9 +325,12 @@ export function TryPlanScreen({
           ))}
         </div>
 
-        {/* Items in this case */}
+        {/* Items in this case（设计稿：所需工具，2×2 网格） */}
         <div className="px-5 mt-7 mb-3">
-          <p style={{ color: COFFEE, fontSize: 16, fontWeight: 600 }}>案例涉及的物品</p>
+          <p style={{ color: COFFEE, fontSize: 16, fontWeight: 600 }}>所需工具</p>
+          <p style={{ color: COFFEE, opacity: 0.55, fontSize: 11, marginTop: 2 }}>
+            整理时用到的物品与工具
+          </p>
         </div>
         <div className="px-5 grid grid-cols-2 gap-2.5">
           {items.length === 0 && (
@@ -363,7 +373,7 @@ export function TryPlanScreen({
           </div>
           <div className="flex-1">
             <p style={{ color: WHITE, fontSize: 13, fontWeight: 600 }}>
-              AI 将调整此方案
+              方案复刻助手
             </p>
             <p style={{ color: WHITE, opacity: 0.85, fontSize: 11 }}>
               将按 {chosen.label}（{chosen.sub}）为目标生成你自己的方案
@@ -379,26 +389,22 @@ export function TryPlanScreen({
           background: "linear-gradient(180deg, rgba(246,241,235,0) 0%, rgba(246,241,235,1) 30%)",
         }}
       >
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
           <button
             onClick={() => {
               if (!caseItem) return;
-              setSaved(true);
+              setSaved((s) => !s);
               void nativeRequest("community.favorite", { id: caseItem.id })
                 .then(() => onNativeChange?.())
                 .catch(() => undefined);
             }}
-            className="h-14 px-4 rounded-full flex items-center justify-center gap-2"
+            className="h-14 w-14 rounded-full flex items-center justify-center flex-shrink-0"
             style={{
               backgroundColor: WHITE,
-              color: COFFEE,
-              fontSize: 12,
-              fontWeight: 600,
               boxShadow: "0 4px 14px rgba(123,92,72,0.06)",
             }}
           >
-            <Bookmark size={16} fill={saved ? ORANGE : "none"} color={saved ? ORANGE : COFFEE} />
-            {saved ? "已收藏" : "收藏"}
+            <Bookmark size={20} fill={saved ? ORANGE : "none"} color={saved ? ORANGE : COFFEE} />
           </button>
           <button
             onClick={() => setConfirming(true)}
@@ -411,7 +417,7 @@ export function TryPlanScreen({
               boxShadow: "0 8px 24px rgba(250,136,58,0.35)",
             }}
           >
-            <Play size={16} fill={WHITE} /> 开始此方案
+            <Play size={16} fill={WHITE} /> 开始复刻方案
           </button>
         </div>
       </div>
@@ -454,7 +460,7 @@ export function TryPlanScreen({
                 lineHeight: 1.5,
               }}
             >
-              "{caseItem?.title || "社区方案"}"方案将应用到<b>{linkedSpace}</b> · 节奏<b>{chosen.label}</b>。
+              "{caseItem?.title || "社区方案"}"方案将应用到<b>{linkedSpace}</b> · 风格<b>{chosen.label}</b>（{chosen.sub}）。
               你可以随时暂停。
             </p>
             {startResult && (

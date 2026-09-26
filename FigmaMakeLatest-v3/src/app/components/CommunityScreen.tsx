@@ -293,53 +293,59 @@ function PostCard({
         boxShadow: "0 4px 16px rgba(123,92,72,0.05)",
       }}
     >
-      <button onClick={onOpen} className="w-full text-left block">
-        <div style={{ height: post.h }} className="w-full overflow-hidden relative">
-          <ImageWithFallback src={post.img} alt={post.title} className="h-full w-full object-cover" />
-          {post.tags[0] && (
-            <span
-              className="absolute"
-              style={{
-                left: 10,
-                top: 10,
-                backgroundColor: ORANGE,
-                color: WHITE,
-                borderRadius: 999,
-                padding: "3px 9px",
-                fontSize: 10,
-                fontWeight: 600,
-              }}
-            >
-              {post.tags[0]}
-            </span>
-          )}
-        </div>
-        <div className="p-3">
-          <p style={{ color: COFFEE, fontSize: 12, fontWeight: 500, lineHeight: 1.35 }}>
-            {post.title}
-          </p>
-          <div className="flex items-center justify-between mt-2.5">
-            <div className="flex items-center gap-1.5">
-              <div
-                className="h-5 w-5 rounded-full flex items-center justify-center"
-                style={{ backgroundColor: post.avatarBg, color: WHITE, fontSize: 9, fontWeight: 600 }}
-              >
-                {post.avatar}
-              </div>
-              <span style={{ color: COFFEE, opacity: 0.6, fontSize: 10 }}>{post.user}</span>
-            </div>
-          </div>
-        </div>
-      </button>
       <button
-        onClick={onLike}
-        aria-label={post.liked ? "取消点赞" : "点赞"}
-        className="absolute flex items-center gap-1 px-2 py-1"
-        style={{ right: 12, bottom: 12, borderRadius: 999, backgroundColor: "rgba(255,255,255,0.9)" }}
+        onClick={onOpen}
+        className="w-full text-left block"
+        style={{ all: "unset", display: "block", width: "100%", cursor: "pointer" }}
       >
-        <Heart size={12} color={ORANGE} fill={post.liked ? ORANGE : "transparent"} />
-        <span style={{ color: COFFEE, opacity: 0.7, fontSize: 10 }}>{post.likes}</span>
+        <span style={{ display: "block" }}>
+          <span style={{ display: "block", height: post.h }} className="w-full overflow-hidden relative">
+            <ImageWithFallback src={post.img} alt={post.title} className="h-full w-full object-cover" />
+            {post.tags[0] && (
+              <span
+                className="absolute"
+                style={{
+                  left: 10,
+                  top: 10,
+                  backgroundColor: ORANGE,
+                  color: WHITE,
+                  borderRadius: 999,
+                  padding: "3px 9px",
+                  fontSize: 10,
+                  fontWeight: 600,
+                }}
+              >
+                {post.tags[0]}
+              </span>
+            )}
+          </span>
+          <span className="p-3" style={{ display: "block" }}>
+            <span style={{ color: COFFEE, fontSize: 12, fontWeight: 500, lineHeight: 1.35, display: "block" }}>
+              {post.title}
+            </span>
+          </span>
+        </span>
       </button>
+      {/* 作者行 + 点赞（设计稿：与作者同行，橙色心 + 数字） */}
+      <div className="flex items-center justify-between px-3 pb-3">
+        <div className="flex items-center gap-1.5">
+          <div
+            className="h-5 w-5 rounded-full flex items-center justify-center"
+            style={{ backgroundColor: post.avatarBg, color: WHITE, fontSize: 9, fontWeight: 600 }}
+          >
+            {post.avatar}
+          </div>
+          <span style={{ color: COFFEE, opacity: 0.6, fontSize: 10 }}>{post.user}</span>
+        </div>
+        <button
+          onClick={onLike}
+          aria-label={post.liked ? "取消点赞" : "点赞"}
+          className="flex items-center gap-1"
+        >
+          <Heart size={12} color={ORANGE} fill={post.liked ? ORANGE : "transparent"} />
+          <span style={{ color: COFFEE, opacity: 0.7, fontSize: 10 }}>{post.likes}</span>
+        </button>
+      </div>
     </div>
   );
 }
