@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Search, Sparkles, Shirt, BookOpen, Coffee, Gamepad2, Pill, Wrench, Utensils, Sparkle } from "lucide-react";
 import { COFFEE, ORANGE, LINEN, BLUE, WHITE, SOFT } from "./theme";
-import { BooksCategoryScreen } from "./BooksCategoryScreen";
+import { BooksCategoryScreen, resolveCategoryGroups, type CategoryGroup } from "./BooksCategoryScreen";
 import type { NativeState } from "../nativeBridge";
 
 const categories = [
@@ -49,6 +49,23 @@ export function ClassificationScreen({ nativeState, onNativeChange }: Classifica
   const filteredRecent = recentItems.filter(
     (it) => `${it.name}${it.cat}`.toLowerCase().includes(keyword)
   );
+
+  /* 搜索联想（设计稿：匹配分类 → 建议卡 + 该分类下匹配的分组物品卡） */
+  const matchedCategory =
+    keyword.length > 0
+      ? categories.find((c) => c.name.includes(query.trim()) || query.trim().includes(c.name))
+      : undefined;
+  let searchGroups: CategoryGroup[] = [];
+  if (matchedCategory) {
+    const all = resolveCategoryGroups(matchedCategory.name, nativeState);
+    searchGroups = all
+      .map((g) => ({
+        ...g,
+        books: g.books.filter((b) => b.title.toLowerCase().includes(keyword)),
+      }))
+      .filter((g) => g.books.length > 0);
+    if (searchGroups.length === 0) searchGroups = all; // 命中分类但没命中具体物品时展示全部分组
+  }
 
   return (
     <div className="h-full w-full overflow-y-auto pb-32" style={{ backgroundColor: LINEN }}>
@@ -105,10 +122,90 @@ export function ClassificationScreen({ nativeState, onNativeChange }: Classifica
         </div>
       </div>
 
+      {/* 搜索联想结果（设计稿第 2/3 屏：建议卡 + 匹配分组） */}
+      {matchedCategory ? (
+        <>
+          <div className="px-6 mt-4">
+            <button
+              onClick={() => setOpenCategory(matchedCategory.name)}
+              className="w-full px-4 py-3 flex items-center gap-3 text-left"
+              style={{ backgroundColor: WHITE, borderRadius: 18, boxShadow: "0 4px 16px rgba(123,92,72,0.04)" }}
+            >
+              <div
+                className="h-11 w-11 rounded-2xl flex items-center justify-center flex-shrink-0"
+                style={{ backgroundColor: matchedCategory.color }}
+              >
+                <matchedCategory.icon size={20} color={WHITE} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p style={{ color: COFFEE, fontSize: 14, fontWeight: 600 }}>{matchedCategory.name}</p>
+                <p style={{ color: COFFEE, opacity: 0.55, fontSize: 11 }}>{matchedCategory.count} 个物品</p>
+              </div>
+            </button>
+          </div>
+          {searchGroups.map((g) => (
+            <div key={g.name} className="mt-6">
+              <div className="px-6 mb-3 flex items-center justify-between">
+                <p style={{ color: COFFEE, fontSize: 15, fontWeight: 600 }}>{g.name}</p>
+                <span style={{ color: COFFEE, opacity: 0.5, fontSize: 11 }}>{g.books.length}</span>
+              </div>
+              <div className="px-6 grid grid-cols-3 gap-3">
+                {g.books.slice(0, 6).map((b) => (
+                  <button
+                    key={b.id}
+                    onClick={() => setOpenCategory(matchedCategory.name)}
+                    className="relative flex flex-col items-center p-2"
+                    style={{
+                      backgroundColor: WHITE,
+                      borderRadius: 16,
+                      boxShadow: "0 4px 12px rgba(123,92,72,0.04)",
+                    }}
+                  >
+                    <div
+                      className="w-full flex items-end justify-center"
+                      style={{
+                        height: 76,
+                        background: `linear-gradient(160deg, ${b.cover} 0%, ${b.cover}cc 100%)`,
+                        borderRadius: 10,
+                        marginBottom: 6,
+                        position: "relative",
+                        overflow: "hidden",
+                      }}
+                    >
+                      <div
+                        className="absolute left-1.5 top-1.5 bottom-1.5 w-[3px] rounded-full"
+                        style={{ backgroundColor: "rgba(0,0,0,0.18)" }}
+                      />
+                      <span
+                        style={{
+                          color: WHITE, fontSize: 9, fontWeight: 600, padding: "3px 5px",
+                          textAlign: "center", lineHeight: 1.2, opacity: 0.9,
+                        }}
+                      >
+                        {b.title.replace(/[《》]/g, "")}
+                      </span>
+                    </div>
+                    <p style={{ color: COFFEE, fontSize: 10.5, fontWeight: 500, textAlign: "center", lineHeight: 1.3 }}>
+                      {b.title}
+                    </p>
+                    <span
+                      className="mt-1 mb-0.5 px-2 py-0.5"
+                      style={{ backgroundColor: BLUE, color: WHITE, borderRadius: 999, fontSize: 9 }}
+                    >
+                      {b.tag}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </>
+      ) : (
+        <>
       {/* Categories grid */}
       <div className="px-6 mt-7 mb-3 flex items-center justify-between">
         <p style={{ color: COFFEE, fontSize: 16, fontWeight: 600 }}>分类</p>
-        <span style={{ color: COFFEE, opacity: 0.5, fontSize: 12 }}>{filteredCategories.length}</span>
+        <span style={{ color: ORANGE, fontSize: 12, fontWeight: 500 }}>编辑</span>
       </div>
 
       <div className="px-6 grid grid-cols-2 gap-3">
@@ -173,6 +270,8 @@ export function ClassificationScreen({ nativeState, onNativeChange }: Classifica
           </div>
         ))}
       </div>
+        </>
+      )}
     </div>
   );
 }

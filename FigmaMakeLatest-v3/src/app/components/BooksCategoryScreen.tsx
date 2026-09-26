@@ -1,13 +1,43 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Search, Sparkles, BookOpen, Plus, X, Pencil, Check } from "lucide-react";
+import { ArrowLeft, BookOpen, Plus, X, Pencil, Check } from "lucide-react";
 import { AddItemModal } from "./AddItemModal";
 import { COFFEE, ORANGE, LINEN, BLUE, WHITE, SOFT } from "./theme";
 import { nativeRequest, type NativeState } from "../nativeBridge";
 
 type Book = { id: string; title: string; tag: string; cover: string };
 type Group = { name: string; books: Book[] };
+export type CategoryBook = Book;
+export type CategoryGroup = Group;
 
 const COVERS = ["#A8B8CC", "#E8B894", "#C44545", "#7FA8C9", "#8B6F47", "#3A5A8C", "#E8DED0", "#8B6F47"];
+
+/* 真实物品优先、设计稿示例兜底 —— 供分类主页搜索联想复用 */
+export function resolveCategoryGroups(
+  categoryName: string,
+  nativeState?: NativeState | null
+): Group[] {
+  const items =
+    nativeState?.spaces.flatMap((space) =>
+      space.detectedItems
+        .filter((item) => (item.category || "").trim() === categoryName)
+        .map((item) => ({ ...item, zone: item.suggestedZone?.trim() || "未分组" }))
+    ) ?? [];
+  if (items.length > 0) {
+    const map = new Map<string, Book[]>();
+    items.forEach((item, index) => {
+      const list = map.get(item.zone) ?? [];
+      list.push({
+        id: `real-${item.id}`,
+        title: item.name,
+        tag: item.spaceName ?? "已扫描",
+        cover: COVERS[index % COVERS.length],
+      });
+      map.set(item.zone, list);
+    });
+    return Array.from(map, ([name, books]) => ({ name, books }));
+  }
+  return SAMPLES[categoryName] ?? [{ name: `${categoryName}物件`, books: [] }];
+}
 
 /* 每个分类的示例分组（设计稿风格的中文内容，真实数据为空时作为兜底） */
 const SAMPLES: Record<string, Group[]> = {
@@ -181,32 +211,10 @@ export function BooksCategoryScreen({
   onNativeChange?: () => void;
 }) {
   /* 真实物品：按建议区域分组；没有真实数据时回落到设计稿示例 */
-  const realGroups = useMemo<Group[]>(() => {
-    const items =
-      nativeState?.spaces.flatMap((space) =>
-        space.detectedItems
-          .filter((item) => (item.category || "").trim() === categoryName)
-          .map((item) => ({ ...item, zone: item.suggestedZone?.trim() || "未分组" }))
-      ) ?? [];
-    const map = new Map<string, Book[]>();
-    items.forEach((item, index) => {
-      const list = map.get(item.zone) ?? [];
-      list.push({
-        id: `real-${item.id}`,
-        title: item.name,
-        tag: item.spaceName ?? "已扫描",
-        cover: COVERS[index % COVERS.length],
-      });
-      map.set(item.zone, list);
-    });
-    return Array.from(map, ([name, books]) => ({ name, books }));
-  }, [nativeState, categoryName]);
-
-  const fallbackGroups = useMemo<Group[]>(
-    () => SAMPLES[categoryName] ?? [{ name: `${categoryName}物件`, books: [] }],
-    [categoryName]
+  const resolvedGroups = useMemo<Group[]>(
+    () => resolveCategoryGroups(categoryName, nativeState),
+    [nativeState, categoryName]
   );
-  const resolvedGroups = realGroups.length > 0 ? realGroups : fallbackGroups;
   const [groups, setGroups] = useState<Group[]>(resolvedGroups);
 
   useEffect(() => {
@@ -278,9 +286,9 @@ export function BooksCategoryScreen({
           </button>
           <div>
             <p style={{ color: COFFEE, opacity: 0.55, fontSize: 11, textAlign: "center" }}>
-              全部物品
+              你的全部物品
             </p>
-            <p style={{ color: COFFEE, fontSize: 17, fontWeight: 600 }}>分类管理</p>
+            <p style={{ color: COFFEE, fontSize: 17, fontWeight: 600 }}>分类</p>
           </div>
           <button
             onClick={() => setEditing((e) => !e)}
@@ -296,55 +304,7 @@ export function BooksCategoryScreen({
           </button>
         </div>
 
-        {/* Search */}
-        <div className="px-6 mt-4">
-          <div
-            className="flex items-center gap-3 px-5 py-3.5"
-            style={{
-              backgroundColor: WHITE,
-              borderRadius: 24,
-              boxShadow: "0 4px 20px rgba(123,92,72,0.05)",
-            }}
-          >
-            <Search size={18} color={COFFEE} />
-            <input
-              placeholder="搜索物品"
-              className="flex-1 bg-transparent outline-none"
-              style={{ color: COFFEE, fontSize: 14 }}
-            />
-            <div
-              className="px-2.5 py-1.5 flex items-center gap-1"
-              style={{ backgroundColor: LINEN, borderRadius: 999 }}
-            >
-              <Sparkles size={12} color={ORANGE} />
-              <span style={{ color: ORANGE, fontSize: 11 }}>AI 标注</span>
-            </div>
-          </div>
-        </div>
-
-        {/* AI banner */}
-        <div
-          className="mx-6 mt-4 p-4 flex items-center gap-3"
-          style={{
-            background: `linear-gradient(135deg, ${ORANGE} 0%, #FFAA66 100%)`,
-            borderRadius: 20,
-          }}
-        >
-          <div
-            className="h-10 w-10 rounded-full flex items-center justify-center"
-            style={{ backgroundColor: "rgba(255,255,255,0.25)" }}
-          >
-            <Sparkles size={18} color={WHITE} />
-          </div>
-          <div className="flex-1">
-            <p style={{ color: WHITE, fontSize: 13, fontWeight: 600 }}>
-              AI 已自动标注 8 件物品
-            </p>
-            <p style={{ color: WHITE, opacity: 0.85, fontSize: 11 }}>点击查看并确认</p>
-          </div>
-        </div>
-
-        {/* Category header */}
+        {/* Category header（设计稿：详情页无搜索框/AI条，直接是分类卡） */}
         <div
           className="mx-6 mt-5 px-4 py-3 flex items-center gap-3"
           style={{ backgroundColor: WHITE, borderRadius: 18 }}
@@ -361,20 +321,18 @@ export function BooksCategoryScreen({
               {total} 件 · {groups.length} 个分组
             </p>
           </div>
-          {editing && (
-            <button
-              onClick={() => setAddingSubgroup(true)}
-              className="h-9 px-3 flex items-center gap-1 rounded-full"
-              style={{
-                backgroundColor: ORANGE,
-                color: WHITE,
-                boxShadow: "0 4px 12px rgba(250,136,58,0.3)",
-              }}
-            >
-              <Plus size={14} />
-              <span style={{ fontSize: 11, fontWeight: 600 }}>新建分组</span>
-            </button>
-          )}
+          <button
+            onClick={() => setAddingSubgroup(true)}
+            className="h-9 px-3 flex items-center gap-1 rounded-full flex-shrink-0"
+            style={{
+              backgroundColor: ORANGE,
+              color: WHITE,
+              boxShadow: "0 4px 12px rgba(250,136,58,0.3)",
+            }}
+          >
+            <Plus size={14} />
+            <span style={{ fontSize: 11, fontWeight: 600 }}>新建子类</span>
+          </button>
         </div>
 
         {/* Subgroups */}
@@ -427,7 +385,7 @@ export function BooksCategoryScreen({
                     <Plus size={18} color={WHITE} />
                   </div>
                   <p style={{ color: ORANGE, fontSize: 11, fontWeight: 600, marginTop: 6 }}>
-                    Add Item
+                    添加新项目
                   </p>
                 </button>
               )}
@@ -450,7 +408,7 @@ export function BooksCategoryScreen({
                 fontWeight: 600,
               }}
             >
-              <Plus size={16} /> 新建分组
+              <Plus size={16} /> 新建子组
             </button>
           </div>
         )}
@@ -497,9 +455,9 @@ export function BooksCategoryScreen({
             <div className="flex items-center justify-center mb-4">
               <div className="h-1 w-10 rounded-full" style={{ backgroundColor: SOFT }} />
             </div>
-            <p style={{ color: COFFEE, fontSize: 17, fontWeight: 600 }}>新建分组</p>
+            <p style={{ color: COFFEE, fontSize: 17, fontWeight: 600 }}>新建子组</p>
             <p style={{ color: COFFEE, opacity: 0.55, fontSize: 11, marginTop: 2 }}>
-              在「{categoryName}」下新建一个分组
+              在「{categoryName}」下新建一个子组
             </p>
             <input
               autoFocus
@@ -526,7 +484,7 @@ export function BooksCategoryScreen({
                   fontWeight: 600,
                 }}
               >
-                Cancel
+                取消
               </button>
               <button
                 disabled={!newSubgroupName.trim()}
@@ -540,31 +498,46 @@ export function BooksCategoryScreen({
                   fontWeight: 600,
                 }}
               >
-                <Check size={16} /> Create
+                <Check size={16} /> 确认
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Delete-subgroup confirmation */}
+      {/* Delete-subgroup confirmation（设计稿：底部弹层） */}
       {confirmDeleteGroup && (
         <div
-          className="absolute inset-0 z-50 flex items-center justify-center px-8"
+          className="absolute inset-0 z-50 flex items-end"
           style={{ backgroundColor: "rgba(45,32,26,0.45)" }}
           onClick={() => setConfirmDeleteGroup(null)}
         >
           <div
-            className="w-full p-6"
+            className="w-full px-6 pt-5 pb-7"
             onClick={(e) => e.stopPropagation()}
-            style={{ backgroundColor: WHITE, borderRadius: 24 }}
+            style={{
+              backgroundColor: WHITE,
+              borderTopLeftRadius: 32,
+              borderTopRightRadius: 32,
+            }}
           >
-            <p style={{ color: COFFEE, fontSize: 16, fontWeight: 600 }}>
-              Delete "{confirmDeleteGroup}"?
-            </p>
+            <div className="flex items-center justify-center mb-4">
+              <div className="h-1 w-10 rounded-full" style={{ backgroundColor: SOFT }} />
+            </div>
+            <div className="flex items-center justify-between">
+              <p style={{ color: COFFEE, fontSize: 17, fontWeight: 600 }}>删除子组</p>
+              <button
+                onClick={() => setConfirmDeleteGroup(null)}
+                className="h-9 w-9 rounded-full flex items-center justify-center"
+                style={{ backgroundColor: LINEN }}
+              >
+                <X size={16} color={COFFEE} />
+              </button>
+            </div>
             <p style={{ color: COFFEE, opacity: 0.6, fontSize: 12, marginTop: 6 }}>
-              All {groups.find((g) => g.name === confirmDeleteGroup)?.books.length ?? 0} books in
-              this subgroup will be removed.
+              将删除「{confirmDeleteGroup}」组及其内的{" "}
+              {groups.find((g) => g.name === confirmDeleteGroup)?.books.length ?? 0}{" "}
+              件物品，此操作无法撤销。
             </p>
             <div className="flex gap-2 mt-5">
               <button
@@ -578,20 +551,21 @@ export function BooksCategoryScreen({
                   fontWeight: 600,
                 }}
               >
-                Cancel
+                取消
               </button>
               <button
                 onClick={() => removeSubgroup(confirmDeleteGroup)}
-                className="flex-1 py-3"
+                className="flex-1 py-3 flex items-center justify-center gap-2"
                 style={{
-                  backgroundColor: "#E25555",
+                  backgroundColor: ORANGE,
                   color: WHITE,
                   borderRadius: 999,
                   fontSize: 13,
                   fontWeight: 600,
+                  boxShadow: "0 6px 16px rgba(250,136,58,0.3)",
                 }}
               >
-                Delete
+                <Check size={16} /> 确认
               </button>
             </div>
           </div>

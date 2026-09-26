@@ -301,7 +301,7 @@ export function InProgressDetail({
               boxShadow: "0 8px 24px rgba(250,136,58,0.35)",
             }}
           >
-            <Play size={16} fill={WHITE} /> Resume Cleaning
+            <Play size={16} fill={WHITE} /> 继续整理
           </button>
         </div>
       </div>

@@ -2753,7 +2753,7 @@ export function ConfirmStep({ assets, onBack, onNext }: { assets: CapturedAsset[
                 className="flex items-center gap-1 px-3 py-1.5"
                 style={{ backgroundColor: ORANGE, color: WHITE, borderRadius: 999, fontSize: 11, fontWeight: 600 }}
               >
-                <Plus size={12} /> New Item
+                <Plus size={12} /> 新增物品
               </button>
             </div>
 

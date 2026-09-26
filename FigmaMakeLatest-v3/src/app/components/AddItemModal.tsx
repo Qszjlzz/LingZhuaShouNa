@@ -40,9 +40,9 @@ export function AddItemModal({
 
         <div className="flex items-center justify-between mb-5">
           <p style={{ color: COFFEE, fontSize: 17, fontWeight: 600 }}>
-            {mode === "choice" && "添加新物品"}
-            {mode === "photo" && "拍照添加"}
-            {mode === "text" && "手动填写"}
+            {mode === "choice" && "选择新项目"}
+            {mode === "photo" && "拍摄项目"}
+            {mode === "text" && "输入项目详细信息"}
           </p>
           <button
             onClick={onClose}
@@ -86,7 +86,7 @@ export function AddItemModal({
               </div>
               <p style={{ color: COFFEE, fontSize: 13, fontWeight: 600 }}>点击拍摄</p>
               <p style={{ color: COFFEE, opacity: 0.55, fontSize: 11, marginTop: 2 }}>
-                AI will detect & tag the book
+                AI 将自动识别物品信息
               </p>
             </div>
             <div className="flex gap-2">
@@ -101,7 +101,7 @@ export function AddItemModal({
                   fontWeight: 600,
                 }}
               >
-                Back
+                返回
               </button>
               <button
                 onClick={() => {
@@ -129,7 +129,7 @@ export function AddItemModal({
             <label
               style={{ color: COFFEE, opacity: 0.6, fontSize: 11, fontWeight: 500 }}
             >
-              ITEM NAME
+              名称
             </label>
             <input
               autoFocus
@@ -154,7 +154,7 @@ export function AddItemModal({
                 marginTop: 16,
               }}
             >
-              SUBGROUP
+              所属分组
             </label>
             <div className="flex gap-2 mt-2">
               {subgroups.map((s) => {
@@ -189,7 +189,7 @@ export function AddItemModal({
                   fontWeight: 600,
                 }}
               >
-                Back
+                返回
               </button>
               <button
                 disabled={!name.trim()}
@@ -207,7 +207,7 @@ export function AddItemModal({
                   boxShadow: name.trim() ? "0 6px 16px rgba(250,136,58,0.3)" : "none",
                 }}
               >
-                <Check size={16} /> 保存物品
+                <Check size={16} /> 确认
               </button>
             </div>
           </div>
