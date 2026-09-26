@@ -501,12 +501,19 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
         }
     }
 
+    /// Vite 打包后 assets 里可能有多个 js（懒加载 chunk），必须取主入口 index-*.js；
+    /// 用 `().first` 随手取第一个会把 chunk 当入口，页面永远渲染不出来（白屏/卡加载）。
+    private static func bundleAsset(_ ext: String) -> String? {
+        let urls = Bundle.main.urls(forResourcesWithExtension: ext, subdirectory: "FigmaMakeLatestWeb/assets") ?? []
+        guard !urls.isEmpty else { return nil }
+        let picked = urls.first(where: { $0.lastPathComponent.hasPrefix("index-") }) ?? urls[0]
+        return try? String(contentsOf: picked, encoding: .utf8)
+    }
+
     private func loadBundle(in webView: WKWebView) {
         guard let base = Bundle.main.url(forResource: "FigmaMakeLatestWeb", withExtension: nil),
-              let cssURL = Bundle.main.urls(forResourcesWithExtension: "css", subdirectory: "FigmaMakeLatestWeb/assets")?.first,
-              let jsURL = Bundle.main.urls(forResourcesWithExtension: "js", subdirectory: "FigmaMakeLatestWeb/assets")?.first,
-              let css = try? String(contentsOf: cssURL, encoding: .utf8),
-              let js = try? String(contentsOf: jsURL, encoding: .utf8) else { return }
+              let css = Self.bundleAsset("css"),
+              let js = Self.bundleAsset("js") else { return }
         // 设计稿画布是 390×844。直接让网页拉伸铺满会把布局拉变形（拍摄页取景区
         // 变高、dock 沉底），所以这里固定 root 为设计稿尺寸，再整体等比缩放到屏宽
         //（cover 模式，溢出的零点几 pt 裁掉），保证和 Figma 里的比例逐像素一致。
