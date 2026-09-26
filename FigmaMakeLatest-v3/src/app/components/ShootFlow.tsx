@@ -27,6 +27,9 @@ import {
   Vibrate,
   MoveHorizontal,
   Loader2,
+  SprayCan,
+  Droplets,
+  HelpCircle,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
@@ -5492,6 +5495,31 @@ const AR_ZONE_TASKS: { zone: number; label: string; color: string; tasks: SubTas
   },
 ];
 
+/** 每个区域的物品按数量均分成 2~3 组，橙框和蓝色格子都用这一份分组。 */
+const GROUP_LABELS = ["大件物品", "小件物品", "零碎小物"];
+const GROUP_BOXES = [
+  { left: "10%", top: "32%", w: "30%", h: "24%" },
+  { left: "46%", top: "16%", w: "34%", h: "30%" },
+  { left: "50%", top: "50%", w: "36%", h: "24%" },
+];
+const PREP_TOOLS = [
+  { icon: Trash2, text: "清空" },
+  { icon: SprayCan, text: "擦拭" },
+  { icon: Droplets, text: "清洗" },
+  { icon: HelpCircle, text: "求助" },
+];
+
+function groupZoneItems(names: string[]): { label: string; items: string[] }[] {
+  const list = (names ?? []).filter(Boolean);
+  if (list.length <= 1) return [{ label: list[0] ?? "待整理物品", items: list }];
+  const groupCount = list.length < 4 ? 2 : 3;
+  const per = Math.ceil(list.length / groupCount);
+  return Array.from({ length: groupCount }, (_, i) => ({
+    label: GROUP_LABELS[i],
+    items: list.slice(i * per, (i + 1) * per),
+  })).filter((g) => g.items.length > 0);
+}
+
 function ARGuideStep({
   photo,
   zones,
@@ -5503,35 +5531,52 @@ function ARGuideStep({
   onBack: () => void;
   onComplete: () => void;
 }) {
-  const zoneTasks = buildZoneTasks(zones);
   const [zoneIdx, setZoneIdx] = useState(0);
-  const [tasks, setTasks] = useState<SubTask[]>(zoneTasks[0].tasks);
+  const [phase, setPhase] = useState<"prepare" | "group" | "place">("prepare");
   const [zoneTransition, setZoneTransition] = useState(false);
-  const totalZones = zoneTasks.length;
-  const zoneInfo = zoneTasks[zoneIdx];
-  const [skipping, setSkipping] = useState(false);
-
-  const currentIdx = tasks.findIndex((t) => !t.done && !t.skipped);
-  const current = tasks[currentIdx];
-  const doneCount = tasks.filter((t) => t.done).length;
-  const total = tasks.length;
-
+  const totalZones = Math.max(1, zones.length);
+  const zone = zones[zoneIdx] ?? {
+    n: 1, label: "收纳区域", color: ORANGE,
+    left: "10%", top: "40%", w: "40%", h: "30%",
+    items: 0, mins: 5, names: [], home: "固定收纳位",
+  };
+  const groups = groupZoneItems(zone.names);
   const advancing = useRef(false);
 
-  // 一个区域里所有步骤都完成/跳过就弹出完成层：不管是点"完成任务"、点"跳过"，
-  // 还是手动把清单全勾上，都走这一条路，避免点了按钮卡在原地。
-  useEffect(() => {
-    if (zoneTransition || advancing.current) return;
-    const allSettled = tasks.length === 0 || tasks.every((t) => t.done || t.skipped);
-    if (!allSettled) return;
-    advancing.current = true;
-    setZoneTransition(true);
-  }, [tasks, zoneIdx, zoneTransition]);
+  const phaseOrder: ("prepare" | "group" | "place")[] = ["prepare", "group", "place"];
+  const phaseIdx = phaseOrder.indexOf(phase);
+  const phaseMeta = {
+    prepare: {
+      title: "准备工作",
+      desc: `先把${zone.label}里的东西全部清出来，擦干净台面，再开始分类。`,
+      btn: "开始整理",
+    },
+    group: {
+      title: "物品分区",
+      desc: "照着画面上的橙框，把清出来的东西按大小分成几组，先别急着放回去。",
+      btn: "开始收纳",
+    },
+    place: {
+      title: "收纳工具分区",
+      desc: "拿一个收纳盒，照下面的格子把每组放进去，之后找东西一眼就有。",
+      btn: "按参考分区放置",
+    },
+  }[phase];
+
+  const advancePhase = () => {
+    if (phase === "prepare") setPhase("group");
+    else if (phase === "group") setPhase("place");
+    else {
+      if (advancing.current) return;
+      advancing.current = true;
+      setZoneTransition(true);
+    }
+  };
 
   const advanceZone = () => {
     if (zoneIdx + 1 < totalZones) {
       setZoneIdx((i) => i + 1);
-      setTasks(zoneTasks[zoneIdx + 1].tasks);
+      setPhase("prepare");
       setZoneTransition(false);
       advancing.current = false;
     } else {
@@ -5540,50 +5585,6 @@ function ARGuideStep({
       onComplete();
     }
   };
-
-  const complete = () => {
-    if (!current) {
-      // 清单里已经全勾完了：直接弹完成层，别让按钮变成死的。
-      if (tasks.every((t) => t.done || t.skipped)) {
-        advancing.current = false;
-        setZoneTransition(true);
-      }
-      return;
-    }
-    setTasks((arr) => arr.map((t) => (t.id === current.id ? { ...t, done: true } : t)));
-  };
-
-  const skipReason = (reason: string) => {
-    if (current) {
-      setTasks((arr) => arr.map((t) => (t.id === current.id ? { ...t, skipped: true } : t)));
-    }
-    setSkipping(false);
-  };
-
-  // 步骤示意图：随步骤进度给不同的小图示，呼应设计稿里"清空 -> 工具 -> 分格"的节奏。
-  const stepHint =
-    currentIdx <= 0 ? (
-      <>
-        <Trash2 size={15} color={COFFEE} />
-        <span style={{ color: COFFEE, opacity: 0.6, fontSize: 10.5, fontWeight: 500 }}>
-          先清空台面，再逐一归位
-        </span>
-      </>
-    ) : currentIdx === 1 ? (
-      <>
-        <Box size={15} color={ORANGE} />
-        <span style={{ color: COFFEE, opacity: 0.6, fontSize: 10.5, fontWeight: 500 }}>
-          小件用收纳盒分装，别散着放
-        </span>
-      </>
-    ) : (
-      <>
-        <Layers size={15} color={BLUE} />
-        <span style={{ color: COFFEE, opacity: 0.6, fontSize: 10.5, fontWeight: 500 }}>
-          按类别分格摆放，保持易取
-        </span>
-      </>
-    );
 
   return (
     <div className="h-full w-full flex flex-col" style={{ backgroundColor: "#13110f" }}>
@@ -5597,33 +5598,83 @@ function ARGuideStep({
           }}
         />
 
-        {/* 顶部：返回 + 区域进度 */}
-        <div className="absolute top-0 left-0 right-0 px-5 pt-14 flex items-center justify-between">
+        {/* 物品分区幕：照片上叠橙色标注框 */}
+        {phase === "group" && groups.map((g, i) => {
+          const box = GROUP_BOXES[i % GROUP_BOXES.length];
+          return (
+            <div
+              key={g.label}
+              className="absolute"
+              style={{
+                left: box.left,
+                top: box.top,
+                width: box.w,
+                height: box.h,
+                border: `2px solid ${ORANGE}`,
+                backgroundColor: "rgba(250,136,58,0.20)",
+                borderRadius: 12,
+              }}
+            >
+              <span
+                className="absolute"
+                style={{
+                  top: -12,
+                  left: 10,
+                  backgroundColor: WHITE,
+                  color: COFFEE,
+                  fontSize: 10,
+                  fontWeight: 700,
+                  borderRadius: 999,
+                  padding: "2px 9px",
+                  boxShadow: "0 2px 6px rgba(0,0,0,0.18)",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {g.label} · {g.items.length} 件
+              </span>
+            </div>
+          );
+        })}
+
+        {/* 顶部：返回 + 区域/阶段两个胶囊 */}
+        <div className="absolute top-0 left-0 right-0 px-5 pt-14 flex items-center gap-2">
           <button
             onClick={onBack}
-            className="h-9 w-9 rounded-full flex items-center justify-center"
+            className="h-9 w-9 rounded-full flex items-center justify-center flex-shrink-0"
             style={{ backgroundColor: "rgba(255,255,255,0.92)", boxShadow: "0 2px 8px rgba(0,0,0,0.12)" }}
           >
             <X size={16} color={COFFEE} />
           </button>
           <span
-            className="px-3.5 py-1.5"
+            className="px-3 py-1.5"
             style={{
               backgroundColor: "rgba(255,255,255,0.92)",
               borderRadius: 999,
               fontSize: 10.5,
               fontWeight: 700,
               color: COFFEE,
-              letterSpacing: "0.05em",
+              whiteSpace: "nowrap",
             }}
           >
-            收纳区域 {zoneInfo.zone}/{totalZones} · 第 {Math.min(currentIdx + 1, total)}/{total} 步
+            收纳区域 {zone.n}/{totalZones}
           </span>
-          <div style={{ width: 36 }} />
+          <span
+            className="px-3 py-1.5"
+            style={{
+              backgroundColor: "rgba(255,255,255,0.92)",
+              borderRadius: 999,
+              fontSize: 10.5,
+              fontWeight: 700,
+              color: COFFEE,
+              whiteSpace: "nowrap",
+            }}
+          >
+            {phaseMeta.title}
+          </span>
         </div>
       </div>
 
-      {/* 底部白色任务卡 */}
+      {/* 底部白色引导卡：三幕共用，按阶段换内容 */}
       <div
         className="flex flex-col"
         style={{
@@ -5634,79 +5685,114 @@ function ARGuideStep({
           boxShadow: "0 -8px 30px rgba(0,0,0,0.2)",
         }}
       >
-        <div className="flex items-center gap-2 mb-1.5">
-          <span style={{ width: 8, height: 8, borderRadius: 999, backgroundColor: zoneInfo.color }} />
-          <p style={{ color: COFFEE, opacity: 0.5, fontSize: 11, fontWeight: 600 }}>
-            {zoneInfo.label} · {doneCount}/{total} 已完成
-          </p>
-        </div>
-
-        <p
-          style={{
-            color: COFFEE,
-            fontSize: 16.5,
-            fontWeight: 700,
-            lineHeight: 1.4,
-            marginBottom: 12,
-          }}
-        >
-          {current ? current.text : "这个区域已经收纳完成"}
+        <p style={{ color: COFFEE, opacity: 0.45, fontSize: 10.5, fontWeight: 600, letterSpacing: "0.04em" }}>
+          收纳引导
+        </p>
+        <p style={{ color: COFFEE, fontSize: 17, fontWeight: 700, lineHeight: 1.4, marginTop: 2 }}>
+          {phaseMeta.title}
+        </p>
+        <p style={{ color: COFFEE, opacity: 0.6, fontSize: 12, lineHeight: 1.6, marginTop: 5 }}>
+          {phaseMeta.desc}
         </p>
 
-        {/* 步骤示意条 */}
-        <div
-          className="flex items-center gap-2.5 px-3.5 py-3 mb-4"
-          style={{ backgroundColor: LINEN, borderRadius: 14 }}
-        >
-          {stepHint}
-        </div>
+        {/* 准备工作：工具图标行 */}
+        {phase === "prepare" && (
+          <div className="flex items-center justify-between mt-4 mb-1">
+            {PREP_TOOLS.map((t) => (
+              <div key={t.text} className="flex flex-col items-center gap-1.5" style={{ width: 58 }}>
+                <div
+                  className="h-10 w-10 rounded-full flex items-center justify-center"
+                  style={{ backgroundColor: LINEN }}
+                >
+                  <t.icon size={16} color={COFFEE} />
+                </div>
+                <span style={{ color: COFFEE, opacity: 0.55, fontSize: 10 }}>{t.text}</span>
+              </div>
+            ))}
+          </div>
+        )}
 
-        {/* 进度条 */}
-        <div className="flex gap-1.5 mb-4">
-          {tasks.map((t, i) => (
+        {/* 物品分区：橙色分组小卡 */}
+        {phase === "group" && (
+          <div className="flex gap-2 mt-3.5 mb-1">
+            {groups.map((g) => (
+              <div
+                key={g.label}
+                className="flex-1 px-2 py-3 flex flex-col items-center gap-1"
+                style={{
+                  backgroundColor: `${ORANGE}1a`,
+                  border: `1px solid ${ORANGE}55`,
+                  borderRadius: 12,
+                }}
+              >
+                <Box size={15} color={ORANGE} />
+                <span style={{ color: COFFEE, fontSize: 10.5, fontWeight: 700 }}>{g.label}</span>
+                <span style={{ color: COFFEE, opacity: 0.55, fontSize: 9.5 }}>{g.items.length} 件</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* 收纳工具分区：蓝色格子示意（3 组竖条、2 组横条） */}
+        {phase === "place" && (
+          <div
+            className="mt-3.5 mb-1"
+            style={{
+              height: 128,
+              display: "flex",
+              gap: 8,
+              flexDirection: groups.length === 3 ? "row" : "column",
+            }}
+          >
+            {groups.map((g) => (
+              <div
+                key={g.label}
+                className="flex-1 flex flex-col items-center justify-center gap-0.5"
+                style={{
+                  backgroundColor: "#d9eaf7",
+                  border: "1.5px solid #8fbcd9",
+                  borderRadius: 12,
+                }}
+              >
+                <span style={{ color: "#33586e", fontSize: 11, fontWeight: 700 }}>{g.label}</span>
+                <span style={{ color: "#33586e", opacity: 0.6, fontSize: 9.5 }}>
+                  {g.items.length} 件 · 固定位置
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* 三幕进度条 */}
+        <div className="flex gap-1.5 mt-3.5 mb-4">
+          {phaseOrder.map((p, i) => (
             <span
-              key={t.id}
+              key={p}
               style={{
                 flex: 1,
                 height: 4,
                 borderRadius: 999,
                 backgroundColor:
-                  t.done || t.skipped ? "#5fb37e" : i === currentIdx ? ORANGE : SOFT,
+                  i < phaseIdx ? "#5fb37e" : i === phaseIdx ? ORANGE : SOFT,
               }}
             />
           ))}
         </div>
 
-        {/* 按钮：跳过 + 完成任务 */}
-        <div className="flex gap-2.5">
-          <button
-            onClick={() => setSkipping(true)}
-            className="px-5 py-3.5 flex items-center gap-1.5 active:scale-[0.98] transition-transform"
-            style={{
-              backgroundColor: LINEN,
-              color: COFFEE,
-              borderRadius: 999,
-              fontSize: 12.5,
-              fontWeight: 600,
-            }}
-          >
-            <SkipForward size={14} /> 跳过
-          </button>
-          <button
-            onClick={complete}
-            className="flex-1 py-3.5 flex items-center justify-center gap-1.5 active:scale-[0.98] transition-transform"
-            style={{
-              backgroundColor: "#5fb37e",
-              color: WHITE,
-              borderRadius: 999,
-              fontSize: 13.5,
-              fontWeight: 700,
-              boxShadow: "0 6px 16px rgba(95,179,126,0.35)",
-            }}
-          >
-            <CheckCircle2 size={15} /> {currentIdx >= total - 1 ? "完成收纳" : "完成任务"}
-          </button>
-        </div>
+        <button
+          onClick={advancePhase}
+          className="w-full py-3.5 flex items-center justify-center gap-1.5 active:scale-[0.98] transition-transform"
+          style={{
+            backgroundColor: "#5fb37e",
+            color: WHITE,
+            borderRadius: 999,
+            fontSize: 13.5,
+            fontWeight: 700,
+            boxShadow: "0 6px 16px rgba(95,179,126,0.35)",
+          }}
+        >
+          <CheckCircle2 size={15} /> {phaseMeta.btn} <ChevronRight size={15} />
+        </button>
       </div>
 
       {/* 区域完成弹层：手动点按钮才进下一个区域 */}
@@ -5722,27 +5808,26 @@ function ARGuideStep({
             <Check size={28} color={WHITE} strokeWidth={3} />
           </div>
           <p style={{ color: WHITE, fontSize: 18, fontWeight: 700 }}>
-            {zoneIdx + 1 < totalZones ? `区域 ${zoneInfo.zone} 收纳完成！` : "全部收纳成功！"}
+            {zoneIdx + 1 < totalZones ? `${zone.label} 收纳完成！` : "全部收纳成功！"}
           </p>
           <p style={{ color: WHITE, opacity: 0.65, fontSize: 12, marginTop: 6, textAlign: "center" }}>
             {zoneIdx + 1 < totalZones
-              ? `接下来是 ${zoneTasks[zoneIdx + 1]?.label}`
+              ? `接下来是 ${zones[zoneIdx + 1]?.label ?? "下一个区域"}`
               : "所有选中的区域都收纳好了"}
           </p>
 
-          {/* 进度小卡 */}
           <div
             className="w-full px-4 py-3.5 mt-5"
             style={{ backgroundColor: WHITE, borderRadius: 16, maxWidth: 300 }}
           >
             <div className="flex items-center justify-between mb-2">
               <p style={{ color: COFFEE, fontSize: 11.5, fontWeight: 600 }}>
-                {zoneIdx + 1 < totalZones ? zoneTasks[zoneIdx + 1]?.label : "本次整理"}
+                {zoneIdx + 1 < totalZones ? zones[zoneIdx + 1]?.label : "本次整理"}
               </p>
               <p style={{ color: COFFEE, opacity: 0.5, fontSize: 10.5 }}>
                 {zoneIdx + 1 < totalZones
-                  ? `区域 ${zoneTasks[zoneIdx + 1]?.zone}/${totalZones}`
-                  : `${doneCount}/${total} 步完成`}
+                  ? `区域 ${zones[zoneIdx + 1]?.n}/${totalZones}`
+                  : `${totalZones} 个区域完成`}
               </p>
             </div>
             <div style={{ height: 6, borderRadius: 999, backgroundColor: SOFT, overflow: "hidden" }}>
@@ -5771,56 +5856,10 @@ function ARGuideStep({
             }}
           >
             {zoneIdx + 1 < totalZones
-              ? `开始收纳区域 ${zoneTasks[zoneIdx + 1]?.zone}`
+              ? `开始收纳区域 ${zones[zoneIdx + 1]?.n}`
               : "查看整理成果"}
             <ChevronRight size={15} />
           </button>
-        </div>
-      )}
-
-      {/* Skip sheet */}
-      {skipping && (
-        <div
-          className="absolute inset-0 z-40 flex items-end"
-          style={{ backgroundColor: "rgba(26,20,17,0.45)" }}
-          onClick={() => setSkipping(false)}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="w-full px-5 pt-5 pb-8"
-            style={{
-              backgroundColor: WHITE,
-              borderTopLeftRadius: 26,
-              borderTopRightRadius: 26,
-            }}
-          >
-            <div className="flex items-center justify-center mb-3">
-              <div className="h-1 w-10 rounded-full" style={{ backgroundColor: SOFT }} />
-            </div>
-            <p style={{ color: COFFEE, fontSize: 14, fontWeight: 600, marginBottom: 4 }}>
-              为什么跳过？
-            </p>
-            <p style={{ color: COFFEE, opacity: 0.55, fontSize: 12, marginBottom: 14 }}>
-              我们会记住，下次不再推荐这一步。
-            </p>
-            {["物品没识别到", "不想收拾", "稍后再说"].map((r) => (
-              <button
-                key={r}
-                onClick={() => skipReason(r)}
-                className="w-full text-left px-4 py-3 mb-2"
-                style={{ backgroundColor: LINEN, borderRadius: 14, color: COFFEE, fontSize: 13 }}
-              >
-                {r}
-              </button>
-            ))}
-            <button
-              onClick={() => setSkipping(false)}
-              className="w-full py-3 mt-1"
-              style={{ backgroundColor: WHITE, border: `1px solid ${SOFT}`, color: COFFEE, borderRadius: 999, fontSize: 13, fontWeight: 500 }}
-            >
-              取消
-            </button>
-          </div>
         </div>
       )}
     </div>
