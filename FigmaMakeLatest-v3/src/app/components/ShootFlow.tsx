@@ -51,10 +51,7 @@ type Step =
   | "plandeck"
   | "tune"
   | "zones"
-  | "arPreview"
-  | "tools"
   | "arGuide"
-  | "task"
   | "reward";
 
 type PlanTier = "basic" | "smart" | "pro";
@@ -238,6 +235,31 @@ export function ShootFlow({
   // where the generating animation should land when it finishes
   const [genReturn, setGenReturn] = useState<Step>("plandeck");
 
+  // 设计稿流程：拍完、检查完照片就出方案，中间没有让用户确认识别结果的独立一页。
+  // 识别结果在这里静默收进来（顺便存给原生），用户不再被打断。
+  const goPlanFromReview = async () => {
+    try {
+      await nativeRequest("scan.await", {});
+      const state = await nativeRequest<NativeState>("state.get");
+      const payload = (state?.scannedItems ?? [])
+        .filter((item) => item.isSelected !== false)
+        .map((item) => ({
+          ...item,
+          category: item.category || "收纳工具",
+          suggestedZone: item.suggestedZone || "手边工具区",
+          isSelected: true,
+        }));
+      if (payload.length > 0) await nativeRequest("items.save", { items: payload });
+      setConfirmedItems(payload.length > 0 ? payload : []);
+    } catch {
+      setConfirmedItems([]);
+    }
+    void refreshPlans().finally(() => {
+      setGenReturn("plandeck");
+      setStep("generating");
+    });
+  };
+
   // 生成方案前重新拉一次识别结果，让方案卡里的建议跟着这次拍到的物品走。
   const refreshPlans = async () => {
     try {
@@ -265,25 +287,12 @@ export function ShootFlow({
         <ReviewStep
           assets={assets}
           onBack={() => setStep("capture")}
-          onNext={() => setStep("confirm")}
+          onNext={() => void goPlanFromReview()}
           onRetake={() => setStep("capture")}
           onDelete={(id) => {
             const next = assets.filter((x) => x.id !== id);
             setAssets(next);
             if (next.length === 0) setStep("capture");
-          }}
-        />
-      )}
-      {step === "confirm" && (
-        <ConfirmStep
-          assets={assets}
-          onBack={() => setStep("review")}
-          onNext={(confirmed) => {
-            setConfirmedItems(confirmed);
-            void refreshPlans().finally(() => {
-              setGenReturn("plandeck");
-              setStep("generating");
-            });
           }}
         />
       )}
@@ -345,7 +354,14 @@ export function ShootFlow({
           }}
         />
       )}
-      {step === "reward" && <RewardStep photo={photo} onClose={onFinish || onClose} />}
+      {step === "reward" && (
+        <RewardStep
+          photo={photo}
+          zoneCount={zoneList.length || 1}
+          itemCount={confirmedItems.length || zoneList.reduce((s, z) => s + z.items, 0)}
+          onClose={onFinish || onClose}
+        />
+      )}
     </div>
   );
 }
@@ -2347,7 +2363,7 @@ type BlindSpot = {
   resolved?: boolean;
 };
 
-function ConfirmStep({ assets, onBack, onNext }: { assets: CapturedAsset[]; onBack: () => void; onNext: (items: NativeItem[]) => void }) {
+export function ConfirmStep({ assets, onBack, onNext }: { assets: CapturedAsset[]; onBack: () => void; onNext: (items: NativeItem[]) => void }) {
   const [loadingItems, setLoadingItems] = useState(true);
   const [items, setItems] = useState<DetectedItem[]>([]);
   const [adding, set添加ing] = useState(false);
@@ -4430,7 +4446,21 @@ function TaskStep({ onBack, onComplete }: { onBack: () => void; onComplete: () =
 const AFTER_IMG =
   "https://images.unsplash.com/photo-1749705319317-f9a2bf24fe3d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080";
 
-function RewardStep({ photo, onClose }: { photo?: string; onClose: () => void }) {
+function RewardStep({
+  photo,
+  zoneCount = 1,
+  itemCount = 0,
+  onClose,
+}: {
+  photo?: string;
+  zoneCount?: number;
+  itemCount?: number;
+  onClose: () => void;
+}) {
+  // 完成页三个数字全部来自这次真实整理出来的区域与物品，不再写死。
+  const zones = Math.max(1, zoneCount);
+  const items = Math.max(0, itemCount);
+  const exp = 30 * zones + 5 * items;
   const [afterPhoto, setAfterPhoto] = useState<string | null>(null);
   const [showComparison, setShowComparison] = useState(false);
   const [slider, setSlider] = useState(50);
@@ -4791,7 +4821,7 @@ function RewardStep({ photo, onClose }: { photo?: string; onClose: () => void })
         </span>
         <p style={{ color: COFFEE, fontSize: 22, fontWeight: 600 }}>整理浣熊</p>
         <p style={{ color: COFFEE, opacity: 0.6, fontSize: 13, marginTop: 6 }}>
-          全部3个区域已整理 — 你的空间焕然一新 ✨
+          全部{zones}个区域已整理 — 你的空间焕然一新 ✨
         </p>
 
         <div className="flex gap-3 mt-5 w-full">
@@ -4799,21 +4829,21 @@ function RewardStep({ photo, onClose }: { photo?: string; onClose: () => void })
             className="flex-1 py-3 text-center"
             style={{ backgroundColor: LINEN, borderRadius: 16 }}
           >
-            <p style={{ color: ORANGE, fontSize: 18, fontWeight: 600 }}>3</p>
+            <p style={{ color: ORANGE, fontSize: 18, fontWeight: 600 }}>{zones}</p>
             <p style={{ color: COFFEE, opacity: 0.6, fontSize: 10 }}>区域</p>
           </div>
           <div
             className="flex-1 py-3 text-center"
             style={{ backgroundColor: LINEN, borderRadius: 16 }}
           >
-            <p style={{ color: ORANGE, fontSize: 18, fontWeight: 600 }}>19</p>
+            <p style={{ color: ORANGE, fontSize: 18, fontWeight: 600 }}>{items}</p>
             <p style={{ color: COFFEE, opacity: 0.6, fontSize: 10 }}>物品</p>
           </div>
           <div
             className="flex-1 py-3 text-center"
             style={{ backgroundColor: LINEN, borderRadius: 16 }}
           >
-            <p style={{ color: ORANGE, fontSize: 18, fontWeight: 600 }}>+150</p>
+            <p style={{ color: ORANGE, fontSize: 18, fontWeight: 600 }}>+{exp}</p>
             <p style={{ color: COFFEE, opacity: 0.6, fontSize: 10 }}>经验值</p>
           </div>
         </div>
@@ -5559,6 +5589,7 @@ function ARGuideStep({
   };
   const groups = groupZoneItems(zone.names);
   const zoneTasks = buildZoneTasks(zones);
+  const isLastZone = zoneIdx + 1 >= totalZones;
   const totalSteps = 2 + groups.length;
   const isPrepare = stepIdx === 0;
   const isGroup = stepIdx === 1;
@@ -5872,15 +5903,19 @@ function ARGuideStep({
               <div className="flex-1">
                 <p style={{ color: COFFEE, fontSize: 12.5, fontWeight: 700 }}>{totalSteps} 步都完成啦</p>
                 <p style={{ color: COFFEE, opacity: 0.55, fontSize: 10.5, marginTop: 1 }}>
-                  看一下这个区域的整理清单
+                  {isLastZone ? "看一下这次的整理清单" : `接下来是 ${zones[zoneIdx + 1]?.label ?? "下一个区域"}`}
                 </p>
               </div>
               <button
-                onClick={() => { setCheckIdx(zoneIdx); setFlow("checklist"); }}
+                onClick={() => {
+                  // 设计稿流程：中间区域收完直接进下一个区域，只有全部收完才摊开整理清单。
+                  if (isLastZone) { setCheckIdx(zoneIdx); setFlow("checklist"); }
+                  else advanceZone();
+                }}
                 className="px-4 py-2.5 flex items-center gap-1 active:scale-[0.98] transition-transform"
                 style={{ backgroundColor: "#5fb37e", color: WHITE, borderRadius: 999, fontSize: 12, fontWeight: 700 }}
               >
-                继续 <ChevronRight size={13} />
+                {isLastZone ? "继续" : `开始收纳区域 ${zones[zoneIdx + 1]?.n}`} <ChevronRight size={13} />
               </button>
             </div>
           </div>
