@@ -328,7 +328,6 @@ export function ShootFlow({
         <ZoneSelectStep
           photo={photo}
           items={confirmedItems}
-          shotCount={assets.length || 1}
           onBack={() => setStep("plandeck")}
           onNext={(zs) => {
             setZoneList(zs);
@@ -4906,11 +4905,21 @@ type FlowZone = {
 };
 
 const ZONE_PALETTE = [ORANGE, BLUE, "#A88370", "#7BB28F", "#C97B84", "#8E7CC3"];
-const ZONE_LAYOUT = [
-  { left: "10%", top: "44%", w: "34%", h: "26%" },
-  { left: "44%", top: "30%", w: "40%", h: "42%" },
-  { left: "6%", top: "8%", w: "30%", h: "26%" },
-];
+
+/** 选区框的规整兜底布局：按区域数套用，互不重叠、贴合照片，看起来"一片是一片"。 */
+type ZoneBox = { left: string; top: string; w: string; h: string };
+const ZONE_LAYOUT: Record<number, ZoneBox[]> = {
+  1: [{ left: "12%", top: "22%", w: "76%", h: "44%" }],
+  2: [
+    { left: "9%", top: "12%", w: "82%", h: "36%" },
+    { left: "18%", top: "56%", w: "64%", h: "32%" },
+  ],
+  3: [
+    { left: "9%", top: "10%", w: "82%", h: "32%" },
+    { left: "9%", top: "50%", w: "39%", h: "34%" },
+    { left: "52%", top: "50%", w: "39%", h: "34%" },
+  ],
+};
 /** 每类物品该回到哪里，用来生成"把XX归到YY"这样的具体步骤。 */
 const CATEGORY_HOME: Record<string, string> = {
   "书籍": "书架", "电子产品": "充电站", "文具": "文具抽屉", "衣物": "衣柜",
@@ -4918,9 +4927,21 @@ const CATEGORY_HOME: Record<string, string> = {
   "餐具": "厨房橱柜", "杯子": "厨房台面", "文件资料": "文件夹", "工具": "工具箱", "鞋履": "鞋柜",
 };
 
-function buildFlowZones(items: NativeItem[], zoneCount = 1): FlowZone[] {
-  // 区域数 = 这次拍了几张照片：一张就一个区域，两张两个，最多三个。
-  const n = Math.max(1, Math.min(3, zoneCount || 1));
+/** 两个归一化矩形是否相交（留 1% 容差），有重叠就退回规整布局，保证区域互不压。 */
+function hintBoxesOverlap(boxes: { x: number; y: number; w: number; h: number }[]): boolean {
+  for (let i = 0; i < boxes.length; i++) {
+    for (let j = i + 1; j < boxes.length; j++) {
+      const a = boxes[i], b = boxes[j];
+      const tol = 0.01;
+      if (a.x < b.x + b.w - tol && b.x < a.x + a.w - tol && a.y < b.y + b.h - tol && b.y < a.y + a.h - tol) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function buildFlowZones(items: NativeItem[]): FlowZone[] {
   const picked = (items ?? []).filter((it) => it.isSelected !== false);
 
   const groups = new Map<string, string[]>();
@@ -4929,29 +4950,58 @@ function buildFlowZones(items: NativeItem[], zoneCount = 1): FlowZone[] {
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key)!.push(it.name);
   }
-  // 一样都没认出来时按张数给默认区域，页面不至于空着。
-  if (groups.size === 0) {
-    return SELECTABLE_ZONES.slice(0, n).map((z, i) => ({
-      ...z,
-      ...ZONE_LAYOUT[n][i],
-      names: [],
-      home: "固定收纳位",
-    }));
-  }
 
+  // 区域数 = 这次识别出的物品类别数（最多 3 个，再多并进"其他物品"，选区不至于挤成一团）。
   let entries = [...groups.entries()].sort((a, b) => b[1].length - a[1].length);
-  // 类别比区域数多：多出来的合进最后一个区域。
-  if (entries.length > n) {
-    const head = entries.slice(0, n - 1);
-    const rest = entries.slice(n - 1).flatMap(([, names]) => names);
+  if (entries.length === 0) {
+    // 一样都没认出来：给一个居中的默认区域，页面不至于空着。
+    return [{
+      n: 1, label: "收纳区域", color: ORANGE, ...ZONE_LAYOUT[1][0],
+      items: 0, mins: 5, names: [], home: "固定收纳位",
+    }];
+  }
+  if (entries.length > 3) {
+    const head = entries.slice(0, 2);
+    const rest = entries.slice(2).flatMap(([, names]) => names);
     entries = [...head, ["其他物品", rest]];
   }
 
+  // 优先用识别给出的真实位置（arHint）按类别算包围框，框跟着物品走才可靠；
+  // 缺位置或框互相重叠时，退回规整布局兜底。
+  const hintBoxes = entries.map(([, names]) => {
+    const nameSet = new Set(names);
+    const rects = picked
+      .filter((it) => nameSet.has(it.name) && it.arHint)
+      .map((it) => ({
+        x: it.arHint!.x,
+        y: it.arHint!.y,
+        r: it.arHint!.x + it.arHint!.width,
+        b: it.arHint!.y + it.arHint!.height,
+      }));
+    if (rects.length === 0) return null;
+    const pad = 0.02;
+    const x = Math.max(0.02, Math.min(...rects.map((r) => r.x)) - pad);
+    const y = Math.max(0.02, Math.min(...rects.map((r) => r.y)) - pad);
+    const r = Math.min(0.98, Math.max(...rects.map((t) => t.r)) + pad);
+    const b = Math.min(0.98, Math.max(...rects.map((t) => t.b)) + pad);
+    return { x, y, w: Math.max(0.16, r - x), h: Math.max(0.14, b - y) };
+  });
+
+  const usable = hintBoxes.every(Boolean) && !hintBoxesOverlap(hintBoxes.filter(Boolean) as { x: number; y: number; w: number; h: number }[]);
+  const layout: ZoneBox[] = usable
+    ? (hintBoxes as { x: number; y: number; w: number; h: number }[]).map((bx) => ({
+        left: `${Math.round(bx.x * 100)}%`,
+        top: `${Math.round(bx.y * 100)}%`,
+        w: `${Math.round(bx.w * 100)}%`,
+        h: `${Math.round(bx.h * 100)}%`,
+      }))
+    : ZONE_LAYOUT[entries.length];
+
   return entries.map(([cat, names], i) => ({
     n: i + 1,
-    label: n === 1 ? "收纳区域" : `${cat}区`,
+    label: entries.length === 1 ? "收纳区域" : `${cat}区`,
     color: ZONE_PALETTE[i % ZONE_PALETTE.length],
-    ...ZONE_LAYOUT[entries.length][i],
+    ...layout[i],
     items: names.length,
     mins: Math.max(2, Math.round(names.length * 1.5)),
     names,
@@ -4976,17 +5026,15 @@ function buildZoneTasks(zones: FlowZone[]): { zone: number; label: string; color
 function ZoneSelectStep({
   photo,
   items,
-  shotCount = 1,
   onBack,
   onNext,
 }: {
   photo?: string;
   items: NativeItem[];
-  shotCount?: number;
   onBack: () => void;
   onNext: (zones: FlowZone[]) => void;
 }) {
-  const zones = buildFlowZones(items, shotCount);
+  const zones = buildFlowZones(items);
   const [selected, setSelected] = useState<number[]>(zones.map((z) => z.n));
 
   const toggle = (n: number) =>
