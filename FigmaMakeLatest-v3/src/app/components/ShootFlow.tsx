@@ -5524,7 +5524,8 @@ function ARGuideStep({
 }) {
   const [zoneIdx, setZoneIdx] = useState(0);
   const [phase, setPhase] = useState<"prepare" | "group" | "place">("prepare");
-  const [zoneTransition, setZoneTransition] = useState(false);
+  const [flow, setFlow] = useState<"guide" | "celebrate" | "checklist">("guide");
+  const [checkIdx, setCheckIdx] = useState(0);
   const totalZones = Math.max(1, zones.length);
   const zone = zones[zoneIdx] ?? {
     n: 1, label: "收纳区域", color: ORANGE,
@@ -5532,7 +5533,7 @@ function ARGuideStep({
     items: 0, mins: 5, names: [], home: "固定收纳位",
   };
   const groups = groupZoneItems(zone.names);
-  const advancing = useRef(false);
+  const zoneTasks = buildZoneTasks(zones);
 
   const phaseOrder: ("prepare" | "group" | "place")[] = ["prepare", "group", "place"];
   const phaseIdx = phaseOrder.indexOf(phase);
@@ -5558,9 +5559,7 @@ function ARGuideStep({
     if (phase === "prepare") setPhase("group");
     else if (phase === "group") setPhase("place");
     else {
-      if (advancing.current) return;
-      advancing.current = true;
-      setZoneTransition(true);
+      setFlow("celebrate");
     }
   };
 
@@ -5568,11 +5567,9 @@ function ARGuideStep({
     if (zoneIdx + 1 < totalZones) {
       setZoneIdx((i) => i + 1);
       setPhase("prepare");
-      setZoneTransition(false);
-      advancing.current = false;
+      setFlow("guide");
     } else {
-      setZoneTransition(false);
-      advancing.current = false;
+      setFlow("guide");
       onComplete();
     }
   };
@@ -5786,71 +5783,129 @@ function ARGuideStep({
         </button>
       </div>
 
-      {/* 区域完成弹层：手动点按钮才进下一个区域 */}
-      {zoneTransition && (
-        <div
-          className="absolute inset-0 z-50 flex flex-col items-center justify-center px-8"
-          style={{ backgroundColor: "rgba(19,17,15,0.88)", backdropFilter: "blur(10px)" }}
-        >
+      {/* 区域完成：全屏庆祝页 */}
+      {flow === "celebrate" && (
+        <div className="absolute inset-0 z-50">
+          <ImageWithFallback src={photo || ROOM_IMG} alt="整洁啦" className="h-full w-full object-cover" />
+          <div className="absolute inset-0" style={{ backgroundColor: "rgba(15,13,11,0.62)" }} />
           <div
-            className="h-16 w-16 rounded-full flex items-center justify-center mb-4"
-            style={{ backgroundColor: "#5fb37e", boxShadow: "0 8px 24px rgba(95,179,126,0.4)" }}
+            className="absolute inset-0 flex flex-col items-center justify-center px-8"
+            style={{ paddingBottom: 130 }}
           >
-            <Check size={28} color={WHITE} strokeWidth={3} />
-          </div>
-          <p style={{ color: WHITE, fontSize: 18, fontWeight: 700 }}>
-            {zoneIdx + 1 < totalZones ? `${zone.label} 收纳完成！` : "全部收纳成功！"}
-          </p>
-          <p style={{ color: WHITE, opacity: 0.65, fontSize: 12, marginTop: 6, textAlign: "center" }}>
-            {zoneIdx + 1 < totalZones
-              ? `接下来是 ${zones[zoneIdx + 1]?.label ?? "下一个区域"}`
-              : "所有选中的区域都收纳好了"}
-          </p>
-
-          <div
-            className="w-full px-4 py-3.5 mt-5"
-            style={{ backgroundColor: WHITE, borderRadius: 16, maxWidth: 300 }}
-          >
-            <div className="flex items-center justify-between mb-2">
-              <p style={{ color: COFFEE, fontSize: 11.5, fontWeight: 600 }}>
-                {zoneIdx + 1 < totalZones ? zones[zoneIdx + 1]?.label : "本次整理"}
-              </p>
-              <p style={{ color: COFFEE, opacity: 0.5, fontSize: 10.5 }}>
-                {zoneIdx + 1 < totalZones
-                  ? `区域 ${zones[zoneIdx + 1]?.n}/${totalZones}`
-                  : `${totalZones} 个区域完成`}
-              </p>
+            <div
+              className="h-16 w-16 rounded-full flex items-center justify-center"
+              style={{ backgroundColor: "#5fb37e", boxShadow: "0 8px 26px rgba(95,179,126,0.45)" }}
+            >
+              <Check size={30} color={WHITE} strokeWidth={3} />
             </div>
-            <div style={{ height: 6, borderRadius: 999, backgroundColor: SOFT, overflow: "hidden" }}>
-              <div
+            <p style={{ color: WHITE, fontSize: 21, fontWeight: 700, marginTop: 14 }}>已整洁啦</p>
+            <p style={{ color: WHITE, opacity: 0.72, fontSize: 12, marginTop: 6 }}>
+              {zoneTasks[zoneIdx]?.label} 已经收拾干净
+            </p>
+          </div>
+          <div className="absolute left-5 right-5" style={{ bottom: 34 }}>
+            <div
+              className="flex items-center gap-3 px-4 py-3"
+              style={{ backgroundColor: WHITE, borderRadius: 18, boxShadow: "0 10px 30px rgba(0,0,0,0.28)" }}
+            >
+              <div className="flex-1">
+                <p style={{ color: COFFEE, fontSize: 12.5, fontWeight: 700 }}>三步都完成啦</p>
+                <p style={{ color: COFFEE, opacity: 0.55, fontSize: 10.5, marginTop: 1 }}>
+                  看一下这个区域的整理清单
+                </p>
+              </div>
+              <button
+                onClick={() => { setCheckIdx(zoneIdx); setFlow("checklist"); }}
+                className="px-4 py-2.5 flex items-center gap-1 active:scale-[0.98] transition-transform"
+                style={{ backgroundColor: "#5fb37e", color: WHITE, borderRadius: 999, fontSize: 12, fontWeight: 700 }}
+              >
+                继续 <ChevronRight size={13} />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 整理清单页：tab 切区域查看 */}
+      {flow === "checklist" && (
+        <div className="absolute inset-0 z-50 flex flex-col" style={{ backgroundColor: LINEN }}>
+          <div className="px-5 pt-14 pb-1 flex items-center justify-between">
+            <button
+              onClick={() => setFlow("celebrate")}
+              className="h-9 w-9 rounded-full flex items-center justify-center"
+              style={{ backgroundColor: WHITE }}
+            >
+              <X size={16} color={COFFEE} />
+            </button>
+            <p style={{ color: COFFEE, fontSize: 15, fontWeight: 700 }}>整理清单</p>
+            <div style={{ width: 36 }} />
+          </div>
+
+          {/* 区域 tab */}
+          <div className="px-5 mt-3 flex gap-2">
+            {zoneTasks.map((z, i) => (
+              <button
+                key={z.zone}
+                onClick={() => setCheckIdx(i)}
+                className="px-4 py-1.5"
                 style={{
-                  width: `${zoneIdx + 1 < totalZones ? ((zoneIdx + 1) / totalZones) * 100 : 100}%`,
-                  height: "100%",
-                  backgroundColor: ORANGE,
+                  backgroundColor: i === checkIdx ? ORANGE : WHITE,
+                  color: i === checkIdx ? WHITE : COFFEE,
                   borderRadius: 999,
+                  fontSize: 11.5,
+                  fontWeight: 700,
+                  border: i === checkIdx ? "none" : `1px solid ${SOFT}`,
                 }}
-              />
+              >
+                区域 {z.zone}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex-1 overflow-y-auto px-5 mt-4 pb-4">
+            <div
+              className="px-5 py-5"
+              style={{ backgroundColor: WHITE, borderRadius: 20, boxShadow: "0 6px 22px rgba(123,92,72,0.10)" }}
+            >
+              <span
+                className="px-2.5 py-1"
+                style={{ backgroundColor: `${ORANGE}1a`, color: ORANGE, borderRadius: 999, fontSize: 10, fontWeight: 700 }}
+              >
+                {zoneTasks[checkIdx]?.label}
+              </span>
+              <div className="mt-3.5 space-y-3">
+                {(zoneTasks[checkIdx]?.tasks ?? []).map((t) => (
+                  <div key={t.id} className="flex items-start gap-2.5">
+                    <span
+                      className="h-4 w-4 rounded-full flex items-center justify-center flex-shrink-0"
+                      style={{ backgroundColor: `${ORANGE}22`, marginTop: 1 }}
+                    >
+                      <Check size={9} color={ORANGE} strokeWidth={3} />
+                    </span>
+                    <span style={{ color: COFFEE, opacity: 0.75, fontSize: 12, lineHeight: 1.5 }}>{t.text}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
 
-          <button
-            onClick={advanceZone}
-            className="w-full py-3.5 mt-5 flex items-center justify-center gap-2 active:scale-[0.98] transition-transform"
-            style={{
-              backgroundColor: ORANGE,
-              color: WHITE,
-              borderRadius: 999,
-              fontSize: 13.5,
-              fontWeight: 700,
-              maxWidth: 300,
-              boxShadow: "0 8px 22px rgba(250,136,58,0.35)",
-            }}
-          >
-            {zoneIdx + 1 < totalZones
-              ? `开始收纳区域 ${zones[zoneIdx + 1]?.n}`
-              : "查看整理成果"}
-            <ChevronRight size={15} />
-          </button>
+          <div className="px-5 pb-8">
+            <button
+              onClick={advanceZone}
+              className="w-full py-4 flex items-center justify-center gap-2 active:scale-[0.98] transition-transform"
+              style={{
+                backgroundColor: ORANGE,
+                color: WHITE,
+                borderRadius: 999,
+                fontSize: 13.5,
+                fontWeight: 700,
+                boxShadow: "0 10px 28px rgba(250,136,58,0.34)",
+              }}
+            >
+              {zoneIdx + 1 < totalZones ? `开始收纳区域 ${zones[zoneIdx + 1]?.n}` : "查看整理成果"}
+              <ChevronRight size={15} />
+            </button>
+          </div>
         </div>
       )}
     </div>
