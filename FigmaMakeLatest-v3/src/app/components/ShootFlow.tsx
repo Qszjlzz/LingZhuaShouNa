@@ -6236,15 +6236,7 @@ function RelightChoiceStep({
 }) {
   return (
     <div className="h-full w-full flex flex-col overflow-y-auto" style={{ backgroundColor: LINEN }}>
-      {/* 刚拍的照片：让这一步知道自己在整理哪个空间 */}
-      {photo ? (
-        <div className="mx-5 mt-12 mb-1 overflow-hidden" style={{ borderRadius: 22, height: 132 }}>
-          <ImageWithFallback src={photo} alt={spaceName} className="h-full w-full object-cover" />
-        </div>
-      ) : (
-        <div style={{ height: 48 }} />
-      )}
-      <div style={{ paddingTop: photo ? 18 : 68, paddingLeft: 24, paddingRight: 24, paddingBottom: 20 }}>
+      <div style={{ paddingTop: "calc(env(safe-area-inset-top, 20px) + 34px)", paddingLeft: 24, paddingRight: 24, paddingBottom: 20 }}>
         <p style={{ color: COFFEE, opacity: 0.45, fontSize: 12, fontWeight: 600, letterSpacing: "0.04em" }}>
           重新点亮 · {spaceName}
         </p>
@@ -6394,7 +6386,7 @@ function ProofCaptureStep({
             }}
           >
             <div style={{ flex: 1, position: "relative" }}>
-              <ImageWithFallback src={ROOM_IMG} alt="拍摄留证" className="h-full w-full object-cover" />
+              <ImageWithFallback src={photo || ROOM_IMG} alt="拍摄留证" className="h-full w-full object-cover" />
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
@@ -6466,7 +6458,7 @@ function ProofCaptureStep({
               overflow: "hidden", border: "2px solid rgba(255,255,255,0.35)",
             }}>
               <ImageWithFallback
-                src={ROOM_IMG} alt="整理前"
+                src={photo || ROOM_IMG} alt="整理前"
                 className="w-full h-full object-cover"
                 style={{ opacity: 0.65 }}
               />
@@ -6666,9 +6658,6 @@ type RelightStep =
   | "analyzing"
   | "choice"
   | "tune"
-  | "plandeck"
-  | "zones"
-  | "arGuide"
   | "proof"
   | "complete";
 
@@ -6679,7 +6668,6 @@ export function RelightFlow({ spaceId, spaceName, spaceVivid, onClose, onComplet
   const [assets, setAssets] = useState<CapturedAsset[]>([]);
   const [items, setItems] = useState<NativeItem[]>([]);
   const [plans, setPlans] = useState<GenPlan[]>(GEN_PLANS);
-  const [zoneList, setZoneList] = useState<FlowZone[]>([]);
   const photo = assets[0]?.src;
 
   // 这条线有自己的一步「选择整理方式」；设计稿里拍完照就直接到这一步，
@@ -6705,8 +6693,7 @@ export function RelightFlow({ spaceId, spaceName, spaceVivid, onClose, onComplet
     setStep("analyzing");
   };
 
-  const zoneIds = zoneList.length > 0 ? zoneList.map((z) => z.n) : [1];
-  const itemTotal = items.length > 0 ? items.length : zoneList.reduce((s, z) => s + z.items, 0);
+  const itemTotal = items.length;
 
   return (
     <div className="absolute inset-0 z-50" style={{ backgroundColor: LINEN }}>
@@ -6729,7 +6716,7 @@ export function RelightFlow({ spaceId, spaceName, spaceVivid, onClose, onComplet
           spaceName={spaceName}
           spaceVivid={spaceVivid}
           onTune={() => { setRelightMode("tune"); setStep("tune"); }}
-          onNew={() => { setRelightMode("new"); setStep("plandeck"); }}
+          onNew={() => { setRelightMode("new"); setStep("tune"); }}
         />
       )}
       {step === "tune" && (
@@ -6737,39 +6724,14 @@ export function RelightFlow({ spaceId, spaceName, spaceVivid, onClose, onComplet
           plan={chosen}
           photo={photo}
           onBack={() => setStep("choice")}
-          onConfirm={(refined) => { setChosen(refined); setStep("zones"); }}
-        />
-      )}
-      {step === "plandeck" && (
-        <PlanDeckStep
-          plans={plans}
-          photo={photo}
-          onClose={() => setStep("choice")}
-          onStart={(p) => { setChosen(p); setStep("zones"); }}
-          onTune={(p) => { setChosen(p); setStep("tune"); }}
-        />
-      )}
-      {step === "zones" && (
-        <ZoneSelectStep
-          photo={photo}
-          items={items}
-          onBack={() => setStep(relightMode === "tune" ? "tune" : "plandeck")}
-          onNext={(zones) => { setZoneList(zones); setStep("arGuide"); }}
-        />
-      )}
-      {step === "arGuide" && (
-        <ARGuideStep
-          photo={photo}
-          zones={zoneList.length > 0 ? zoneList.filter((z) => zoneIds.includes(z.n)) : zoneList}
-          onBack={() => setStep("zones")}
-          onComplete={() => setStep("proof")}
+          onConfirm={(refined) => { setChosen(refined); setStep("proof"); }}
         />
       )}
       {step === "proof" && (
         <ProofCaptureStep
           photo={photo}
           spaceName={spaceName}
-          onBack={() => setStep("arGuide")}
+          onBack={() => setStep("tune")}
           onDone={() => setStep("complete")}
         />
       )}
@@ -6777,7 +6739,7 @@ export function RelightFlow({ spaceId, spaceName, spaceVivid, onClose, onComplet
         <RelightCompleteStep
           spaceName={spaceName}
           spaceVivid={spaceVivid}
-          zoneCount={Math.max(1, zoneList.length)}
+          zoneCount={1}
           itemCount={itemTotal}
           minutes={chosen.minutes}
           onReturn={() => onComplete(spaceId)}
