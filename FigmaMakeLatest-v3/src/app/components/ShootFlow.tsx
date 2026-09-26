@@ -6050,6 +6050,177 @@ const CHAOS_SPOTS = [
   { x: "84%", y: "54%" },
 ];
 
+function DisorderAnalysisStep({
+  photo,
+  spaceName,
+  onDone,
+}: {
+  photo?: string;
+  spaceName: string;
+  onDone: () => void;
+}) {
+  const [phase, setPhase] = useState(0);
+
+  useEffect(() => {
+    const t1 = setTimeout(() => setPhase(1), 1900);
+    const t2 = setTimeout(() => setPhase(2), 3400);
+    const done = setTimeout(onDone, 5500);
+    return () => { [t1, t2, done].forEach(clearTimeout); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <div
+      className="h-full w-full flex flex-col relative overflow-hidden"
+      style={{ backgroundColor: "#0D0A07" }}
+    >
+      <ImageWithFallback
+        src={photo || ROOM_IMG}
+        alt=""
+        className="absolute inset-0 h-full w-full object-cover"
+        style={{ opacity: 0.46 }}
+      />
+
+      {/* Scan sweep */}
+      <AnimatePresence>
+        {phase < 2 && (
+          <motion.div
+            className="absolute inset-0 pointer-events-none"
+            exit={{ opacity: 0, transition: { duration: 0.4 } }}
+          >
+            <motion.div
+              style={{
+                position: "absolute", left: 0, right: 0, height: 2,
+                background: `linear-gradient(90deg, transparent, ${ORANGE}, transparent)`,
+                boxShadow: `0 0 14px 4px ${ORANGE}40`,
+              }}
+              animate={{ top: ["0%", "100%", "0%"] }}
+              transition={{ duration: 3.4, repeat: Infinity, ease: "linear" }}
+            />
+            <div
+              style={{
+                position: "absolute", inset: 0,
+                backgroundImage: `
+                  linear-gradient(rgba(250,136,58,0.06) 1px, transparent 1px),
+                  linear-gradient(90deg, rgba(250,136,58,0.06) 1px, transparent 1px)`,
+                backgroundSize: "44px 44px",
+              }}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Hotspot markers */}
+      {phase >= 1 && CHAOS_SPOTS.map((s, i) => (
+        <motion.div
+          key={i}
+          initial={{ opacity: 0, scale: 0 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ delay: i * 0.2, type: "spring", stiffness: 360, damping: 22 }}
+          style={{
+            position: "absolute", left: s.x, top: s.y,
+            transform: "translate(-50%, -50%)", zIndex: 10,
+          }}
+        >
+          <div style={{ position: "relative", width: 30, height: 30 }}>
+            <motion.div
+              animate={{ scale: [1, 1.65], opacity: [0.45, 0] }}
+              transition={{ duration: 1.3, repeat: Infinity, ease: "easeOut" }}
+              style={{ position: "absolute", inset: 0, borderRadius: "50%", backgroundColor: "#E25A4A" }}
+            />
+            <div style={{
+              position: "absolute", inset: 4, borderRadius: "50%",
+              backgroundColor: "#E25A4A",
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}>
+              <X size={11} color={WHITE} strokeWidth={2.5} />
+            </div>
+          </div>
+        </motion.div>
+      ))}
+
+      {/* Status label */}
+      <div style={{ position: "absolute", top: 60, left: 24, right: 24, zIndex: 12 }}>
+        <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 12, fontWeight: 600, letterSpacing: "0.06em" }}>
+          {spaceName}
+        </p>
+        <AnimatePresence mode="wait">
+          <motion.p
+            key={phase}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3 }}
+            style={{ color: WHITE, fontSize: 22, fontWeight: 700, marginTop: 6, letterSpacing: "-0.02em" }}
+          >
+            {phase === 0 && "正在扫描空间状态…"}
+            {phase === 1 && "检测到 5 处混乱区域"}
+            {phase >= 2 && "分析完成"}
+          </motion.p>
+        </AnimatePresence>
+      </div>
+
+      {/* Results panel */}
+      <AnimatePresence>
+        {phase >= 2 && (
+          <motion.div
+            initial={{ y: "100%" }}
+            animate={{ y: 0 }}
+            transition={{ type: "spring", stiffness: 290, damping: 28 }}
+            style={{
+              position: "absolute", left: 0, right: 0, bottom: 0,
+              backgroundColor: WHITE,
+              borderTopLeftRadius: 32, borderTopRightRadius: 32,
+              padding: "26px 24px 52px",
+              zIndex: 20,
+            }}
+          >
+            <p style={{ color: COFFEE, opacity: 0.45, fontSize: 12, fontWeight: 600 }}>空间混乱度评估</p>
+            <div className="flex items-end gap-3 mt-2.5 mb-5">
+              <p style={{ color: COFFEE, fontSize: 40, fontWeight: 800, letterSpacing: "-0.05em", lineHeight: 1 }}>62%</p>
+              <p style={{ color: "#ECC079", fontSize: 17, fontWeight: 700, marginBottom: 6 }}>中度混乱</p>
+            </div>
+            <div style={{ height: 6, backgroundColor: SOFT, borderRadius: 999, overflow: "hidden", marginBottom: 18 }}>
+              <motion.div
+                initial={{ width: 0 }}
+                animate={{ width: "62%" }}
+                transition={{ duration: 1.0, ease: [0.22, 1, 0.36, 1] }}
+                style={{ height: "100%", borderRadius: 999, backgroundColor: "#ECC079" }}
+              />
+            </div>
+            <div className="space-y-2.5">
+              {[
+                { icon: "📦", text: "发现 5 处物品堆积区" },
+                { icon: "⏱️", text: "预计整理约需 40 分钟" },
+                { icon: "💡", text: "建议重新规划收纳动线" },
+              ].map((item, i) => (
+                <motion.div
+                  key={i}
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.28 + i * 0.14 }}
+                  className="flex items-center gap-3"
+                >
+                  <span style={{ fontSize: 15 }}>{item.icon}</span>
+                  <p style={{ color: COFFEE, opacity: 0.68, fontSize: 13 }}>{item.text}</p>
+                </motion.div>
+              ))}
+            </div>
+            <motion.p
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 1.1 }}
+              style={{ color: COFFEE, opacity: 0.35, fontSize: 11.5, marginTop: 18, textAlign: "center" }}
+            >
+              即将进入方案选择…
+            </motion.p>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 function RelightChoiceStep({
   photo,
   spaceName,
@@ -6492,6 +6663,7 @@ export type RelightFlowProps = {
 
 type RelightStep =
   | "capture"
+  | "analyzing"
   | "choice"
   | "tune"
   | "plandeck"
@@ -6530,7 +6702,7 @@ export function RelightFlow({ spaceId, spaceName, spaceVivid, onClose, onComplet
     } catch {
       setItems([]);
     }
-    setStep("choice");
+    setStep("analyzing");
   };
 
   const zoneIds = zoneList.length > 0 ? zoneList.map((z) => z.n) : [1];
@@ -6542,6 +6714,13 @@ export function RelightFlow({ spaceId, spaceName, spaceVivid, onClose, onComplet
         <CaptureStep
           onClose={onClose}
           on完成={(captured) => { void collectRecognition(captured); }}
+        />
+      )}
+      {step === "analyzing" && (
+        <DisorderAnalysisStep
+          photo={photo}
+          spaceName={spaceName}
+          onDone={() => setStep("choice")}
         />
       )}
       {step === "choice" && (
