@@ -735,21 +735,10 @@ function PlanDeckStep({
       className="h-full w-full flex flex-col overflow-y-auto"
       style={{ backgroundColor: LINEN }}
     >
-      {/* ── 顶部留白 + 返回，不再让照片顶到状态栏 ── */}
-      <div className="px-5 pt-14 pb-4 flex items-center">
-        <button
-          onClick={onClose}
-          className="h-9 w-9 rounded-full flex items-center justify-center"
-          style={{ backgroundColor: WHITE, boxShadow: "0 2px 8px rgba(123,92,72,0.12)" }}
-        >
-          <X size={16} color={COFFEE} />
-        </button>
-      </div>
-
-      {/* ── 照片：只露出中间一段，四周留空 ── */}
+      {/* ── 照片：贴顶大图，返回和"智能推荐"标签叠在照片上 ── */}
       <div
-        className="mx-5 relative overflow-hidden"
-        style={{ height: 216, borderRadius: 22, boxShadow: "0 6px 20px rgba(123,92,72,0.16)" }}
+        className="mx-3 mt-3 relative overflow-hidden flex-shrink-0"
+        style={{ height: 272, borderRadius: 20, boxShadow: "0 6px 20px rgba(123,92,72,0.16)" }}
       >
         <ImageWithFallback
           src={photo || plan.image}
@@ -760,22 +749,33 @@ function PlanDeckStep({
           className="absolute inset-0 pointer-events-none"
           style={{
             background:
-              "linear-gradient(180deg, rgba(0,0,0,0.16) 0%, rgba(0,0,0,0) 45%)",
+              "linear-gradient(180deg, rgba(0,0,0,0.18) 0%, rgba(0,0,0,0) 40%)",
           }}
         />
+        <button
+          onClick={onClose}
+          className="absolute top-3 left-3 h-9 w-9 rounded-full flex items-center justify-center"
+          style={{ backgroundColor: "rgba(255,255,255,0.92)", boxShadow: "0 2px 8px rgba(0,0,0,0.14)" }}
+        >
+          <X size={16} color={COFFEE} />
+        </button>
+        <span
+          className="absolute top-3 right-3 px-2.5 py-1"
+          style={{
+            backgroundColor: ORANGE,
+            borderRadius: 999,
+            fontSize: 9.5,
+            fontWeight: 700,
+            color: WHITE,
+            letterSpacing: "0.04em",
+          }}
+        >
+          智能推荐
+        </span>
       </div>
 
-      {/* ── Plan card：四周都留空隙，不再压在照片上 ── */}
-      <div
-        className="flex flex-col"
-        style={{
-          backgroundColor: WHITE,
-          borderRadius: 22,
-          margin: "18px 20px 26px",
-          padding: "20px 20px 22px",
-          boxShadow: "0 8px 26px rgba(123,92,72,0.12)",
-        }}
-      >
+      {/* ── 内容：直接排在米色背景上，不做独立白卡 ── */}
+      <div className="flex flex-col px-6 pt-5 pb-6">
         {/* name */}
         <div className="flex items-center gap-2 mb-2">
           <Zap size={15} color={ORANGE} fill={ORANGE} />
@@ -789,35 +789,9 @@ function PlanDeckStep({
           >
             {plan.name}
           </p>
-          <span
-            className="ml-auto"
-            style={{
-              backgroundColor: plan.accent,
-              borderRadius: 999,
-              fontSize: 9.5,
-              fontWeight: 600,
-              color: WHITE,
-              padding: "4px 10px",
-            }}
-          >
-            约 {plan.minutes} 分钟
-          </span>
         </div>
 
-        {/* summary */}
-        <p
-          style={{
-            color: COFFEE,
-            opacity: 0.55,
-            fontSize: 12,
-            lineHeight: 1.6,
-            marginBottom: 12,
-          }}
-        >
-          {plan.vibe}
-        </p>
-
-        {/* strategy bullets */}
+        {/* summary bullets */}
         <div className="space-y-1.5 mb-3.5">
           {plan.changes.map((c, ci) => (
             <div key={ci} className="flex items-start gap-2.5">
@@ -826,7 +800,7 @@ function PlanDeckStep({
                   width: 4,
                   height: 4,
                   borderRadius: 999,
-                  backgroundColor: plan.accent,
+                  backgroundColor: ORANGE,
                   opacity: 0.72,
                   flexShrink: 0,
                   marginTop: 7,
@@ -846,18 +820,35 @@ function PlanDeckStep({
           ))}
         </div>
 
-        {/* tags */}
-        <div className="flex gap-1.5 flex-wrap mb-4">
+        {/* 卖点小行 */}
+        <div className="flex items-center gap-4 mb-3">
+          {[
+            { icon: Box, text: "分区收纳" },
+            { icon: Zap, text: "快而不乱" },
+            { icon: Sparkles, text: "随时微调" },
+          ].map((s) => (
+            <div key={s.text} className="flex items-center gap-1.5">
+              <s.icon size={13} color={ORANGE} />
+              <span style={{ color: COFFEE, opacity: 0.6, fontSize: 10.5, fontWeight: 600 }}>
+                {s.text}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        {/* tags：白底描边胶囊 */}
+        <div className="flex gap-1.5 flex-wrap mb-5">
           {plan.tags.map((t) => (
             <span
               key={t}
               style={{
-                backgroundColor: LINEN,
+                backgroundColor: WHITE,
+                border: `1px solid ${SOFT}`,
                 color: COFFEE,
                 borderRadius: 999,
                 fontSize: 10.5,
                 fontWeight: 600,
-                padding: "4px 10px",
+                padding: "5px 12px",
               }}
             >
               {t}
@@ -865,12 +856,12 @@ function PlanDeckStep({
           ))}
         </div>
 
-        {/* actions：确认继续 / 微调 */}
+        {/* actions：主按钮带时长，微调是白底描边胶囊 */}
         <button
           onClick={() => onStart(plan)}
           className="w-full py-4 flex items-center justify-center gap-2 active:scale-[0.98] transition-transform"
           style={{
-            backgroundColor: ORANGE,
+            background: "linear-gradient(92deg, #FA883A 0%, #F5703D 100%)",
             color: WHITE,
             borderRadius: 999,
             fontSize: 14,
@@ -878,21 +869,21 @@ function PlanDeckStep({
             boxShadow: "0 10px 28px rgba(250,136,58,0.34)",
           }}
         >
-          <Zap size={15} />
-          确认方案，开始整理
+          ≈{plan.minutes} 分钟 · 开始整理
         </button>
         <button
           onClick={() => onTune(plan)}
-          className="w-full py-3 mt-2 flex items-center justify-center gap-1.5 active:scale-[0.98] transition-transform"
+          className="w-full py-3.5 mt-2.5 flex items-center justify-center gap-1.5 active:scale-[0.98] transition-transform"
           style={{
-            backgroundColor: "transparent",
+            backgroundColor: WHITE,
+            border: `1px solid ${SOFT}`,
             color: COFFEE,
-            opacity: 0.55,
+            borderRadius: 999,
             fontSize: 12.5,
-            fontWeight: 600,
+            fontWeight: 700,
           }}
         >
-          <Sparkles size={13} color={ORANGE} />
+          <Edit3 size={13} color={COFFEE} />
           微调方案
         </button>
       </div>
