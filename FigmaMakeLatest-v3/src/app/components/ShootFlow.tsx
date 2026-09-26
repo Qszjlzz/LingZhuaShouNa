@@ -733,7 +733,11 @@ function PlanDeckStep({
   return (
     <div
       className="h-full w-full flex flex-col overflow-y-auto"
-      style={{ backgroundColor: "#FBF9F4" }}
+      style={{
+        backgroundColor: "#FBF9F4",
+        // 整页从状态栏（时间/信号那一行）下方开始，避免顶部元素被系统栏压住
+        paddingTop: "calc(env(safe-area-inset-top, 20px) + 8px)",
+      }}
     >
       {/* ── 照片：全出血贴顶大图（约占上半屏），X / 预计时长 / 翻页箭头叠在照片上 ── */}
       <div className="relative flex-shrink-0 overflow-hidden" style={{ height: "52%" }}>
