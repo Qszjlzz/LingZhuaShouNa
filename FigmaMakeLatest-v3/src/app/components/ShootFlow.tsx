@@ -6050,189 +6050,30 @@ const CHAOS_SPOTS = [
   { x: "84%", y: "54%" },
 ];
 
-function DisorderAnalysisStep({
-  spaceName,
-  onDone,
-}: {
-  spaceName: string;
-  onDone: () => void;
-}) {
-  const [phase, setPhase] = useState(0);
-
-  useEffect(() => {
-    const t1 = setTimeout(() => setPhase(1), 1900);
-    const t2 = setTimeout(() => setPhase(2), 3400);
-    const done = setTimeout(onDone, 5500);
-    return () => { [t1, t2, done].forEach(clearTimeout); };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  return (
-    <div
-      className="h-full w-full flex flex-col relative overflow-hidden"
-      style={{ backgroundColor: "#0D0A07" }}
-    >
-      <ImageWithFallback
-        src={ROOM_IMG}
-        alt=""
-        className="absolute inset-0 h-full w-full object-cover"
-        style={{ opacity: 0.46 }}
-      />
-
-      {/* Scan sweep */}
-      <AnimatePresence>
-        {phase < 2 && (
-          <motion.div
-            className="absolute inset-0 pointer-events-none"
-            exit={{ opacity: 0, transition: { duration: 0.4 } }}
-          >
-            <motion.div
-              style={{
-                position: "absolute", left: 0, right: 0, height: 2,
-                background: `linear-gradient(90deg, transparent, ${ORANGE}, transparent)`,
-                boxShadow: `0 0 14px 4px ${ORANGE}40`,
-              }}
-              animate={{ top: ["0%", "100%", "0%"] }}
-              transition={{ duration: 3.4, repeat: Infinity, ease: "linear" }}
-            />
-            <div
-              style={{
-                position: "absolute", inset: 0,
-                backgroundImage: `
-                  linear-gradient(rgba(250,136,58,0.06) 1px, transparent 1px),
-                  linear-gradient(90deg, rgba(250,136,58,0.06) 1px, transparent 1px)`,
-                backgroundSize: "44px 44px",
-              }}
-            />
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Hotspot markers */}
-      {phase >= 1 && CHAOS_SPOTS.map((s, i) => (
-        <motion.div
-          key={i}
-          initial={{ opacity: 0, scale: 0 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ delay: i * 0.2, type: "spring", stiffness: 360, damping: 22 }}
-          style={{
-            position: "absolute", left: s.x, top: s.y,
-            transform: "translate(-50%, -50%)", zIndex: 10,
-          }}
-        >
-          <div style={{ position: "relative", width: 30, height: 30 }}>
-            <motion.div
-              animate={{ scale: [1, 1.65], opacity: [0.45, 0] }}
-              transition={{ duration: 1.3, repeat: Infinity, ease: "easeOut" }}
-              style={{ position: "absolute", inset: 0, borderRadius: "50%", backgroundColor: "#E25A4A" }}
-            />
-            <div style={{
-              position: "absolute", inset: 4, borderRadius: "50%",
-              backgroundColor: "#E25A4A",
-              display: "flex", alignItems: "center", justifyContent: "center",
-            }}>
-              <X size={11} color={WHITE} strokeWidth={2.5} />
-            </div>
-          </div>
-        </motion.div>
-      ))}
-
-      {/* Status label */}
-      <div style={{ position: "absolute", top: 60, left: 24, right: 24, zIndex: 12 }}>
-        <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 12, fontWeight: 600, letterSpacing: "0.06em" }}>
-          {spaceName}
-        </p>
-        <AnimatePresence mode="wait">
-          <motion.p
-            key={phase}
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.3 }}
-            style={{ color: WHITE, fontSize: 22, fontWeight: 700, marginTop: 6, letterSpacing: "-0.02em" }}
-          >
-            {phase === 0 && "正在扫描空间状态…"}
-            {phase === 1 && "检测到 5 处混乱区域"}
-            {phase >= 2 && "分析完成"}
-          </motion.p>
-        </AnimatePresence>
-      </div>
-
-      {/* Results panel */}
-      <AnimatePresence>
-        {phase >= 2 && (
-          <motion.div
-            initial={{ y: "100%" }}
-            animate={{ y: 0 }}
-            transition={{ type: "spring", stiffness: 290, damping: 28 }}
-            style={{
-              position: "absolute", left: 0, right: 0, bottom: 0,
-              backgroundColor: WHITE,
-              borderTopLeftRadius: 32, borderTopRightRadius: 32,
-              padding: "26px 24px 52px",
-              zIndex: 20,
-            }}
-          >
-            <p style={{ color: COFFEE, opacity: 0.45, fontSize: 12, fontWeight: 600 }}>空间混乱度评估</p>
-            <div className="flex items-end gap-3 mt-2.5 mb-5">
-              <p style={{ color: COFFEE, fontSize: 40, fontWeight: 800, letterSpacing: "-0.05em", lineHeight: 1 }}>62%</p>
-              <p style={{ color: "#ECC079", fontSize: 17, fontWeight: 700, marginBottom: 6 }}>中度混乱</p>
-            </div>
-            <div style={{ height: 6, backgroundColor: SOFT, borderRadius: 999, overflow: "hidden", marginBottom: 18 }}>
-              <motion.div
-                initial={{ width: 0 }}
-                animate={{ width: "62%" }}
-                transition={{ duration: 1.0, ease: [0.22, 1, 0.36, 1] }}
-                style={{ height: "100%", borderRadius: 999, backgroundColor: "#ECC079" }}
-              />
-            </div>
-            <div className="space-y-2.5">
-              {[
-                { icon: "📦", text: "发现 5 处物品堆积区" },
-                { icon: "⏱️", text: "预计整理约需 40 分钟" },
-                { icon: "💡", text: "建议重新规划收纳动线" },
-              ].map((item, i) => (
-                <motion.div
-                  key={i}
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.28 + i * 0.14 }}
-                  className="flex items-center gap-3"
-                >
-                  <span style={{ fontSize: 15 }}>{item.icon}</span>
-                  <p style={{ color: COFFEE, opacity: 0.68, fontSize: 13 }}>{item.text}</p>
-                </motion.div>
-              ))}
-            </div>
-            <motion.p
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 1.1 }}
-              style={{ color: COFFEE, opacity: 0.35, fontSize: 11.5, marginTop: 18, textAlign: "center" }}
-            >
-              即将进入方案选择…
-            </motion.p>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
-
 function RelightChoiceStep({
+  photo,
   spaceName,
   spaceVivid,
   onTune,
   onNew,
 }: {
+  photo?: string;
   spaceName: string;
   spaceVivid: string;
   onTune: () => void;
   onNew: () => void;
 }) {
   return (
-    <div className="h-full w-full flex flex-col" style={{ backgroundColor: LINEN }}>
-      <div style={{ paddingTop: 68, paddingLeft: 24, paddingRight: 24, paddingBottom: 20 }}>
+    <div className="h-full w-full flex flex-col overflow-y-auto" style={{ backgroundColor: LINEN }}>
+      {/* 刚拍的照片：让这一步知道自己在整理哪个空间 */}
+      {photo ? (
+        <div className="mx-5 mt-12 mb-1 overflow-hidden" style={{ borderRadius: 22, height: 132 }}>
+          <ImageWithFallback src={photo} alt={spaceName} className="h-full w-full object-cover" />
+        </div>
+      ) : (
+        <div style={{ height: 48 }} />
+      )}
+      <div style={{ paddingTop: photo ? 18 : 68, paddingLeft: 24, paddingRight: 24, paddingBottom: 20 }}>
         <p style={{ color: COFFEE, opacity: 0.45, fontSize: 12, fontWeight: 600, letterSpacing: "0.04em" }}>
           重新点亮 · {spaceName}
         </p>
@@ -6306,10 +6147,12 @@ function RelightChoiceStep({
 }
 
 function ProofCaptureStep({
+  photo,
   spaceName,
   onBack,
   onDone,
 }: {
+  photo?: string;
   spaceName: string;
   onBack: () => void;
   onDone: () => void;
@@ -6326,7 +6169,7 @@ function ProofCaptureStep({
   return (
     <div className="h-full w-full flex flex-col relative" style={{ backgroundColor: "#130F09" }}>
       <ImageWithFallback
-        src={ROOM_IMG}
+        src={photo || ROOM_IMG}
         alt=""
         className="absolute inset-0 h-full w-full object-cover"
         style={{ opacity: 0.72 }}
@@ -6483,10 +6326,16 @@ function ProofCaptureStep({
 function RelightCompleteStep({
   spaceName,
   spaceVivid,
+  zoneCount,
+  itemCount,
+  minutes,
   onReturn,
 }: {
   spaceName: string;
   spaceVivid: string;
+  zoneCount: number;
+  itemCount: number;
+  minutes: number;
   onReturn: () => void;
 }) {
   return (
@@ -6596,9 +6445,9 @@ function RelightCompleteStep({
         style={{ display: "flex", gap: 32, marginTop: 30 }}
       >
         {[
-          { value: "40", unit: "分钟", label: "整理时长" },
-          { value: "1", unit: "次", label: "本次整理" },
-          { value: "12", unit: "件", label: "收纳物品" },
+          { value: String(Math.max(1, Math.round(minutes))), unit: "分钟", label: "整理时长" },
+          { value: String(Math.max(1, zoneCount)), unit: "个", label: "收纳区域" },
+          { value: String(Math.max(0, itemCount)), unit: "件", label: "收纳物品" },
         ].map((s) => (
           <div key={s.label} style={{ textAlign: "center" }}>
             <p style={{ color: COFFEE, fontSize: 22, fontWeight: 800, letterSpacing: "-0.02em" }}>
@@ -6643,11 +6492,11 @@ export type RelightFlowProps = {
 
 type RelightStep =
   | "capture"
-  | "analyzing"
   | "choice"
   | "tune"
   | "plandeck"
   | "zones"
+  | "arGuide"
   | "proof"
   | "complete";
 
@@ -6655,23 +6504,49 @@ export function RelightFlow({ spaceId, spaceName, spaceVivid, onClose, onComplet
   const [step, setStep] = useState<RelightStep>("capture");
   const [chosen, setChosen] = useState<GenPlan>(GEN_PLANS[0]);
   const [relightMode, setRelightMode] = useState<"tune" | "new">("tune");
+  const [assets, setAssets] = useState<CapturedAsset[]>([]);
+  const [items, setItems] = useState<NativeItem[]>([]);
+  const [plans, setPlans] = useState<GenPlan[]>(GEN_PLANS);
+  const [zoneList, setZoneList] = useState<FlowZone[]>([]);
+  const photo = assets[0]?.src;
+
+  // 这条线有自己的一步「选择整理方式」；设计稿里拍完照就直接到这一步，
+  // 中间不再插任何分析页。识别结果在这里静默收进来，后面的页全程用你刚拍的照片。
+  const collectRecognition = async (captured: CapturedAsset[]) => {
+    setAssets(captured);
+    try {
+      await nativeRequest("scan.await", {});
+      const state = await nativeRequest<NativeState>("state.get");
+      const scanned = (state?.scannedItems ?? []).filter((it) => it.isSelected !== false);
+      const payload = scanned.map((it) => ({
+        ...it,
+        category: it.category || "收纳工具",
+        suggestedZone: it.suggestedZone || "手边工具区",
+        isSelected: true,
+      }));
+      if (payload.length > 0) await nativeRequest("items.save", { items: payload });
+      setItems(payload);
+      if (scanned.length > 0) setPlans(personalizePlans(scanned));
+    } catch {
+      setItems([]);
+    }
+    setStep("choice");
+  };
+
+  const zoneIds = zoneList.length > 0 ? zoneList.map((z) => z.n) : [1];
+  const itemTotal = items.length > 0 ? items.length : zoneList.reduce((s, z) => s + z.items, 0);
 
   return (
     <div className="absolute inset-0 z-50" style={{ backgroundColor: LINEN }}>
       {step === "capture" && (
         <CaptureStep
           onClose={onClose}
-          on完成={(_assets) => setStep("analyzing")}
-        />
-      )}
-      {step === "analyzing" && (
-        <DisorderAnalysisStep
-          spaceName={spaceName}
-          onDone={() => setStep("choice")}
+          on完成={(captured) => { void collectRecognition(captured); }}
         />
       )}
       {step === "choice" && (
         <RelightChoiceStep
+          photo={photo}
           spaceName={spaceName}
           spaceVivid={spaceVivid}
           onTune={() => { setRelightMode("tune"); setStep("tune"); }}
@@ -6681,13 +6556,15 @@ export function RelightFlow({ spaceId, spaceName, spaceVivid, onClose, onComplet
       {step === "tune" && (
         <TuneChatStep
           plan={chosen}
+          photo={photo}
           onBack={() => setStep("choice")}
           onConfirm={(refined) => { setChosen(refined); setStep("zones"); }}
         />
       )}
       {step === "plandeck" && (
         <PlanDeckStep
-          plans={GEN_PLANS}
+          plans={plans}
+          photo={photo}
           onClose={() => setStep("choice")}
           onStart={(p) => { setChosen(p); setStep("zones"); }}
           onTune={(p) => { setChosen(p); setStep("tune"); }}
@@ -6695,14 +6572,25 @@ export function RelightFlow({ spaceId, spaceName, spaceVivid, onClose, onComplet
       )}
       {step === "zones" && (
         <ZoneSelectStep
+          photo={photo}
+          items={items}
           onBack={() => setStep(relightMode === "tune" ? "tune" : "plandeck")}
-          onNext={() => setStep("proof")}
+          onNext={(zones) => { setZoneList(zones); setStep("arGuide"); }}
+        />
+      )}
+      {step === "arGuide" && (
+        <ARGuideStep
+          photo={photo}
+          zones={zoneList.length > 0 ? zoneList.filter((z) => zoneIds.includes(z.n)) : zoneList}
+          onBack={() => setStep("zones")}
+          onComplete={() => setStep("proof")}
         />
       )}
       {step === "proof" && (
         <ProofCaptureStep
+          photo={photo}
           spaceName={spaceName}
-          onBack={() => setStep("zones")}
+          onBack={() => setStep("arGuide")}
           onDone={() => setStep("complete")}
         />
       )}
@@ -6710,6 +6598,9 @@ export function RelightFlow({ spaceId, spaceName, spaceVivid, onClose, onComplet
         <RelightCompleteStep
           spaceName={spaceName}
           spaceVivid={spaceVivid}
+          zoneCount={Math.max(1, zoneList.length)}
+          itemCount={itemTotal}
+          minutes={chosen.minutes}
           onReturn={() => onComplete(spaceId)}
         />
       )}
