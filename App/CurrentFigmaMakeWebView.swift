@@ -5,6 +5,8 @@ import PhotosUI
 
 struct CurrentFigmaMakeWebView: UIViewRepresentable {
     @EnvironmentObject private var viewModel: AppViewModel
+    /// 网页完成首次加载后置 true，让外层隐藏启动占位、露出真实界面。
+    @Binding var isReady: Bool
 
     func makeCoordinator() -> Coordinator { Coordinator(viewModel: viewModel) }
 
@@ -16,7 +18,9 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
         webView.isOpaque = false
         webView.scrollView.contentInsetAdjustmentBehavior = .never
         webView.scrollView.bounces = false
+        webView.navigationDelegate = context.coordinator
         context.coordinator.webView = webView
+        context.coordinator.onReady = { isReady = true }
         loadBundle(in: webView)
         // 相机常驻待命：已授权就把画面层铺好并让相机跑起来（透明不可见），
         // 点拍摄按钮时只剩"显示"这一步，一帧内出画面，没有加载过程。
@@ -40,16 +44,21 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
     }
 
     @MainActor
-    final class Coordinator: NSObject, WKScriptMessageHandler, UIImagePickerControllerDelegate,
+    final class Coordinator: NSObject, WKScriptMessageHandler, WKNavigationDelegate, UIImagePickerControllerDelegate,
         UINavigationControllerDelegate, PHPickerViewControllerDelegate {
         weak var webView: WKWebView?
         var viewModel: AppViewModel
+        var onReady: (() -> Void)?
         private var pendingRequestID = ""
         private var capturePurpose = "scan"
         /// 拍完照后的识别任务链。快门不等识别，识别在后台串行跑完再通知网页。
         private var scanQueueTask: Task<Void, Never>?
 
         init(viewModel: AppViewModel) { self.viewModel = viewModel }
+
+        // MARK: WKNavigationDelegate —— 首次加载完成（或失败）都撤掉启动占位
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { onReady?() }
+        func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { onReady?() }
 
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
             guard let request = message.body as? [String: Any],
@@ -512,8 +521,9 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
 
     private func loadBundle(in webView: WKWebView) {
         guard let base = Bundle.main.url(forResource: "FigmaMakeLatestWeb", withExtension: nil),
-              let css = Self.bundleAsset("css"),
               let js = Self.bundleAsset("js") else { return }
+        // 新构建把样式直接注入进 js（产物里不再有独立 css 文件），所以 css 允许缺失。
+        let css = Self.bundleAsset("css") ?? ""
         // 设计稿画布是 390×844。直接让网页拉伸铺满会把布局拉变形（拍摄页取景区
         // 变高、dock 沉底），所以这里固定 root 为设计稿尺寸，再整体等比缩放到屏宽
         //（cover 模式，溢出的零点几 pt 裁掉），保证和 Figma 里的比例逐像素一致。
