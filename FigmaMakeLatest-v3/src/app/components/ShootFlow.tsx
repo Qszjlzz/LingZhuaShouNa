@@ -1350,19 +1350,11 @@ function CaptureStep({
     return false;
   };
 
+  // 真机取景/拍照由原生拍摄页承担：WebView 内部层会自己画背景，相机画面透不上来，
+  // 所以这里不再预热内联预览，快门直接打开原生拍摄页（有画面、有实时识别）。
   useEffect(() => {
-    let stopped = false;
-    (async () => {
-      const ok = await startPreview();
-      if (!stopped && !ok) setCamFailed(true);
-    })();
-    const sync = () => {
-      void nativeRequest("camera.preview.frame", rectOf()).catch(() => {});
-    };
-    window.addEventListener("resize", sync);
+    setLiveFeed(true);
     return () => {
-      stopped = true;
-      window.removeEventListener("resize", sync);
       void nativeRequest("camera.preview.stop", {}).catch(() => {});
     };
   }, []);
@@ -1389,7 +1381,8 @@ function CaptureStep({
     };
   }, [liveFeed]);
 
-  // 切到 AR 页签就起实时扫描；离开就停，避免后台一直跑模型。
+  // 切到 AR 页签就打开原生 AR 扫描页：原生页里自带实时识别标签，
+  // 识别到物品后点完成会带回一帧照片，回到拍照页签继续流程。
   useEffect(() => {
     if (mode !== "video") {
       void nativeRequest("ar.scan.stop", {}).catch(() => undefined);
@@ -1398,41 +1391,32 @@ function CaptureStep({
       return;
     }
     let alive = true;
-    let timer = 0;
-    (async () => {
+    void (async () => {
       try {
-        await nativeRequest("ar.scan.start", {});
+        const res = await nativeRequest<{ previews?: string[] }>("scan.open", { mode: "ar", single: false });
         if (!alive) return;
-        const poll = async () => {
-          try {
-            const res = await nativeRequest<{
-              items?: { name: string; color: string; hint?: { x: number; y: number } }[];
-              count?: number;
-            }>("ar.scan.poll", {});
-            if (!alive) return;
-            setArCount(res.count ?? 0);
-            setArTags(
-              (res.items ?? []).map((it, i) => ({
-                name: it.name,
-                color: it.color || "#FA883A",
-                // 模型没给位置时做一点错位，别让标签全叠在正中间。
-                x: it.hint?.x ?? 0.3 + (i % 3) * 0.2,
-                y: it.hint?.y ?? 0.3 + Math.floor(i / 3) * 0.16,
-              })),
-            );
-          } catch {
-            /* 轮询失败不打断画面 */
-          }
-        };
-        await poll();
-        timer = window.setInterval(poll, 400);
-      } catch (e) {
-        if (alive) setArError((e as Error).message);
+        const src = (res.previews ?? [])[0];
+        if (src) {
+          const newShot: CapturedAsset = {
+            id: `p${Date.now()}`,
+            kind: "photo",
+            src,
+            label: ANGLE_HINTS[shots.length] || `拍摄 ${shots.length + 1}`,
+          };
+          setShots((arr) => {
+            const next = [...arr, newShot];
+            setCurrentIdx(next.length - 1);
+            return next;
+          });
+          setFreshEntryId(newShot.id);
+        }
+        setMode("photo");
+      } catch {
+        /* 取消 AR：留在当前页签 */
       }
     })();
     return () => {
       alive = false;
-      if (timer) window.clearInterval(timer);
       void nativeRequest("ar.scan.stop", {}).catch(() => undefined);
     };
   }, [mode]);
@@ -1457,14 +1441,10 @@ function CaptureStep({
     setBusy(true);
     setError(null);
     try {
-      // 只在有实时画面时原地拍；没有画面就提示重试，绝不跳出去开系统相机。
-      if (!liveFeed) {
-        setError(camReason === "denied" ? "没有相机权限：去「设置 → 灵爪收纳」里打开相机" : "相机还没准备好，点一下画面里的重试");
-        void startPreview().then((ok) => setCamFailed(!ok));
-        return;
-      }
-      const shot = await nativeRequest<{ preview?: string }>("camera.capture", {});
-      const src = shot.preview;
+      // 取景与拍照都在原生拍摄页里完成（画面、快门、实时识别都是原生的），
+      // 拍完自动回到这一页并带回缩略图 —— WebView 里透不出相机画面，别再走内联取景。
+      const res = await nativeRequest<{ previews?: string[] }>("scan.open", { mode: "photo", single: true });
+      const src = (res.previews ?? [])[0];
       if (!src) {
         setError("没有拿到照片，光线亮一点再试一次");
         return;
@@ -4491,14 +4471,8 @@ function RewardStep({
   };
 
   useEffect(() => {
-    if (afterPhoto) return;
-    let stopped = false;
-    void (async () => { const ok = await startPreview(); if (!stopped && !ok) setCaptureError("相机还没准备好，点一下快门再试一次"); })();
-    const sync = () => { void nativeRequest("camera.preview.frame", rectOf()).catch(() => {}); };
-    window.addEventListener("resize", sync);
+    setLiveFeed(true);
     return () => {
-      stopped = true;
-      window.removeEventListener("resize", sync);
       void nativeRequest("camera.preview.stop", {}).catch(() => {});
     };
   }, [afterPhoto]);
@@ -4527,10 +4501,11 @@ function RewardStep({
     setBusy(true);
     setCaptureError(null);
     try {
-      if (!liveFeed) { await startPreview(); }
-      const shot = await nativeRequest<{ preview?: string }>("camera.capture", { purpose: "after" });
-      if (!shot.preview) { setCaptureError("没有拿到照片，光线亮一点再试一次"); return; }
-      setAfterPhoto(shot.preview);
+      // 和主拍摄页一致：走原生拍摄页，拍完回缩略图（整理后的照片不参与识别）。
+      const res = await nativeRequest<{ previews?: string[] }>("scan.open", { mode: "photo", single: true });
+      const src = (res.previews ?? [])[0];
+      if (!src) { setCaptureError("没有拿到照片，光线亮一点再试一次"); return; }
+      setAfterPhoto(src);
     } catch (error) {
       const message = (error as Error).message;
       if (message !== "已取消") setCaptureError(message);
