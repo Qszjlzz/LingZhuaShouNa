@@ -1,7 +1,18 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { ArrowLeft, Lock, Sparkles, Share2, X } from "lucide-react";
 import { COFFEE, ORANGE, LINEN, BLUE, WHITE, SOFT } from "./theme";
+import { nativeRequest, type NativeState } from "../nativeBridge";
+
+/* 原生 achievements 用的是 SF Symbol 名，这里换成 emoji */
+const EMOJI_BY_ICON: Record<string, string> = {
+  sparkles: "✨",
+  "camera.viewfinder": "📷",
+  timer: "⏱️",
+  tag: "🏷️",
+  "square.on.square": "🧩",
+  "photo.on.rectangle.angled": "🖼️",
+};
 
 type Badge = {
   id: string;
@@ -14,7 +25,7 @@ type Badge = {
   locked?: boolean;
 };
 
-const badges: Badge[] = [
+export const badges: Badge[] = [
   { id: "b1", name: "整洁小浣熊", emoji: "🦝", desc: "完成第一个整理分区", rarity: "common", earnedAt: "2026年4月12日" },
   { id: "b2", name: "闪亮魔法师", emoji: "✨", desc: "整理 5 个空间", rarity: "common", earnedAt: "4月18日" },
   { id: "b3", name: "整理冠军", emoji: "🏆", desc: "连续整理 10 天", rarity: "rare", earnedAt: "4月25日" },
@@ -36,17 +47,38 @@ const rarityColor: Record<Badge["rarity"], { bg: string; ring: string; label: st
   legendary: { bg: "#FFD58A", ring: "#FFB347", label: "传说" },
 };
 
-const filters = ["全部", "已解锁", "未解锁"] as const;
+const filters = ["已获得", "已锁定"] as const;
 
 export function BadgesScreen({ onBack }: { onBack: () => void }) {
-  const [filter, setFilter] = useState<(typeof filters)[number]>("All");
+  // null = 全部（设计稿默认视图：已获得和锁定混排）
+  const [filter, setFilter] = useState<(typeof filters)[number] | null>(null);
   const [active, setActive] = useState<Badge | null>(null);
+  // 原生里真正解锁过的成就，追加在设计稿 12 枚徽章之后
+  const [real, setReal] = useState<Badge[]>([]);
 
-  const earnedCount = badges.filter((b) => !b.locked).length;
+  useEffect(() => {
+    void nativeRequest<NativeState>("state.get")
+      .then((s) =>
+        setReal(
+          (s?.achievements ?? []).map((a, i) => ({
+            id: "real" + i,
+            name: a.title,
+            emoji: EMOJI_BY_ICON[a.iconName] ?? "🏅",
+            desc: a.subtitle,
+            rarity: "rare",
+            earnedAt: "刚刚",
+          })),
+        ),
+      )
+      .catch(() => setReal([]));
+  }, []);
 
-  const filtered = badges.filter((b) => {
-    if (filter === "Earned") return !b.locked;
-    if (filter === "Locked") return b.locked;
+  const all = [...badges, ...real];
+  const earnedCount = all.filter((b) => !b.locked).length;
+
+  const filtered = all.filter((b) => {
+    if (filter === "已获得") return !b.locked;
+    if (filter === "已锁定") return b.locked;
     return true;
   });
 
@@ -140,7 +172,7 @@ export function BadgesScreen({ onBack }: { onBack: () => void }) {
                 animate={{ scale: 1, opacity: 1 }}
                 style={{ color: WHITE, fontSize: 32, fontWeight: 600 }}
               >
-                {earnedCount} / {badges.length}
+                {earnedCount} / {all.length}
               </motion.p>
               <div
                 className="mt-1.5 h-1.5 w-full rounded-full overflow-hidden"
@@ -148,7 +180,7 @@ export function BadgesScreen({ onBack }: { onBack: () => void }) {
               >
                 <motion.div
                   initial={{ width: 0 }}
-                  animate={{ width: `${(earnedCount / badges.length) * 100}%` }}
+                  animate={{ width: `${(earnedCount / all.length) * 100}%` }}
                   transition={{ duration: 1.2, ease: "easeOut", delay: 0.2 }}
                   className="h-full rounded-full"
                   style={{
@@ -162,8 +194,8 @@ export function BadgesScreen({ onBack }: { onBack: () => void }) {
 
         {/* Filter pills */}
         <div className="px-6 mt-5 flex gap-2">
-          {filters.map((f) => {
-            const active = filter === f;
+            {filters.map((f) => {
+            const on = filter === f;
             return (
               <motion.button
                 key={f}
@@ -171,14 +203,14 @@ export function BadgesScreen({ onBack }: { onBack: () => void }) {
                 whileTap={{ scale: 0.94 }}
                 className="px-4 py-2"
                 style={{
-                  backgroundColor: active ? ORANGE : WHITE,
-                  color: active ? WHITE : COFFEE,
+                  backgroundColor: on ? ORANGE : WHITE,
+                  color: on ? WHITE : COFFEE,
                   borderRadius: 999,
                   fontSize: 12,
-                  fontWeight: active ? 600 : 500,
+                  fontWeight: on ? 600 : 500,
                 }}
                 animate={
-                  active
+                  on
                     ? { boxShadow: "0 6px 16px rgba(250,136,58,0.3)" }
                     : { boxShadow: "0 2px 8px rgba(123,92,72,0.04)" }
                 }
@@ -250,7 +282,7 @@ export function BadgesScreen({ onBack }: { onBack: () => void }) {
         {/* Rarity legend */}
         <div className="px-6 mt-7">
           <p style={{ color: COFFEE, fontSize: 13, fontWeight: 600, marginBottom: 10 }}>
-            Rarity
+            稀有度
           </p>
           <div className="flex flex-wrap gap-2">
             {Object.entries(rarityColor).map(([k, v]) => (
@@ -405,7 +437,7 @@ export function BadgesScreen({ onBack }: { onBack: () => void }) {
                   >
                     <Sparkles size={12} color={ORANGE} />
                     <span style={{ color: COFFEE, fontSize: 11 }}>
-                      Earned {active.earnedAt}
+                      {active.earnedAt}获得
                     </span>
                   </div>
                 )}

@@ -1,20 +1,13 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ChevronRight, Settings, Calendar, Users, Bookmark, HelpCircle, LogOut } from "lucide-react";
 import { Raccoon } from "./Raccoon";
 import { COFFEE, ORANGE, LINEN, WHITE, BLUE, SOFT } from "./theme";
 import { MyPlansScreen } from "./MyPlansScreen";
 import { SavedPostsScreen } from "./SavedPostsScreen";
 import { FriendsScreen } from "./FriendsScreen";
-import { BadgesScreen } from "./BadgesScreen";
+import { BadgesScreen, badges as allBadges } from "./BadgesScreen";
 import { AISettingsScreen } from "./AISettingsScreen";
-
-const stats = [
-  { label: "已追踪物品", value: "248" },
-  { label: "已整理空间", value: "12" },
-  { label: "已获得徽章", value: "7" },
-];
-
-const badges = ["🦝", "✨", "🏆", "🌿", "📦", "🎯", "💎"];
+import { nativeRequest, type NativeState } from "../nativeBridge";
 
 export function MineScreen() {
   const [openPlans, setOpenPlans] = useState(false);
@@ -22,12 +15,38 @@ export function MineScreen() {
   const [openFriends, setOpenFriends] = useState(false);
   const [openBadges, setOpenBadges] = useState(false);
   const [openSettings, setOpenSettings] = useState(false);
+  // 原生真数据；拿不到时用设计稿里的示例数字兜底
+  const [real, setReal] = useState<{ items: number; spaces: number; badges: number } | null>(null);
+
+  useEffect(() => {
+    void nativeRequest<NativeState>("state.get")
+      .then((s) =>
+        setReal({
+          items: s?.scannedItems?.length ?? 0,
+          spaces: s?.spaces?.length ?? 0,
+          badges: (s?.achievements?.length ?? 0) + allBadges.filter((b) => !b.locked).length,
+        }),
+      )
+      .catch(() => setReal(null));
+  }, []);
 
   if (openPlans) return <MyPlansScreen onBack={() => setOpenPlans(false)} />;
   if (openSaved) return <SavedPostsScreen onBack={() => setOpenSaved(false)} />;
   if (openFriends) return <FriendsScreen onBack={() => setOpenFriends(false)} />;
   if (openBadges) return <BadgesScreen onBack={() => setOpenBadges(false)} />;
   if (openSettings) return <AISettingsScreen onBack={() => setOpenSettings(false)} />;
+
+  const stats = [
+    { label: "已追踪物品", value: String(real?.items ?? 248) },
+    { label: "已整理空间", value: String(real?.spaces ?? 12) },
+    { label: "已获得徽章", value: String(real?.badges ?? 7) },
+  ];
+
+  // 徽章行用徽章页同一批数据（真实成就在前，后面接设计稿示例徽章）
+  const badges = allBadges
+    .filter((b) => !b.locked)
+    .slice(0, 7)
+    .map((b) => b.emoji);
 
   const menu: { icon: any; label: string; sub: string; onClick?: () => void }[] = [
     { icon: Calendar, label: "我的方案", sub: "3个进行中", onClick: () => setOpenPlans(true) },

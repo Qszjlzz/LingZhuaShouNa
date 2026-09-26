@@ -294,8 +294,25 @@ function PostCard({
       }}
     >
       <button onClick={onOpen} className="w-full text-left block">
-        <div style={{ height: post.h }} className="w-full overflow-hidden">
+        <div style={{ height: post.h }} className="w-full overflow-hidden relative">
           <ImageWithFallback src={post.img} alt={post.title} className="h-full w-full object-cover" />
+          {post.tags[0] && (
+            <span
+              className="absolute"
+              style={{
+                left: 10,
+                top: 10,
+                backgroundColor: ORANGE,
+                color: WHITE,
+                borderRadius: 999,
+                padding: "3px 9px",
+                fontSize: 10,
+                fontWeight: 600,
+              }}
+            >
+              {post.tags[0]}
+            </span>
+          )}
         </div>
         <div className="p-3">
           <p style={{ color: COFFEE, fontSize: 12, fontWeight: 500, lineHeight: 1.35 }}>
