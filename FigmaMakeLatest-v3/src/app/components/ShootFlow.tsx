@@ -22,6 +22,7 @@ import {
   Move3d,
   CheckCircle2,
   SkipForward,
+  ArrowRight,
   GitCompare,
   ChevronUp,
   Vibrate,
@@ -4930,7 +4931,12 @@ function buildFlowZones(items: NativeItem[], zoneCount = 1): FlowZone[] {
   }
   // 一样都没认出来时按张数给默认区域，页面不至于空着。
   if (groups.size === 0) {
-    return SELECTABLE_ZONES.slice(0, n).map((z) => ({ ...z, names: [], home: "固定收纳位" }));
+    return SELECTABLE_ZONES.slice(0, n).map((z, i) => ({
+      ...z,
+      ...ZONE_LAYOUT[n][i],
+      names: [],
+      home: "固定收纳位",
+    }));
   }
 
   let entries = [...groups.entries()].sort((a, b) => b[1].length - a[1].length);
@@ -4945,7 +4951,7 @@ function buildFlowZones(items: NativeItem[], zoneCount = 1): FlowZone[] {
     n: i + 1,
     label: n === 1 ? "收纳区域" : `${cat}区`,
     color: ZONE_PALETTE[i % ZONE_PALETTE.length],
-    ...ZONE_LAYOUT[i % ZONE_LAYOUT.length],
+    ...ZONE_LAYOUT[entries.length][i],
     items: names.length,
     mins: Math.max(2, Math.round(names.length * 1.5)),
     names,
@@ -4992,120 +4998,116 @@ function ZoneSelectStep({
 
   return (
     <div className="h-full w-full flex flex-col" style={{ backgroundColor: LINEN }}>
-      <div className="px-5 pt-14 pb-2 flex items-center justify-between">
+      {/* 顶部：返回 + 居中标题 */}
+      <div className="px-5 pt-14 pb-1 flex items-center">
         <button
           onClick={onBack}
-          className="h-10 w-10 rounded-full flex items-center justify-center"
+          className="h-10 w-10 rounded-full flex items-center justify-center flex-shrink-0"
           style={{ backgroundColor: WHITE }}
         >
           <ArrowLeft size={18} color={COFFEE} />
         </button>
-        <div className="text-center">
-          <p style={{ color: COFFEE, fontSize: 15, fontWeight: 600 }}>选择区域</p>
-          <p style={{ color: COFFEE, opacity: 0.55, fontSize: 11 }}>可多选</p>
+        <div className="flex-1 text-center" style={{ marginRight: 40 }}>
+          <p style={{ color: COFFEE, fontSize: 15, fontWeight: 700 }}>选择整理分区</p>
+          <p style={{ color: COFFEE, opacity: 0.5, fontSize: 10.5, marginTop: 1 }}>支持多选</p>
         </div>
-        <div className="w-10" />
       </div>
 
-      {/* Photo with zone overlays */}
-      <div className="mx-5 mt-3 relative overflow-hidden" style={{ borderRadius: 22, aspectRatio: "3/4" }}>
+      {/* 检测区：规整选框（选中橙 / 未选蓝灰），徽章+勾点 */}
+      <p className="px-5 mt-4 mb-2" style={{ color: COFFEE, fontSize: 12.5, fontWeight: 700 }}>检测区</p>
+      <div className="mx-5 relative overflow-hidden" style={{ borderRadius: 18, aspectRatio: "4/3" }}>
         <ImageWithFallback src={photo || ROOM_IMG} alt="空间场景" className="h-full w-full object-cover" />
-        <div className="absolute inset-0" style={{ backgroundColor: "rgba(26,20,17,0.28)" }} />
-
+        <div className="absolute inset-0" style={{ backgroundColor: "rgba(26,20,17,0.18)" }} />
         {zones.map((z) => {
           const isSel = selected.includes(z.n);
+          const c = isSel ? ORANGE : "#9db8d4";
           return (
             <button
               key={z.n}
               onClick={() => toggle(z.n)}
-              className="absolute flex items-start justify-between p-2"
+              className="absolute"
               style={{
                 left: z.left,
                 top: z.top,
                 width: z.w,
                 height: z.h,
-                border: `2px solid ${z.color}`,
-                backgroundColor: isSel ? `${z.color}55` : `${z.color}1f`,
-                borderRadius: 14,
-                boxShadow: isSel ? `0 0 0 4px ${z.color}33, 0 0 24px ${z.color}55` : "none",
+                border: `2px solid ${c}`,
+                backgroundColor: isSel ? "rgba(250,136,58,0.16)" : "rgba(255,255,255,0.12)",
+                borderRadius: 16,
                 transition: "all 0.18s",
               }}
             >
-              <div
-                className="h-7 w-7 rounded-full flex items-center justify-center"
+              <span
+                className="absolute flex items-center justify-center"
                 style={{
-                  backgroundColor: z.color,
+                  top: -12,
+                  left: -8,
+                  width: 25,
+                  height: 25,
+                  borderRadius: 999,
+                  backgroundColor: c,
                   color: WHITE,
-                  fontSize: 12,
-                  fontWeight: 700,
-                  boxShadow: "0 3px 10px rgba(0,0,0,0.25)",
+                  fontSize: 11.5,
+                  fontWeight: 800,
+                  boxShadow: "0 3px 8px rgba(0,0,0,0.28)",
                 }}
               >
                 {z.n}
-              </div>
-              <div
-                className="h-6 w-6 rounded-full flex items-center justify-center"
-                style={{
-                  backgroundColor: isSel ? z.color : "rgba(255,255,255,0.92)",
-                  border: isSel ? "none" : `2px solid ${WHITE}`,
-                }}
+              </span>
+              <span
+                className="absolute flex items-center justify-center"
+                style={{ top: 8, right: 8, width: 20, height: 20, borderRadius: 999, backgroundColor: WHITE }}
               >
-                {isSel && <Check size={13} color={WHITE} strokeWidth={3} />}
-              </div>
+                {isSel && <Check size={12} color={ORANGE} strokeWidth={3.5} />}
+              </span>
             </button>
           );
         })}
       </div>
 
-      {/* Zone summary list */}
-      <div className="px-5 mt-4 space-y-2">
+      {/* 区域列表卡 */}
+      <div className="px-5 mt-5 space-y-2.5">
         {zones.map((z) => {
           const isSel = selected.includes(z.n);
+          const c = isSel ? ORANGE : "#9db8d4";
           return (
             <button
               key={z.n}
               onClick={() => toggle(z.n)}
-              className="w-full flex items-center gap-3 px-3 py-2.5"
+              className="w-full flex items-center gap-3 px-4 py-3.5"
               style={{
-                backgroundColor: WHITE,
-                borderRadius: 14,
-                border: isSel ? `1.5px solid ${z.color}` : `1.5px solid transparent`,
-                opacity: isSel ? 1 : 0.6,
+                backgroundColor: isSel ? WHITE : "#F1ECE3",
+                borderRadius: 16,
+                boxShadow: isSel ? "0 4px 14px rgba(123,92,72,0.10)" : "none",
+                transition: "all 0.18s",
               }}
             >
-              <div
-                className="h-7 w-7 rounded-full flex items-center justify-center"
-                style={{ backgroundColor: z.color, color: WHITE, fontSize: 12, fontWeight: 600 }}
+              <span
+                className="h-7 w-7 rounded-full flex items-center justify-center flex-shrink-0"
+                style={{ backgroundColor: c, color: WHITE, fontSize: 12, fontWeight: 700 }}
               >
                 {z.n}
-              </div>
-              <span style={{ color: COFFEE, fontSize: 12, fontWeight: 600, flex: 1, textAlign: "left" }}>
+              </span>
+              <span style={{ color: COFFEE, fontSize: 13, fontWeight: 700, flex: 1, textAlign: "left", opacity: isSel ? 1 : 0.55 }}>
                 {z.label}
               </span>
-              <span style={{ color: COFFEE, opacity: 0.55, fontSize: 11 }}>
-                {z.items} 件 · {z.mins} 分钟
+              <span style={{ color: COFFEE, opacity: 0.45, fontSize: 11, whiteSpace: "nowrap" }}>
+                {z.items} items · {z.mins}m
               </span>
-              <div
-                className="h-5 w-5 rounded-full flex items-center justify-center"
-                style={{ backgroundColor: isSel ? z.color : LINEN }}
-              >
-                {isSel && <Check size={11} color={WHITE} strokeWidth={3} />}
-              </div>
+              <span className="rounded-full flex-shrink-0" style={{ width: 16, height: 16, backgroundColor: c }} />
             </button>
           );
         })}
       </div>
 
-      {/* Bottom action bar */}
+      {/* 底部操作条：全选 / 清除 / 开始 */}
       <div
-        className="mt-auto px-5 pt-3 pb-6"
+        className="mt-auto px-5 pt-2.5 pb-7"
         style={{ backgroundColor: WHITE, borderTop: `1px solid ${SOFT}` }}
       >
-        {selected.length > 0 && (
-          <p style={{ color: COFFEE, opacity: 0.65, fontSize: 11, marginBottom: 8, textAlign: "center" }}>
-            已选 {selected.length} 个区域 · {totalItems} 件 · 约 {totalMins} 分钟
-          </p>
-        )}
+        <p style={{ color: COFFEE, opacity: 0.55, fontSize: 10.5, margin: "4px 0 9px", textAlign: "center" }}>
+          {selected.length} 个区域 · 约 {totalMins} 分钟
+        </p>
         <div className="flex gap-2">
           <button
             onClick={selectAll}
@@ -5133,23 +5135,22 @@ function ZoneSelectStep({
               fontWeight: 600,
             }}
           >
-            清空
+            清除
           </button>
           <button
             onClick={() => onNext(zones.filter((z) => selected.includes(z.n)))}
             disabled={selected.length === 0}
             className="flex-[1.4] py-3"
             style={{
-              backgroundColor: selected.length > 0 ? ORANGE : SOFT,
+              backgroundColor: selected.length > 0 ? ORANGE : "#EADFCE",
               color: WHITE,
               borderRadius: 999,
               fontSize: 13,
-              fontWeight: 600,
+              fontWeight: 700,
               boxShadow: selected.length > 0 ? "0 6px 18px rgba(250,136,58,0.32)" : "none",
-              opacity: selected.length > 0 ? 1 : 0.6,
             }}
           >
-            确定 →
+            开始 →
           </button>
         </div>
       </div>
@@ -5463,10 +5464,12 @@ const AR_ZONE_TASKS: { zone: number; label: string; color: string; tasks: SubTas
 /** 每个区域的物品按数量均分成 2~3 组，橙框和蓝色格子都用这一份分组。 */
 const GROUP_LABELS = ["大件物品", "小件物品", "零碎小物"];
 const GROUP_BOXES = [
-  { left: "10%", top: "32%", w: "30%", h: "24%" },
-  { left: "46%", top: "16%", w: "34%", h: "30%" },
-  { left: "50%", top: "50%", w: "36%", h: "24%" },
+  { left: "5%", top: "20%", w: "27%", h: "36%" },
+  { left: "36.5%", top: "20%", w: "27%", h: "36%" },
+  { left: "68%", top: "20%", w: "27%", h: "36%" },
 ];
+const GROUP_LETTERS = ["A", "B", "C"];
+const ZONE_CN = ["一", "二", "三"];
 const PREP_TOOLS = [
   { icon: Trash2, text: "清空" },
   { icon: SprayCan, text: "擦拭" },
@@ -5497,7 +5500,7 @@ function ARGuideStep({
   onComplete: () => void;
 }) {
   const [zoneIdx, setZoneIdx] = useState(0);
-  const [phase, setPhase] = useState<"prepare" | "group" | "place">("prepare");
+  const [stepIdx, setStepIdx] = useState(0); // 0=清理 1=分类 2..=逐组收纳
   const [flow, setFlow] = useState<"guide" | "celebrate" | "checklist">("guide");
   const [checkIdx, setCheckIdx] = useState(0);
   const totalZones = Math.max(1, zones.length);
@@ -5508,39 +5511,39 @@ function ARGuideStep({
   };
   const groups = groupZoneItems(zone.names);
   const zoneTasks = buildZoneTasks(zones);
+  const totalSteps = 2 + groups.length;
+  const isPrepare = stepIdx === 0;
+  const isGroup = stepIdx === 1;
+  const placeIdx = Math.min(Math.max(stepIdx - 2, 0), Math.max(groups.length - 1, 0));
+  const placing = groups[placeIdx] ?? { label: "物品", items: [] as string[] };
 
-  const phaseOrder: ("prepare" | "group" | "place")[] = ["prepare", "group", "place"];
-  const phaseIdx = phaseOrder.indexOf(phase);
-  const phaseMeta = {
-    prepare: {
-      title: "准备工作",
-      desc: `先把${zone.label}里的东西全部清出来，擦干净台面，再开始分类。`,
-      btn: "开始整理",
-    },
-    group: {
-      title: "物品分区",
-      desc: "照着画面上的橙框，把清出来的东西按大小分成几组，先别急着放回去。",
-      btn: "开始收纳",
-    },
-    place: {
-      title: "收纳工具分区",
-      desc: "拿一个收纳盒，照下面的格子把每组放进去，之后找东西一眼就有。",
-      btn: "按参考分区放置",
-    },
-  }[phase];
+  const stepMeta = isPrepare
+    ? {
+        title: `清理${zone.label}`,
+        desc: "先把台面上的东西全部清出来：拆掉的包装、用过的纸巾、空瓶罐都清走，再把台面擦干净。",
+        btn: "下一步",
+      }
+    : isGroup
+    ? {
+        title: "物品分类",
+        desc: "照画面上的橙色分区，把清出来的东西按组暂时归堆，先别急着放回收纳盒。",
+        btn: "下一步",
+      }
+    : {
+        title: `整理${placing.label}`,
+        desc: `把${placing.items.slice(0, 3).join("、")}${placing.items.length > 3 ? "等" : ""}共 ${placing.items.length} 件，对照蓝色格子依次放进收纳盒，固定位置摆放。`,
+        btn: stepIdx + 1 >= totalSteps ? "完成收纳" : "下一步",
+      };
 
-  const advancePhase = () => {
-    if (phase === "prepare") setPhase("group");
-    else if (phase === "group") setPhase("place");
-    else {
-      setFlow("celebrate");
-    }
+  const advanceStep = () => {
+    if (stepIdx + 1 < totalSteps) setStepIdx(stepIdx + 1);
+    else setFlow("celebrate");
   };
 
   const advanceZone = () => {
     if (zoneIdx + 1 < totalZones) {
       setZoneIdx((i) => i + 1);
-      setPhase("prepare");
+      setStepIdx(0);
       setFlow("guide");
     } else {
       setFlow("guide");
@@ -5555,206 +5558,242 @@ function ARGuideStep({
         <ImageWithFallback src={photo || ROOM_IMG} alt="实时画面" className="h-full w-full object-cover" />
         <div
           className="absolute inset-0 pointer-events-none"
-          style={{
-            background: "linear-gradient(180deg, rgba(0,0,0,0.28) 0%, rgba(0,0,0,0) 32%)",
-          }}
+          style={{ background: "linear-gradient(180deg, rgba(0,0,0,0.30) 0%, rgba(0,0,0,0) 34%)" }}
         />
 
-        {/* 物品分区幕：照片上叠橙色标注框 */}
-        {phase === "group" && groups.map((g, i) => {
-          const box = GROUP_BOXES[i % GROUP_BOXES.length];
+        {/* 物品分类步：照片上叠橙色分区卡（A/B/C 徽章 + 底部标签） */}
+        {isGroup && groups.map((g, i) => {
+          const box = groups.length === 1
+            ? { left: "28%", top: "22%", w: "44%", h: "36%" }
+            : groups.length === 2
+            ? [{ left: "8%", top: "22%", w: "38%", h: "36%" }, { left: "54%", top: "22%", w: "38%", h: "36%" }][i]
+            : GROUP_BOXES[i];
           return (
             <div
               key={g.label}
               className="absolute"
               style={{
-                left: box.left,
-                top: box.top,
-                width: box.w,
-                height: box.h,
+                left: box.left, top: box.top, width: box.w, height: box.h,
                 border: `2px solid ${ORANGE}`,
-                backgroundColor: "rgba(250,136,58,0.20)",
-                borderRadius: 12,
+                backgroundColor: "rgba(250,136,58,0.22)",
+                borderRadius: 14,
               }}
             >
               <span
-                className="absolute"
+                className="absolute flex items-center justify-center"
                 style={{
-                  top: -12,
-                  left: 10,
-                  backgroundColor: WHITE,
-                  color: COFFEE,
-                  fontSize: 10,
-                  fontWeight: 700,
-                  borderRadius: 999,
-                  padding: "2px 9px",
-                  boxShadow: "0 2px 6px rgba(0,0,0,0.18)",
-                  whiteSpace: "nowrap",
+                  top: -13, left: -8, width: 26, height: 26, borderRadius: 999,
+                  backgroundColor: ORANGE, color: WHITE, fontSize: 11, fontWeight: 800,
+                  boxShadow: "0 3px 8px rgba(0,0,0,0.25)",
                 }}
               >
-                {g.label} · {g.items.length} 件
+                {GROUP_LETTERS[i]}
+              </span>
+              <span
+                className="absolute"
+                style={{
+                  bottom: 8, left: "50%", transform: "translateX(-50%)",
+                  backgroundColor: ORANGE, color: WHITE, fontSize: 10, fontWeight: 700,
+                  borderRadius: 999, padding: "3px 10px", whiteSpace: "nowrap",
+                }}
+              >
+                {g.label}
               </span>
             </div>
           );
         })}
 
-        {/* 顶部：返回 + 区域/阶段两个胶囊 */}
-        <div className="absolute top-0 left-0 right-0 px-5 pt-14 flex items-center gap-2">
+        {/* 逐组收纳步：照片上叠淡蓝"放这里"示意框 */}
+        {!isPrepare && !isGroup && (
+          <div
+            className="absolute"
+            style={{
+              left: "16%", top: "24%", width: "68%", height: "42%",
+              border: "2px solid rgba(160,200,230,0.95)",
+              backgroundColor: "rgba(180,199,220,0.20)",
+              borderRadius: 18,
+            }}
+          >
+            <span
+              className="absolute flex items-center justify-center"
+              style={{
+                top: "50%", left: "50%", transform: "translate(-50%,-50%)",
+                width: 34, height: 34, borderRadius: 999,
+                backgroundColor: "#8fbcd9", color: WHITE, fontSize: 13, fontWeight: 800,
+                boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+              }}
+            >
+              {placeIdx + 1}
+            </span>
+          </div>
+        )}
+
+        {/* 顶部：返回 + 区域切换胶囊 */}
+        <div className="absolute top-0 left-0 right-0 px-5 pt-14 flex items-center">
           <button
             onClick={onBack}
             className="h-9 w-9 rounded-full flex items-center justify-center flex-shrink-0"
             style={{ backgroundColor: "rgba(255,255,255,0.92)", boxShadow: "0 2px 8px rgba(0,0,0,0.12)" }}
           >
-            <X size={16} color={COFFEE} />
+            <ArrowLeft size={16} color={COFFEE} />
           </button>
-          <span
-            className="px-3 py-1.5"
-            style={{
-              backgroundColor: "rgba(255,255,255,0.92)",
-              borderRadius: 999,
-              fontSize: 10.5,
-              fontWeight: 700,
-              color: COFFEE,
-              whiteSpace: "nowrap",
-            }}
-          >
-            收纳区域 {zone.n}/{totalZones}
-          </span>
-          <span
-            className="px-3 py-1.5"
-            style={{
-              backgroundColor: "rgba(255,255,255,0.92)",
-              borderRadius: 999,
-              fontSize: 10.5,
-              fontWeight: 700,
-              color: COFFEE,
-              whiteSpace: "nowrap",
-            }}
-          >
-            {phaseMeta.title}
-          </span>
+          <div className="flex-1 flex items-center justify-center gap-1.5" style={{ marginRight: 36 }}>
+            {zones.map((z, i) => (
+              <span
+                key={z.n}
+                className="px-3.5 py-1.5"
+                style={{
+                  backgroundColor: i === zoneIdx ? WHITE : "rgba(255,255,255,0.38)",
+                  borderRadius: 999,
+                  fontSize: 10.5,
+                  fontWeight: 700,
+                  color: COFFEE,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                区域{ZONE_CN[i] ?? z.n}
+              </span>
+            ))}
+          </div>
         </div>
       </div>
 
-      {/* 底部白色引导卡：三幕共用，按阶段换内容 */}
+      {/* 底部白色引导卡：随步骤换标题/说明/示意图 */}
       <div
         className="flex flex-col"
         style={{
           backgroundColor: WHITE,
           borderRadius: "26px 26px 0 0",
           marginTop: -18,
-          padding: "18px 22px 24px",
+          padding: "8px 22px 22px",
           boxShadow: "0 -8px 30px rgba(0,0,0,0.2)",
         }}
       >
-        <p style={{ color: COFFEE, opacity: 0.45, fontSize: 10.5, fontWeight: 600, letterSpacing: "0.04em" }}>
-          收纳引导
+        <div className="flex justify-center" style={{ marginBottom: 4 }}>
+          <ChevronUp size={15} color="rgba(123,92,72,0.35)" />
+        </div>
+
+        {/* 步骤行：区域名 · Step N/M + 连续进度条 */}
+        <div className="flex items-center gap-2.5">
+          <p style={{ color: ORANGE, fontSize: 10.5, fontWeight: 700, whiteSpace: "nowrap" }}>
+            {zone.label} · Step {stepIdx + 1}/{totalSteps}
+          </p>
+          <div style={{ flex: 1, height: 4, borderRadius: 999, backgroundColor: SOFT, overflow: "hidden" }}>
+            <div
+              style={{
+                width: `${((stepIdx + 1) / totalSteps) * 100}%`,
+                height: "100%",
+                backgroundColor: ORANGE,
+                borderRadius: 999,
+                transition: "width 0.25s",
+              }}
+            />
+          </div>
+        </div>
+
+        <p style={{ color: COFFEE, fontSize: 17, fontWeight: 700, lineHeight: 1.4, marginTop: 8 }}>
+          {stepMeta.title}
         </p>
-        <p style={{ color: COFFEE, fontSize: 17, fontWeight: 700, lineHeight: 1.4, marginTop: 2 }}>
-          {phaseMeta.title}
-        </p>
-        <p style={{ color: COFFEE, opacity: 0.6, fontSize: 12, lineHeight: 1.6, marginTop: 5 }}>
-          {phaseMeta.desc}
+        <p style={{ color: COFFEE, opacity: 0.62, fontSize: 12, lineHeight: 1.6, marginTop: 4 }}>
+          {stepMeta.desc}
         </p>
 
-        {/* 准备工作：工具图标行 */}
-        {phase === "prepare" && (
-          <div className="flex items-center justify-between mt-4 mb-1">
-            {PREP_TOOLS.map((t) => (
-              <div key={t.text} className="flex flex-col items-center gap-1.5" style={{ width: 58 }}>
-                <div
-                  className="h-10 w-10 rounded-full flex items-center justify-center"
-                  style={{ backgroundColor: LINEN }}
-                >
-                  <t.icon size={16} color={COFFEE} />
-                </div>
-                <span style={{ color: COFFEE, opacity: 0.55, fontSize: 10 }}>{t.text}</span>
-              </div>
-            ))}
+        {/* 清理步：清出去 → 示意 */}
+        {isPrepare && (
+          <div className="flex items-center mt-4 mb-1 px-1">
+            <div className="h-16 w-20 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: LINEN }}>
+              <Trash2 size={26} color={COFFEE} />
+            </div>
+            <ArrowRight size={22} color={ORANGE} strokeWidth={2.5} style={{ margin: "0 10px" }} />
+            <div
+              className="h-16 flex-1 rounded-xl flex items-center justify-center gap-3.5"
+              style={{ border: "1.5px dashed rgba(250,136,58,0.65)", backgroundColor: "#FFF7EF" }}
+            >
+              <Box size={16} color={ORANGE} />
+              <Paperclip size={15} color={ORANGE} />
+              <ImageIcon size={15} color={ORANGE} />
+            </div>
           </div>
         )}
 
-        {/* 物品分区：橙色分组小卡 */}
-        {phase === "group" && (
+        {/* 分类步：橙色分区示意卡 */}
+        {isGroup && (
           <div className="flex gap-2 mt-3.5 mb-1">
             {groups.map((g) => (
               <div
                 key={g.label}
-                className="flex-1 px-2 py-3 flex flex-col items-center gap-1"
-                style={{
-                  backgroundColor: `${ORANGE}1a`,
-                  border: `1px solid ${ORANGE}55`,
-                  borderRadius: 12,
-                }}
+                className="flex-1 px-2 py-3 flex flex-col items-center gap-1.5"
+                style={{ backgroundColor: ORANGE, borderRadius: 12 }}
               >
-                <Box size={15} color={ORANGE} />
-                <span style={{ color: COFFEE, fontSize: 10.5, fontWeight: 700 }}>{g.label}</span>
-                <span style={{ color: COFFEE, opacity: 0.55, fontSize: 9.5 }}>{g.items.length} 件</span>
+                <span style={{ color: WHITE, fontSize: 10.5, fontWeight: 800 }}>{g.label}</span>
+                <div
+                  className="w-full py-2 flex items-center justify-center gap-1.5"
+                  style={{ border: "1.5px dashed rgba(255,255,255,0.85)", borderRadius: 9 }}
+                >
+                  <Box size={13} color={WHITE} />
+                  <span style={{ color: WHITE, opacity: 0.92, fontSize: 9.5 }}>{g.items.length} 件</span>
+                </div>
               </div>
             ))}
           </div>
         )}
 
-        {/* 收纳工具分区：蓝色格子示意（3 组竖条、2 组横条） */}
-        {phase === "place" && (
-          <div
-            className="mt-3.5 mb-1"
+        {/* 收纳步：蓝色格子示意，当前组高亮 */}
+        {!isPrepare && !isGroup && (
+          <>
+            <div className="mt-3.5" style={{ height: 116, display: "flex", gap: 8 }}>
+              {groups.map((g, i) => {
+                const active = i === placeIdx;
+                return (
+                  <div
+                    key={g.label}
+                    className="flex-1 flex flex-col items-center justify-center gap-1 px-1"
+                    style={{
+                      backgroundColor: active ? "#b7d7ee" : "#e9f2fa",
+                      border: active ? "1.5px solid #7fb3d8" : "1.5px dashed #bcd4e8",
+                      borderRadius: 12,
+                    }}
+                  >
+                    <span style={{ color: "#33586e", fontSize: 10.5, fontWeight: 800, textAlign: "center" }}>
+                      {g.label}
+                    </span>
+                    <span style={{ color: "#33586e", opacity: 0.65, fontSize: 9 }}>
+                      {g.items.length} 件
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+            <p style={{ color: COFFEE, fontSize: 11.5, fontWeight: 700, textAlign: "center", marginTop: 10 }}>
+              按参考依次放置整齐
+            </p>
+          </>
+        )}
+
+        {/* 底部按钮：跳过 + 绿色主按钮 */}
+        <div className="flex gap-2 mt-4">
+          <button
+            onClick={advanceStep}
+            className="px-5 py-3.5 flex items-center justify-center active:scale-[0.98] transition-transform"
+            style={{ backgroundColor: LINEN, color: COFFEE, borderRadius: 999, fontSize: 12, fontWeight: 700 }}
+          >
+            <SkipForward size={13} style={{ marginRight: 5 }} /> 跳过
+          </button>
+          <button
+            onClick={advanceStep}
+            className="flex-1 py-3.5 flex items-center justify-center gap-1.5 active:scale-[0.98] transition-transform"
             style={{
-              height: 128,
-              display: "flex",
-              gap: 8,
-              flexDirection: groups.length === 3 ? "row" : "column",
+              backgroundColor: "#5fb37e",
+              color: WHITE,
+              borderRadius: 999,
+              fontSize: 13.5,
+              fontWeight: 700,
+              boxShadow: "0 6px 16px rgba(95,179,126,0.35)",
             }}
           >
-            {groups.map((g) => (
-              <div
-                key={g.label}
-                className="flex-1 flex flex-col items-center justify-center gap-0.5"
-                style={{
-                  backgroundColor: "#d9eaf7",
-                  border: "1.5px solid #8fbcd9",
-                  borderRadius: 12,
-                }}
-              >
-                <span style={{ color: "#33586e", fontSize: 11, fontWeight: 700 }}>{g.label}</span>
-                <span style={{ color: "#33586e", opacity: 0.6, fontSize: 9.5 }}>
-                  {g.items.length} 件 · 固定位置
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* 三幕进度条 */}
-        <div className="flex gap-1.5 mt-3.5 mb-4">
-          {phaseOrder.map((p, i) => (
-            <span
-              key={p}
-              style={{
-                flex: 1,
-                height: 4,
-                borderRadius: 999,
-                backgroundColor:
-                  i < phaseIdx ? "#5fb37e" : i === phaseIdx ? ORANGE : SOFT,
-              }}
-            />
-          ))}
+            <CheckCircle2 size={15} /> {stepMeta.btn}
+          </button>
         </div>
-
-        <button
-          onClick={advancePhase}
-          className="w-full py-3.5 flex items-center justify-center gap-1.5 active:scale-[0.98] transition-transform"
-          style={{
-            backgroundColor: "#5fb37e",
-            color: WHITE,
-            borderRadius: 999,
-            fontSize: 13.5,
-            fontWeight: 700,
-            boxShadow: "0 6px 16px rgba(95,179,126,0.35)",
-          }}
-        >
-          <CheckCircle2 size={15} /> {phaseMeta.btn} <ChevronRight size={15} />
-        </button>
       </div>
 
       {/* 区域完成：全屏庆祝页 */}
@@ -5783,7 +5822,7 @@ function ARGuideStep({
               style={{ backgroundColor: WHITE, borderRadius: 18, boxShadow: "0 10px 30px rgba(0,0,0,0.28)" }}
             >
               <div className="flex-1">
-                <p style={{ color: COFFEE, fontSize: 12.5, fontWeight: 700 }}>三步都完成啦</p>
+                <p style={{ color: COFFEE, fontSize: 12.5, fontWeight: 700 }}>{totalSteps} 步都完成啦</p>
                 <p style={{ color: COFFEE, opacity: 0.55, fontSize: 10.5, marginTop: 1 }}>
                   看一下这个区域的整理清单
                 </p>
