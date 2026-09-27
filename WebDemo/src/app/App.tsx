@@ -1,0 +1,97 @@
+import { useEffect, useState } from "react";
+import { SpatialScreen } from "./components/SpatialScreen";
+import { ClassificationScreen } from "./components/ClassificationScreen";
+import { CommunityScreen } from "./components/CommunityScreen";
+import { MineScreen } from "./components/MineScreen";
+import { ShootFlow, RelightFlow } from "./components/ShootFlow";
+import { BottomNav, type Tab } from "./components/BottomNav";
+import { getNativeState, nativeRequest, type NativeState } from "./nativeBridge";
+
+export default function App() {
+  const [tab, setTab] = useState<Tab>("spatial");
+  const [shooting, setShooting] = useState(false);
+  const [scanDone, setScanDone] = useState(false);
+  const [relightSpace, setRelightSpace] = useState<{ id: string; name: string; vivid: string } | null>(null);
+  const [relitSpaceId, setRelitSpaceId] = useState<string | null>(null);
+  const [nativeState, setNativeState] = useState<NativeState | null>(null);
+  const refresh = () => getNativeState().then(setNativeState).catch(() => undefined);
+
+  // 相机在 App 前台期间一直跑着（画面层已铺好、只是透明不可见），
+  // 这里只剩"把画面显示出来"一步，不等硬件、不建图层 —— 点下去就是相机。
+  const openShoot = () => {
+    void nativeRequest("camera.preview.show", {}).catch(() => undefined);
+    setShooting(true);
+  };
+
+  useEffect(() => { void refresh(); }, []);
+  useEffect(() => { void refresh(); }, [tab]);
+
+  return (
+    <div
+      className={
+        shooting || relightSpace
+          ? // 全屏覆盖页（拍摄/焕新）用 fixed 定位：不依赖祖先高度，
+            // 否则没有全局 height:100% 时 size-full 容器会塌成 0 高。
+            "fixed inset-0 overflow-hidden"
+          : "relative size-full overflow-hidden"
+      }
+      style={{ backgroundColor: shooting ? "transparent" : "#EDE5DA" }}
+    >
+      <div className="relative size-full overflow-hidden">
+        {/* 拍摄时把首页整层卸载：拍摄页的取景靠"页面透明 + 原生相机画面从底下透出"，
+            首页若还挂在底下，会不透明地盖住相机画面（截图里透出空间地图就是这个原因）。 */}
+        {!shooting && (
+          <>
+            {tab === "spatial" && (
+              <SpatialScreen
+                nativeSpaces={nativeState?.spaces}
+                selectedSpaceID={nativeState?.selectedSpaceID}
+                onNativeChange={refresh}
+                onReshoot={openShoot}
+                scanDone={scanDone}
+                onScanAck={() => setScanDone(false)}
+                onRelightRequest={(id, name, vivid) => {
+                  setRelightSpace({ id, name, vivid });
+                  setTab("spatial");
+                }}
+                relitSpaceId={relitSpaceId}
+                onRelitAck={() => setRelitSpaceId(null)}
+              />
+            )}
+            {tab === "classification" && <ClassificationScreen nativeState={nativeState} onNativeChange={refresh} />}
+            {tab === "community" && <CommunityScreen nativeState={nativeState} onNativeChange={refresh} />}
+            {tab === "mine" && <MineScreen nativeState={nativeState} onNativeChange={refresh} />}
+
+            <BottomNav active={tab} onChange={setTab} onCamera={openShoot} />
+          </>
+        )}
+
+        {shooting && (
+          <ShootFlow
+            onClose={() => setShooting(false)}
+            onFinish={() => {
+              setShooting(false);
+              setTab("spatial");
+              setScanDone(true);
+              void refresh();
+            }}
+          />
+        )}
+
+        {relightSpace && (
+          <RelightFlow
+            spaceId={relightSpace.id}
+            spaceName={relightSpace.name}
+            spaceVivid={relightSpace.vivid}
+            onClose={() => setRelightSpace(null)}
+            onComplete={(id) => {
+              setRelightSpace(null);
+              setTab("spatial");
+              setRelitSpaceId(id);
+            }}
+          />
+        )}
+      </div>
+    </div>
+  );
+}

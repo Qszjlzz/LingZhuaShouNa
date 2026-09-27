@@ -1,0 +1,15 @@
+/* 只保留"防止 iOS 点输入框时整页放大"必需的两条。
+   不要在这里加 html/body/#root 的 height / overflow / margin，
+   设计稿的布局是靠自身容器撑起来的，强行指定高度会把底部导航栏推出可见区域。 */
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+input,
+textarea,
+select {
+  font-size: 16px !important;
+  -webkit-text-size-adjust: 100%;
+}

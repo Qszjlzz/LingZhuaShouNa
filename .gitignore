@@ -49,3 +49,7 @@ FigmaMakeLatest-v3/dist/
 # Local screenshots and scratch exports
 outputs/
 *.mp4
+
+# 网页演示版（WebDemo）产物与依赖
+WebDemo/dist/
+WebDemo/node_modules
