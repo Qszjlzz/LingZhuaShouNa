@@ -45,7 +45,7 @@ const posts = [
     avatarBg: "#A8B8CC",
     likes: 2104,
     h: 300,
-    img: "https://images.unsplash.com/photo-1749705319317-f3a2bf24fe3d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=800",
+    img: "https://images.unsplash.com/photo-1556228453-efd6c1ff04f6?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=800",
   },
   {
     id: "p5",
