@@ -772,12 +772,6 @@ function PlanDeckStep({
         >
           预计{plan.minutes}min
         </span>
-        <button
-          className="absolute right-3 top-1/2 -translate-y-1/2 h-8 w-8 rounded-full flex items-center justify-center"
-          style={{ backgroundColor: "rgba(255,255,255,0.55)", backdropFilter: "blur(4px)" }}
-        >
-          <ChevronRight size={15} color={COFFEE} />
-        </button>
       </div>
 
       {/* ── 内容：暖白底直接排版（橙点标题 / 总述+橙点清单 / 米灰胶囊 / 双按钮） ── */}

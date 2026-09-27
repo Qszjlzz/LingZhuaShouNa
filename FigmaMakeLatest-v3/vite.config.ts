@@ -19,4 +19,14 @@ export default defineConfig({
 
   // File types to support raw imports. Never add .css, .tsx, or .ts files to this.
   assetsInclude: ['**/*.svg', '**/*.csv'],
+
+  // App 把 js 读成字符串内联进普通 <script> 执行，ESM 末尾的 export{...} 会导致整段不执行（白屏）。
+  build: {
+    rollupOptions: {
+      output: {
+        format: 'iife',
+        inlineDynamicImports: true,
+      },
+    },
+  },
 })
