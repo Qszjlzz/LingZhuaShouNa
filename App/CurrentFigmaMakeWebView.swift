@@ -502,11 +502,17 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
     }
 
     private func loadBundle(in webView: WKWebView) {
+        // 注意：CSS 可能是可选的 —— 打包一旦把样式并进 JS（现在的构建就是这样），
+        // assets 里就不会再有 .css 文件。以前这里把 css 写成必需条件，缺.css 就直接 return，
+        // 结果整页不加载、只剩白屏。现在允许为空，样式由 JS 自己注入。
+        // JS 入口优先取 index- 开头的那个，避免误把懒加载的分包当入口（同样会白屏）。
+        let assetURLs = Bundle.main.urls(forResourcesWithExtension: "js", subdirectory: "FigmaMakeLatestWeb/assets")
+        let jsURL = assetURLs?.first(where: { $0.lastPathComponent.hasPrefix("index-") }) ?? assetURLs?.first
         guard let base = Bundle.main.url(forResource: "FigmaMakeLatestWeb", withExtension: nil),
-              let cssURL = Bundle.main.urls(forResourcesWithExtension: "css", subdirectory: "FigmaMakeLatestWeb/assets")?.first,
-              let jsURL = Bundle.main.urls(forResourcesWithExtension: "js", subdirectory: "FigmaMakeLatestWeb/assets")?.first,
-              let css = try? String(contentsOf: cssURL, encoding: .utf8),
+              let jsURL,
               let js = try? String(contentsOf: jsURL, encoding: .utf8) else { return }
+        let css = Bundle.main.urls(forResourcesWithExtension: "css", subdirectory: "FigmaMakeLatestWeb/assets")?.first
+            .flatMap { try? String(contentsOf: $0, encoding: .utf8) } ?? ""
         // 设计稿画布是 390×844。直接让网页拉伸铺满会把布局拉变形（拍摄页取景区
         // 变高、dock 沉底），所以这里固定 root 为设计稿尺寸，再整体等比缩放到屏宽
         //（cover 模式，溢出的零点几 pt 裁掉），保证和 Figma 里的比例逐像素一致。
