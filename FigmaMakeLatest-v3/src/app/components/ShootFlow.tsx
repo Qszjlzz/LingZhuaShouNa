@@ -1254,6 +1254,24 @@ function TuneChatStep({
 
 const ANGLE_HINTS = ["广角", "左侧", "右侧", "俯视"];
 
+/* 筛选页照片上的识别气泡（示例内容，点击可选中/取消） */
+const TAG_SETS: { text: string; x: number; y: number }[][] = [
+  [
+    { text: "电脑", x: 46, y: 16 },
+    { text: "护肤品", x: 10, y: 30 },
+    { text: "文具文献", x: 26, y: 52 },
+    { text: "清洁用品", x: 74, y: 36 },
+    { text: "插头", x: 66, y: 66 },
+  ],
+  [
+    { text: "书籍", x: 14, y: 20 },
+    { text: "台灯", x: 72, y: 18 },
+    { text: "水杯", x: 40, y: 44 },
+    { text: "数据线", x: 70, y: 58 },
+    { text: "收纳盒", x: 18, y: 68 },
+  ],
+];
+
 function CaptureStep({
   onClose,
   on完成,
@@ -1272,6 +1290,7 @@ function CaptureStep({
   const [currentIdx, setCurrentIdx] = useState(0);
   const [reshootIdx, setReshootIdx] = useState<number | null>(null);
   const [freshEntryId, setFreshEntryId] = useState<string | null>(null);
+  const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const recTimer = useRef<any>(null);
@@ -1668,6 +1687,7 @@ function CaptureStep({
                     height: "100%",
                     borderRadius: 14,
                     overflow: "hidden",
+                    position: "relative",
                     boxShadow:
                       i === currentIdx
                         ? "0 20px 60px rgba(0,0,0,0.65)"
@@ -1680,13 +1700,53 @@ function CaptureStep({
                     style={{
                       width: "100%",
                       height: "100%",
-                      objectFit: "contain",
+                      objectFit: "cover",
                       backgroundColor: "#111",
                       pointerEvents: "none",
                       display: "block",
                     }}
                     draggable={false}
                   />
+                  {/* 识别气泡标签 */}
+                  {TAG_SETS[i % TAG_SETS.length].map((tag) => {
+                    const key = `${shot.id}-${tag.text}`;
+                    const picked = selectedTags.has(key);
+                    return (
+                      <button
+                        key={tag.text}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onTouchStart={(e) => e.stopPropagation()}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedTags((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(key)) next.delete(key);
+                            else next.add(key);
+                            return next;
+                          });
+                        }}
+                        style={{
+                          position: "absolute",
+                          left: `${tag.x}%`,
+                          top: `${tag.y}%`,
+                          padding: "5px 12px",
+                          borderRadius: 999,
+                          backgroundColor: picked ? "rgba(250,136,58,0.92)" : "rgba(22,17,13,0.55)",
+                          border: picked ? "1.5px solid #FA883A" : "1px solid rgba(255,255,255,0.22)",
+                          backdropFilter: "blur(6px)",
+                          WebkitBackdropFilter: "blur(6px)",
+                          color: WHITE,
+                          fontSize: 11,
+                          fontWeight: 500,
+                          whiteSpace: "nowrap",
+                          boxShadow: picked ? "0 4px 14px rgba(250,136,58,0.4)" : "none",
+                          transition: "background-color 0.18s, border-color 0.18s",
+                        }}
+                      >
+                        {tag.text}
+                      </button>
+                    );
+                  })}
                 </div>
               </motion.div>
             ))}
@@ -1708,29 +1768,30 @@ function CaptureStep({
                 animate={{ opacity: isOnPlus ? 1 : 0.42, scale: isOnPlus ? 1 : 0.88 }}
                 transition={{ type: "spring", stiffness: 320, damping: 28 }}
                 style={{
-                  width: 150,
-                  height: 200,
-                  borderRadius: 18,
+                  width: 168,
+                  height: 296,
+                  borderRadius: 20,
                   border: "1.5px dashed rgba(255,255,255,0.32)",
+                  backgroundColor: isOnPlus ? "rgba(255,255,255,0.04)" : "transparent",
                   display: "flex",
                   flexDirection: "column",
                   alignItems: "center",
                   justifyContent: "center",
-                  gap: 14,
+                  gap: 16,
                 }}
               >
                 <div
                   style={{
-                    width: 56,
-                    height: 56,
-                    borderRadius: 28,
+                    width: 60,
+                    height: 60,
+                    borderRadius: 30,
                     backgroundColor: "rgba(255,255,255,0.10)",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
                   }}
                 >
-                  <Plus size={28} color={WHITE} />
+                  <Plus size={30} color={WHITE} />
                 </div>
                 <span style={{ color: "rgba(255,255,255,0.72)", fontSize: 13, fontWeight: 500 }}>
                   添加照片
@@ -1804,7 +1865,7 @@ function CaptureStep({
             }}
           >
             <Check size={17} color={WHITE} />
-            <span style={{ color: WHITE, fontSize: 11, fontWeight: 600 }}>完成</span>
+            <span style={{ color: WHITE, fontSize: 11, fontWeight: 600 }}>提交</span>
           </button>
         </div>
       </div>
