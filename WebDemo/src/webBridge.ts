@@ -150,6 +150,9 @@ function applyPhoneFrame() {
       border-radius: 28px;
       box-shadow: 0 24px 70px rgba(0,0,0,0.35);
       background: #F7F3EC;
+      /* 让拍摄/筛选等 position:fixed 的全屏页也相对这个手机框定位，而不是铺满整个浏览器窗口 */
+      transform: translateZ(0);
+      position: relative;
     }
   `;
   document.head.appendChild(style);
