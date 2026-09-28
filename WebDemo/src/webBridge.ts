@@ -136,9 +136,35 @@ function installWebBridge() {
   };
 }
 
+/** 手机浏览器里：铺满整屏，抹掉浏览器的默认边距和橡皮筋滚动，观感贴近原生 App。 */
+function applyMobileFullscreen() {
+  const style = document.createElement("style");
+  style.textContent = `
+    html, body {
+      margin: 0; padding: 0;
+      height: 100%;
+      background: #EDE5DA;
+      overscroll-behavior: none;      /* 关掉上下拉到底的橡皮筋回弹 */
+      -webkit-tap-highlight-color: transparent;
+    }
+    body { user-select: none; -webkit-user-select: none; }
+    input, textarea { user-select: text; -webkit-user-select: text; }
+    #root {
+      width: 100%;
+      height: 100vh;
+      height: 100dvh;                 /* 手机地址栏收起/展开时高度自动跟随 */
+      overflow: hidden;
+    }
+  `;
+  document.head.appendChild(style);
+}
+
 /** 桌面上打开时把界面框进一个手机尺寸的容器里，看起来跟真机一致。 */
 function applyPhoneFrame() {
-  if (window.innerWidth <= 520) return; // 手机浏览器：本来就是满屏
+  if (window.innerWidth <= 520) {
+    applyMobileFullscreen();
+    return;
+  }
   const style = document.createElement("style");
   style.textContent = `
     html, body { background: #E8E0D6; }
