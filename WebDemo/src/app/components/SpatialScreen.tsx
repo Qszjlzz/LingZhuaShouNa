@@ -16,10 +16,10 @@ import teatableArt from "../../assets/spaces/teatable.png";
 type SkinKey = "bed" | "desk" | "kitchen" | "teatable";
 
 const SKINS: Record<SkinKey, { src: string; w: number; h: number }> = {
-  bed: { src: bedArt, w: 128, h: 130 },
-  desk: { src: deskArt, w: 137, h: 73 },
+  bed: { src: bedArt, w: 128, h: 131 },
+  desk: { src: deskArt, w: 137, h: 72 },
   kitchen: { src: kitchenArt, w: 128, h: 127 },
-  teatable: { src: teatableArt, w: 137, h: 64 },
+  teatable: { src: teatableArt, w: 137, h: 71 },
 };
 
 // curated, airy "premium" palette the user can recolour spaces with
