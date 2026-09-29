@@ -268,9 +268,8 @@ export function ShootFlow({
           onNext={() => setStep("confirm")}
           onRetake={() => setStep("capture")}
           onDelete={(id) => {
-            const next = assets.filter((x) => x.id !== id);
-            setAssets(next);
-            if (next.length === 0) setStep("capture");
+            // 删到最后一张也不退回相机：就停在这一页的空态（「添加照片」），跟设计稿一致。
+            setAssets(assets.filter((x) => x.id !== id));
           }}
         />
       )}
@@ -1971,7 +1970,11 @@ function CaptureStep({
           {(["photo", "video"] as const).map((m) => (
             <button
               key={m}
-              onClick={() => setMode(m)}
+              onClick={() => {
+                // 从 AR 切回连拍时顺手把实时扫描停掉（AR 页底部已经没有退出按钮了）
+                if (mode === "video" && m === "photo") exitAR();
+                else setMode(m);
+              }}
               disabled={recording}
               className="px-4 py-1.5 flex items-center gap-1.5"
               style={{
@@ -2160,32 +2163,17 @@ function CaptureStep({
       </div>
       )}
 
-      {/* AR 模式底部：只有一个退出按钮，保持全屏扫描画面 */}
-      {mode === "video" && (
-        <div className="absolute bottom-0 left-0 right-0 pb-12 flex flex-col items-center gap-2.5">
-          {camFailed && (
-            <button
-              onClick={retryCamera}
-              className="px-4 py-2"
-              style={{ backgroundColor: "rgba(0,0,0,0.55)", color: WHITE, borderRadius: 999, fontSize: 11 }}
-            >
-              相机未启动 · 点击重试
-            </button>
-          )}
+      {/* AR 模式底部：按设计稿保持干净 —— 画面上只有识别标签，不放任何按钮。
+          退出走左上角 × 或切回「多张连拍」页签。只有相机没起来时才给重试入口。 */}
+      {mode === "video" && camFailed && (
+        <div className="absolute bottom-0 left-0 right-0 pb-12 flex justify-center">
           <button
-            onClick={exitAR}
-            className="h-16 w-16 rounded-full flex items-center justify-center"
-            style={{
-              backgroundColor: WHITE,
-              border: "3px solid rgba(255,255,255,0.55)",
-              boxShadow: "0 8px 24px rgba(0,0,0,0.28)",
-            }}
+            onClick={retryCamera}
+            className="px-4 py-2"
+            style={{ backgroundColor: "rgba(0,0,0,0.55)", color: WHITE, borderRadius: 999, fontSize: 11 }}
           >
-            <ArrowLeft size={24} color={COFFEE} />
+            相机未启动 · 点击重试
           </button>
-          <span style={{ color: WHITE, fontSize: 11, fontWeight: 600, textShadow: "0 1px 4px rgba(0,0,0,0.6)" }}>
-            退出 AR 扫描
-          </span>
         </div>
       )}
     </div>
@@ -2238,33 +2226,20 @@ function ReviewStep({
 
   return (
     <div className="h-full w-full flex flex-col" style={{ backgroundColor: "#16130F" }}>
-      {/* Top bar */}
+      {/* Top bar — 设计稿：左边关闭 ×，中间是「第几张 / 共几张」；没有照片时中间标题为「添加照片」 */}
       <div className="px-5 pt-14 pb-3 flex items-center justify-between">
         <button
           onClick={onBack}
           className="h-10 w-10 rounded-full flex items-center justify-center"
           style={{ backgroundColor: "rgba(255,255,255,0.14)" }}
         >
-          <ArrowLeft size={18} color={WHITE} />
+          <X size={18} color={WHITE} />
         </button>
-        <div className="text-center">
-          <p style={{ color: WHITE, fontSize: 15, fontWeight: 600 }}>检查照片</p>
-          <p style={{ color: "rgba(255,255,255,0.55)", fontSize: 11 }}>
-            {loadingTags
-              ? "正在识别刚刚拍到的物品…"
-              : tags.length > 0
-              ? `识别到 ${tags.length} 件物品`
-              : "还没有识别到物品"}
-          </p>
-        </div>
-        <button
-          onClick={onRetake}
-          className="h-10 px-3 rounded-full flex items-center gap-1"
-          style={{ backgroundColor: "rgba(255,255,255,0.14)" }}
-        >
-          <Plus size={14} color={WHITE} />
-          <span style={{ color: WHITE, fontSize: 11, fontWeight: 600 }}>添加</span>
-        </button>
+        <p style={{ color: WHITE, fontSize: 15, fontWeight: 600 }}>
+          {a ? `${Math.min(primary, assets.length - 1) + 1} / ${assets.length}` : "添加照片"}
+        </p>
+        {/* 右侧占位，让中间标题保持水平居中 */}
+        <div style={{ width: 40, height: 40 }} />
       </div>
 
       {/* Photo + recognition labels */}
@@ -2314,7 +2289,7 @@ function ReviewStep({
         ) : (
           <button
             onClick={onRetake}
-            className="absolute inset-0 flex flex-col items-center justify-center gap-2"
+            className="absolute inset-0 flex flex-col items-center justify-center gap-3"
             style={{
               backgroundColor: "rgba(255,255,255,0.05)",
               border: "2px dashed rgba(255,255,255,0.28)",
@@ -2322,12 +2297,13 @@ function ReviewStep({
             }}
           >
             <div
-              className="h-12 w-12 rounded-full flex items-center justify-center"
-              style={{ backgroundColor: "rgba(255,255,255,0.14)" }}
+              className="rounded-full flex items-center justify-center"
+              style={{ width: 62, height: 62, backgroundColor: "rgba(255,255,255,0.14)", border: "2px solid rgba(255,255,255,0.35)" }}
             >
-              <Plus size={22} color={WHITE} />
+              <Plus size={28} color={WHITE} />
             </div>
-            <span style={{ color: WHITE, fontSize: 12.5, fontWeight: 600 }}>添加照片</span>
+            <span style={{ color: WHITE, fontSize: 14, fontWeight: 600 }}>添加照片</span>
+            <span style={{ color: "rgba(255,255,255,0.5)", fontSize: 11.5 }}>拍一张或从相册里选一张</span>
           </button>
         )}
       </div>
