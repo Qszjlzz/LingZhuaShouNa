@@ -49,7 +49,6 @@ const THUMB_IMG =
 
 type Step =
   | "capture"
-  | "review"
   | "generating"
   | "plandeck"
   | "tune"
@@ -239,7 +238,7 @@ export function ShootFlow({
   const [confirmedItems, setConfirmedItems] = useState<NativeItem[]>([]);
   // 演示模式没有真实识别结果，喂一组示例物品让中后段有内容可看
   useEffect(() => {
-    if (demoStep && demoStep !== "capture" && demoStep !== "review") {
+    if (demoStep && demoStep !== "capture") {
       setConfirmedItems([
         { id: "d1", name: "笔记本电脑", category: "电子产品", confidence: 0.92, suggestedZone: "桌面收纳区", isSelected: true },
         { id: "d2", name: "书本", category: "学习用品", confidence: 0.9, suggestedZone: "桌面收纳区", isSelected: true },
@@ -274,19 +273,9 @@ export function ShootFlow({
           onClose={onClose}
           on完成={(captured) => {
             setAssets(captured);
+            // 「检查照片」页已删（设计稿没有这屏，且前面拍摄页已有类似的查看）：
+            // 拍完直接进生成方案。识别等待 + 物品保存挪到后台跑，generating 动画期间正好完成。
             setGenReturn("plandeck");
-            // 设计稿流程：拍完先看照片，再确认识别出的物品，最后才生成方案。
-            setStep("review");
-          }}
-        />
-      )}
-      {step === "review" && (
-        <ReviewStep
-          assets={assets}
-          onBack={() => setStep("capture")}
-          onNext={() => {
-            // 设计稿流程：检查照片后直接生成方案，识别确认页已删。
-            // 识别等待 + 物品保存挪到后台跑，generating 动画期间正好完成。
             void (async () => {
               try {
                 await nativeRequest("scan.await", {});
@@ -303,14 +292,8 @@ export function ShootFlow({
                 /* 识别失败也继续走流程，区域页有兜底 */
               }
               await refreshPlans().catch(() => undefined);
-              setGenReturn("plandeck");
               setStep("generating");
             })();
-          }}
-          onRetake={() => setStep("capture")}
-          onDelete={(id) => {
-            // 删到最后一张也不退回相机：就停在这一页的空态（「添加照片」），跟设计稿一致。
-            setAssets(assets.filter((x) => x.id !== id));
           }}
         />
       )}
