@@ -57,10 +57,12 @@ function rgba(c: string, a: number) {
 }
 // 两段式（照设计稿）：14 天内卡片保持鲜亮，14 天起开始变灰，42 天灰透。
 // 7~14 天只挂橙色徽章预警，卡片本体不动。
+// 连续渐变（天数越多越暗沉，每天都有差别）：
+// 0~14 天 —— 轻微走色（0 → 0.38），8 天时已能看出一点发旧
+// 14 天起 —— 明显暗沉（0.62 起步），到 42 天灰透（0.96）
 function fade(days: number) {
-  if (days < 14) return 0;
+  if (days < 14) return 0.38 * Math.pow(days / 14, 1.35);
   const t = Math.min((days - 14) / 28, 1);
-  // 一到 14 天就明显暗下来（0.62），之后 42 天灰透（0.96）
   return 0.62 + 0.34 * Math.pow(t, 0.72);
 }
 
@@ -139,6 +141,10 @@ function SpaceTile({
   const { w, h } = effSize(piece);
 
   const f = fade(piece.lastDays);
+
+  // 插画与叠字共用同一套褪色滤镜，保证两者视觉同步
+  const fadeFilter = `brightness(${1 - 0.18 * f}) saturate(${1 - 0.8 * f}) grayscale(${0.85 * f})`;
+  const fadeAlpha = 1 - f * 0.4;
 
   // urgency → faintness; fresh reads full & textured, stale washes out
   const tileOpacity = 1 - f * 0.4;
@@ -245,7 +251,7 @@ function SpaceTile({
             className="absolute inset-0 w-full h-full pointer-events-none"
             style={{
               // 变暗 + 去饱和 + 转灰 + 略微透明（照设计稿"暗沉下去"的效果）
-              filter: `brightness(${1 - 0.18 * f}) saturate(${1 - 0.8 * f}) grayscale(${0.85 * f}) opacity(${1 - f * 0.4})`,
+              filter: `${fadeFilter} opacity(${fadeAlpha})`,
             }}
           />
           {/* 名称 + 徽章：代码层渲染（插画里不烤字），跟图标同一套 fade 节奏分层 */}
@@ -256,13 +262,15 @@ function SpaceTile({
               top: 6 * Math.min(piece.scale, 1.15),
               gap: 5,
               maxWidth: w - 14,
-              // 与插画 filter opacity 同步，字跟着图一起变淡
-              opacity: 1 - f * 0.4,
+              // 与插画同一套 fadeFilter + 透明度，字跟着图一起变淡
+              filter: fadeFilter,
+              opacity: fadeAlpha,
             }}
           >
             <span
               style={{
-                color: mix("#4A3B2A", "#9A9086", f),
+                // 基色也往灰里走一点（力度减半，避免和 filter 叠加过头）
+                color: mix("#4A3B2A", "#9A9086", f * 0.55),
                 fontSize: 13 * Math.min(piece.scale, 1.15),
                 fontWeight: 700,
                 letterSpacing: "0.02em",
