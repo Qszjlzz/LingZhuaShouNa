@@ -16,6 +16,7 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
         webView.isOpaque = false
         webView.scrollView.contentInsetAdjustmentBehavior = .never
         webView.scrollView.bounces = false
+        webView.navigationDelegate = context.coordinator
         context.coordinator.webView = webView
         loadBundle(in: webView)
         // 相机常驻待命：已授权就把画面层铺好并让相机跑起来（透明不可见），
@@ -521,3 +522,11 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
         """, baseURL: base)
     }
 }
+
+extension CurrentFigmaMakeWebView.Coordinator: WKNavigationDelegate {
+    // 网页加载完成 → 通知 RootView 把启动封面淡出。
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        NotificationCenter.default.post(name: .smartPawWebReady, object: nil)
+    }
+}
+

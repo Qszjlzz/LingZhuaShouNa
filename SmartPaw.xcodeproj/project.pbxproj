@@ -524,6 +524,8 @@
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "用于保存或选择收纳前后对比图片。";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_UIImageName = LaunchCover;
+				INFOPLIST_KEY_UILaunchScreen_UIImageRespectsSafeAreaInsets = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @loader_path/Frameworks";
@@ -634,6 +636,8 @@
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "用于保存或选择收纳前后对比图片。";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_UIImageName = LaunchCover;
+				INFOPLIST_KEY_UILaunchScreen_UIImageRespectsSafeAreaInsets = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @loader_path/Frameworks";
