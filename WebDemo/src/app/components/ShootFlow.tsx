@@ -50,7 +50,6 @@ const THUMB_IMG =
 type Step =
   | "capture"
   | "review"
-  | "confirm"
   | "generating"
   | "plandeck"
   | "tune"
@@ -227,14 +226,30 @@ function personalizePlans(items: NativeItem[]): GenPlan[] {
 export function ShootFlow({
   onClose,
   onFinish,
+  demoStep,
 }: {
   onClose: () => void;
   onFinish?: () => void;
+  /** dev/演示：跳过拍摄直接落到某一步（?flow=），不影响正常流程 */
+  demoStep?: Step;
 }) {
-  const [step, setStep] = useState<Step>("capture");
+  const [step, setStep] = useState<Step>(demoStep ?? "capture");
   const [assets, setAssets] = useState<CapturedAsset[]>([]);
   // 确认过要收的物品、以及由这些物品生成并勾选的区域，后面每一步都用它。
   const [confirmedItems, setConfirmedItems] = useState<NativeItem[]>([]);
+  // 演示模式没有真实识别结果，喂一组示例物品让中后段有内容可看
+  useEffect(() => {
+    if (demoStep && demoStep !== "capture" && demoStep !== "review") {
+      setConfirmedItems([
+        { id: "d1", name: "笔记本电脑", category: "电子产品", confidence: 0.92, suggestedZone: "桌面收纳区", isSelected: true },
+        { id: "d2", name: "书本", category: "学习用品", confidence: 0.9, suggestedZone: "桌面收纳区", isSelected: true },
+        { id: "d3", name: "笔", category: "文具", confidence: 0.88, suggestedZone: "手边工具区", isSelected: true },
+        { id: "d4", name: "键盘", category: "电子产品", confidence: 0.9, suggestedZone: "桌面收纳区", isSelected: true },
+        { id: "d5", name: "水瓶", category: "日用品", confidence: 0.86, suggestedZone: "手边工具区", isSelected: true },
+      ]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [demoStep]);
   const [zoneList, setZoneList] = useState<FlowZone[]>([]);
   const photo = assets[0]?.src;
   const [plans, setPlans] = useState<GenPlan[]>(GEN_PLANS);
@@ -269,24 +284,33 @@ export function ShootFlow({
         <ReviewStep
           assets={assets}
           onBack={() => setStep("capture")}
-          onNext={() => setStep("confirm")}
+          onNext={() => {
+            // 设计稿流程：检查照片后直接生成方案，识别确认页已删。
+            // 识别等待 + 物品保存挪到后台跑，generating 动画期间正好完成。
+            void (async () => {
+              try {
+                await nativeRequest("scan.await", {});
+                const state = await nativeRequest<NativeState>("state.get");
+                const payload = state.scannedItems.map((item) => ({
+                  ...item,
+                  category: item.category || "收纳工具",
+                  suggestedZone: item.suggestedZone || "手边工具区",
+                  isSelected: item.isSelected ?? true,
+                }));
+                await nativeRequest("items.save", { items: payload });
+                setConfirmedItems(payload);
+              } catch {
+                /* 识别失败也继续走流程，区域页有兜底 */
+              }
+              await refreshPlans().catch(() => undefined);
+              setGenReturn("plandeck");
+              setStep("generating");
+            })();
+          }}
           onRetake={() => setStep("capture")}
           onDelete={(id) => {
             // 删到最后一张也不退回相机：就停在这一页的空态（「添加照片」），跟设计稿一致。
             setAssets(assets.filter((x) => x.id !== id));
-          }}
-        />
-      )}
-      {step === "confirm" && (
-        <ConfirmStep
-          assets={assets}
-          onBack={() => setStep("review")}
-          onNext={(confirmed) => {
-            setConfirmedItems(confirmed);
-            void refreshPlans().finally(() => {
-              setGenReturn("plandeck");
-              setStep("generating");
-            });
           }}
         />
       )}

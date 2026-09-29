@@ -12,6 +12,10 @@ export default function App() {
   const [shooting, setShooting] = useState(false);
   const [scanDone, setScanDone] = useState(false);
   const [relightSpace, setRelightSpace] = useState<{ id: string; name: string; vivid: string } | null>(null);
+  // dev/演示：?flow=plandeck|zones|arguide|reward 直接挂载拍摄主线到指定屏（浏览器无相机也能看）
+  const [demoFlow, setDemoFlow] = useState<string | null>(
+    new URLSearchParams(location.search).get("flow"),
+  );
   const [relitSpaceId, setRelitSpaceId] = useState<string | null>(null);
   const [nativeState, setNativeState] = useState<NativeState | null>(null);
   const refresh = () => getNativeState().then(setNativeState).catch(() => undefined);
@@ -35,8 +39,7 @@ export default function App() {
   return (
     <div
       className={
-        shooting || relightSpace
-          ? // 全屏覆盖页（拍摄/焕新）用 fixed 定位：不依赖祖先高度，
+        shooting || relightSpace || demoFlow          ? // 全屏覆盖页（拍摄/焕新）用 fixed 定位：不依赖祖先高度，
             // 否则没有全局 height:100% 时 size-full 容器会塌成 0 高。
             "fixed inset-0 overflow-hidden"
           : "relative size-full overflow-hidden"
@@ -81,6 +84,13 @@ export default function App() {
               setScanDone(true);
               void refresh();
             }}
+          />
+        )}
+
+        {demoFlow && (
+          <ShootFlow
+            onClose={() => setDemoFlow(null)}
+            demoStep={demoFlow as never}
           />
         )}
 
