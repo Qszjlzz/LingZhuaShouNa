@@ -16,10 +16,10 @@ import teatableArt from "../../assets/spaces/teatable.png";
 type SkinKey = "bed" | "desk" | "kitchen" | "teatable";
 
 const SKINS: Record<SkinKey, { src: string; w: number; h: number }> = {
-  bed: { src: bedArt, w: 128, h: 131 },
-  desk: { src: deskArt, w: 137, h: 72 },
-  kitchen: { src: kitchenArt, w: 128, h: 127 },
-  teatable: { src: teatableArt, w: 137, h: 71 },
+  bed: { src: bedArt, w: 138, h: 138 },
+  desk: { src: deskArt, w: 143, h: 78 },
+  kitchen: { src: kitchenArt, w: 138, h: 138 },
+  teatable: { src: teatableArt, w: 139, h: 74 },
 };
 
 // curated, airy "premium" palette the user can recolour spaces with
@@ -78,11 +78,12 @@ type Piece = {
   scale: number;
 };
 
+// 初始摆位照设计稿 Group 433：床左上、桌面右上、茶几右中、厨房左下（画板 358×408，组稿 282×276 居中偏移 ≈38,60）
 const initialPieces: Piece[] = [
-  { id: "p1", name: "床", vivid: "#A6B2D6", skin: "bed", items: 24, lastDays: 2, x: 16, y: 14, rot: -3, scale: 1 },
-  { id: "p2", name: "桌面", vivid: "#ECC079", skin: "desk", items: 18, lastDays: 8, x: 182, y: 26, rot: 2, scale: 1 },
-  { id: "p3", name: "厨房", vivid: "#A9B486", skin: "kitchen", items: 9, lastDays: 5, x: 198, y: 136, rot: 3, scale: 0.95 },
-  { id: "p4", name: "茶几", vivid: "#DFA6B0", skin: "teatable", items: 31, lastDays: 15, x: 18, y: 196, rot: -2, scale: 1 },
+  { id: "p1", name: "床", vivid: "#A6B2D6", skin: "bed", items: 24, lastDays: 2, x: 40, y: 60, rot: 0, scale: 1 },
+  { id: "p2", name: "桌面", vivid: "#ECC079", skin: "desk", items: 18, lastDays: 8, x: 178, y: 60, rot: 0, scale: 1 },
+  { id: "p3", name: "厨房", vivid: "#A9B486", skin: "kitchen", items: 9, lastDays: 5, x: 40, y: 194, rot: 0, scale: 1 },
+  { id: "p4", name: "茶几", vivid: "#DFA6B0", skin: "teatable", items: 31, lastDays: 15, x: 178, y: 144, rot: 0, scale: 1 },
 ];
 
 const NEW_TEMPLATES: { name: string; vivid: string; skin: SkinKey }[] = [
@@ -244,7 +245,7 @@ function SpaceTile({
               filter: `saturate(${1 - 0.72 * f}) grayscale(${0.5 * f}) opacity(${1 - f * 0.35})`,
             }}
           />
-          {/* space name + maintenance badge — drawn over the artwork, top-left like the mock */}
+          {/* 名称已烤在插画里；这里只叠加「N天未维护」徽章（左上，同设计稿） */}
           <div
             className="absolute flex items-center"
             style={{
@@ -254,19 +255,6 @@ function SpaceTile({
               maxWidth: w - 14,
             }}
           >
-            <span
-              style={{
-                color: mix("#4A3B2A", "#9A9086", f),
-                fontSize: 13 * Math.min(piece.scale, 1.15),
-                fontWeight: 700,
-                letterSpacing: "0.02em",
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-              }}
-            >
-              {piece.name}
-            </span>
             {piece.lastDays >= 14 && (
               <span
                 className="flex items-center"
