@@ -6247,7 +6247,7 @@ function RelightChoiceStep({
           transition={{ type: "spring", stiffness: 400, damping: 28 }}
           onClick={onTune}
           style={{
-            flex: 1, borderRadius: 26, overflow: "hidden",
+            flexShrink: 0, borderRadius: 26, overflow: "hidden",
             position: "relative", border: "none", cursor: "pointer",
             backgroundColor: spaceVivid, textAlign: "left",
           }}
@@ -6275,7 +6275,7 @@ function RelightChoiceStep({
           transition={{ type: "spring", stiffness: 400, damping: 28 }}
           onClick={onNew}
           style={{
-            flex: 1, borderRadius: 26, overflow: "hidden",
+            flexShrink: 0, borderRadius: 26, overflow: "hidden",
             position: "relative", border: `2px solid ${SOFT}`,
             cursor: "pointer", backgroundColor: WHITE, textAlign: "left",
           }}
@@ -6648,7 +6648,13 @@ type RelightStep =
   | "complete";
 
 export function RelightFlow({ spaceId, spaceName, spaceVivid, onClose, onComplete }: RelightFlowProps) {
-  const [step, setStep] = useState<RelightStep>("capture");
+  // dev/演示：?relight=choice|tune|proof|complete 可直接跳到对应屏（不带参数走正常流程）
+  const [step, setStep] = useState<RelightStep>(() => {
+    const s = typeof location !== "undefined" ? new URLSearchParams(location.search).get("relight") : null;
+    return (["choice", "tune", "proof", "complete"] as RelightStep[]).includes(s as RelightStep)
+      ? (s as RelightStep)
+      : "capture";
+  });
   const [chosen, setChosen] = useState<GenPlan>(GEN_PLANS[0]);
   const [relightMode, setRelightMode] = useState<"tune" | "new">("tune");
 

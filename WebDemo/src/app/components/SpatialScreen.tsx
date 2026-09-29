@@ -1,6 +1,6 @@
 import { useRef, useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Plus, Sparkles, X, RotateCw, Pencil, ChevronRight, Play, Check, Camera, Trash2 } from "lucide-react";
+import { Plus, Sparkles, X, RotateCw, Pencil, ChevronRight, Play, Check, Camera, TriangleAlert } from "lucide-react";
 import { COFFEE, ORANGE, LINEN, BLUE, WHITE, SOFT } from "./theme";
 import { InProgressDetail } from "./InProgressDetail";
 import { nativeRequest, type NativeSpace } from "../nativeBridge";
@@ -245,7 +245,7 @@ function SpaceTile({
               filter: `saturate(${1 - 0.72 * f}) grayscale(${0.5 * f}) opacity(${1 - f * 0.35})`,
             }}
           />
-          {/* 名称已烤在插画里；这里只叠加「N天未维护」徽章（左上，同设计稿） */}
+          {/* 名称 + 徽章：代码层渲染（插画里不烤字），跟图标同一套 fade 节奏分层 */}
           <div
             className="absolute flex items-center"
             style={{
@@ -253,30 +253,40 @@ function SpaceTile({
               top: 6 * Math.min(piece.scale, 1.15),
               gap: 5,
               maxWidth: w - 14,
+              // 与插画 filter opacity 同步，字跟着图一起变淡
+              opacity: 1 - f * 0.35,
             }}
           >
+            <span
+              style={{
+                color: mix("#4A3B2A", "#9A9086", f),
+                fontSize: 13 * Math.min(piece.scale, 1.15),
+                fontWeight: 700,
+                letterSpacing: "0.02em",
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                textShadow: "0 1px 2px rgba(255,255,255,0.4)",
+              }}
+            >
+              {piece.name}
+            </span>
             {piece.lastDays >= 14 && (
               <span
                 className="flex items-center"
                 style={{
                   gap: 3,
-                  backgroundColor: "rgba(255,255,255,0.94)",
+                  backgroundColor: rgba("#E08A3C", 0.16 - 0.06 * f),
                   borderRadius: 999,
                   padding: `${2.5 * piece.scale}px ${6 * piece.scale}px`,
-                  boxShadow: "0 1px 4px rgba(90,70,55,0.12)",
                   fontSize: 10.5 * Math.min(piece.scale, 1.15),
                   fontWeight: 600,
-                  color: mix("#E08A3C", "#B0A89D", f),
+                  color: mix("#D96A3C", "#B0A89D", f),
                   whiteSpace: "nowrap",
                   flexShrink: 0,
                 }}
               >
-                <span
-                  className="flex items-center justify-center rounded-full"
-                  style={{ width: 13, height: 13, backgroundColor: "#E8A13C", flexShrink: 0 }}
-                >
-                  <Trash2 size={8} color={WHITE} strokeWidth={2.4} />
-                </span>
+                <TriangleAlert size={9} color={mix("#D96A3C", "#B0A89D", f)} strokeWidth={2.4} />
                 {piece.lastDays}天未维护
               </span>
             )}
@@ -798,34 +808,19 @@ export function SpatialScreen({
               </div>
 
               {current.lastDays >= 14 && (
-                <div className="mt-4 p-3.5 flex items-center gap-3" style={{ backgroundColor: "#F4EDE4", borderRadius: 18 }}>
-                  <div className="relative flex-shrink-0">
-                    {/* Pulse ring to draw attention */}
-                    <motion.div
-                      className="absolute inset-0 rounded-full"
-                      style={{ backgroundColor: ORANGE }}
-                      animate={{ scale: [1, 1.55], opacity: [0.35, 0] }}
-                      transition={{ duration: 1.4, repeat: Infinity, ease: "easeOut" }}
-                    />
-                    <motion.button
-                      whileTap={{ scale: 0.88 }}
-                      transition={{ type: "spring", stiffness: 440, damping: 22 }}
-                      onClick={handleRelight}
-                      className="relative h-9 w-9 rounded-full flex items-center justify-center"
-                      style={{
-                        backgroundColor: ORANGE,
-                        boxShadow: "0 4px 14px rgba(250,136,58,0.42)",
-                        border: "none",
-                        cursor: "pointer",
-                      }}
-                    >
-                      <Sparkles size={15} color={WHITE} />
-                    </motion.button>
+                <motion.button
+                  whileTap={{ scale: 0.985 }}
+                  onClick={handleRelight}
+                  className="mt-4 p-3.5 flex items-center gap-3 text-left w-full"
+                  style={{ backgroundColor: "#FBEBDB", borderRadius: 18, border: "none", cursor: "pointer" }}
+                >
+                  <div className="h-9 w-9 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: ORANGE }}>
+                    <Sparkles size={15} color={WHITE} />
                   </div>
-                  <p style={{ color: COFFEE, opacity: 0.7, fontSize: 12.5, flex: 1 }}>
-                    这块空间的颜色已经变淡了——{current.lastDays} 天没照顾它,回去点亮它吧。
+                  <p style={{ color: "#8A5A34", fontSize: 12.5, flex: 1, lineHeight: 1.5 }}>
+                    这块空间的颜色已经变淡了——{current.lastDays} 天没照顾它，回去点亮它吧。
                   </p>
-                </div>
+                </motion.button>
               )}
 
               <p style={{ color: COFFEE, opacity: 0.5, fontSize: 12, fontWeight: 600, marginTop: 20, marginBottom: 10 }}>整理记录</p>

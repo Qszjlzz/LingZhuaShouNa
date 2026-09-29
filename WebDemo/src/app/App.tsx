@@ -16,6 +16,12 @@ export default function App() {
   const [nativeState, setNativeState] = useState<NativeState | null>(null);
   const refresh = () => getNativeState().then(setNativeState).catch(() => undefined);
 
+  // dev/演示：?relight=choice|tune|proof|complete 直接挂载点亮链路（不带参数不影响正常流程）
+  useEffect(() => {
+    const s = new URLSearchParams(location.search).get("relight");
+    if (s) setRelightSpace({ id: "p3", name: "厨房", vivid: "#A9B486" });
+  }, []);
+
   // 相机在 App 前台期间一直跑着（画面层已铺好、只是透明不可见），
   // 这里只剩"把画面显示出来"一步，不等硬件、不建图层 —— 点下去就是相机。
   const openShoot = () => {
