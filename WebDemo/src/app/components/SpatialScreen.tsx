@@ -55,11 +55,12 @@ function rgba(c: string, a: number) {
   const [r, g, b] = toRgb(c);
   return `rgba(${r}, ${g}, ${b}, ${a})`;
 }
-// 0 = vivid & fresh, ~1 = washed-out grey. Eased so a space starts
-// visibly losing colour once it has been left for a while.
+// 两段式（照设计稿）：14 天内卡片保持鲜亮，14 天起开始变灰，42 天灰透。
+// 7~14 天只挂橙色徽章预警，卡片本体不动。
 function fade(days: number) {
-  const t = Math.min(days / 42, 1);
-  return Math.min(Math.pow(t, 0.72) * 1.03, 0.96);
+  if (days < 14) return 0;
+  const t = Math.min((days - 14) / 28, 1);
+  return Math.min(Math.pow(t, 0.72) * 0.98, 0.96);
 }
 
 /* ------------------------------------------------------------------ *
@@ -271,25 +272,31 @@ function SpaceTile({
             >
               {piece.name}
             </span>
-            {piece.lastDays >= 14 && (
+            {piece.lastDays >= 7 && (() => {
+              // 预警橙 → 变灰后转红（照设计稿两段式）
+              const bad = piece.lastDays >= 14;
+              const tone = bad ? "#D9534C" : "#E08A3C";
+              const shown = bad ? mix(tone, "#B0A89D", f) : tone;
+              return (
               <span
                 className="flex items-center"
                 style={{
                   gap: 3,
-                  backgroundColor: rgba("#E08A3C", 0.16 - 0.06 * f),
+                  backgroundColor: rgba(tone, bad ? 0.16 - 0.06 * f : 0.16),
                   borderRadius: 999,
                   padding: `${2.5 * piece.scale}px ${6 * piece.scale}px`,
                   fontSize: 10.5 * Math.min(piece.scale, 1.15),
                   fontWeight: 600,
-                  color: mix("#D96A3C", "#B0A89D", f),
+                  color: shown,
                   whiteSpace: "nowrap",
                   flexShrink: 0,
                 }}
               >
-                <TriangleAlert size={9} color={mix("#D96A3C", "#B0A89D", f)} strokeWidth={2.4} />
+                <TriangleAlert size={9} color={shown} strokeWidth={2.4} />
                 {piece.lastDays}天未维护
               </span>
-            )}
+              );
+            })()}
           </div>
           {/* born flash — warm bloom from within when a space joins */}
           {born && (

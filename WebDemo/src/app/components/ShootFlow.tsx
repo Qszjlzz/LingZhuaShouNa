@@ -1,4 +1,8 @@
 import { useState, useRef, useEffect } from "react";
+import bedArt from "../../assets/spaces/bed.png";
+import deskArt from "../../assets/spaces/desk.png";
+import kitchenArt from "../../assets/spaces/kitchen.png";
+import teatableArt from "../../assets/spaces/teatable.png";
 import {
   ArrowLeft,
   Sparkles,
@@ -6476,6 +6480,13 @@ function ProofCaptureStep({
   );
 }
 
+const SPACE_ART: Record<string, string> = {
+  床: bedArt,
+  桌面: deskArt,
+  厨房: kitchenArt,
+  茶几: teatableArt,
+};
+
 function RelightCompleteStep({
   spaceName,
   spaceVivid,
@@ -6502,33 +6513,17 @@ function RelightCompleteStep({
         }}
       />
 
-      {/* Spinning sparkle ring + centre tile */}
+      {/* Space illustration card: grey → full colour (照设计稿完成页) */}
       <div style={{ position: "relative", width: 200, height: 200, marginBottom: 36 }}>
         <motion.div
-          animate={{ rotate: 360 }}
-          transition={{ duration: 9, repeat: Infinity, ease: "linear" }}
-          style={{ position: "absolute", inset: 0 }}
-        >
-          {[0, 1, 2, 3, 4, 5].map((i) => (
-            <motion.div
-              key={i}
-              initial={{ opacity: 0, scale: 0 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: 0.45 + i * 0.1, type: "spring", stiffness: 260, damping: 18 }}
-              style={{
-                position: "absolute",
-                left: "50%", top: "50%",
-                transform: `rotate(${i * 60}deg) translateY(-92px) translate(-50%, -50%)`,
-                color: i % 2 === 0 ? ORANGE : BLUE,
-                display: "flex", alignItems: "center", justifyContent: "center",
-              }}
-            >
-              <Sparkles size={i % 2 === 0 ? 14 : 11} />
-            </motion.div>
-          ))}
-        </motion.div>
-
-        {/* Tile: grey → space colour */}
+          animate={{ scale: [1, 1.06, 1], opacity: [0.5, 0.75, 0.5] }}
+          transition={{ duration: 4.2, repeat: Infinity, ease: "easeInOut" }}
+          style={{
+            position: "absolute", inset: 8, borderRadius: 30,
+            background: `radial-gradient(circle at 50% 46%, ${spaceVivid}66, transparent 72%)`,
+            pointerEvents: "none",
+          }}
+        />
         <motion.div
           initial={{ scale: 0.55, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
@@ -6536,34 +6531,22 @@ function RelightCompleteStep({
           style={{ position: "absolute", inset: 22 }}
         >
           <motion.div
-            initial={{ backgroundColor: "#C7C0B4" }}
-            animate={{ backgroundColor: spaceVivid }}
+            initial={{ filter: "grayscale(1)", opacity: 0.55 }}
+            animate={{ filter: "grayscale(0)", opacity: 1 }}
             transition={{ duration: 1.8, ease: "easeOut", delay: 0.45 }}
             style={{
               width: "100%", height: "100%",
-              borderRadius: 28,
               display: "flex", alignItems: "center", justifyContent: "center",
-              position: "relative", overflow: "hidden",
             }}
           >
-            <div
+            <img
+              src={SPACE_ART[spaceName] ?? kitchenArt}
+              alt={spaceName}
               style={{
-                position: "absolute", inset: 0,
-                backgroundImage: `url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='120'%20height='120'%3E%3Cfilter%20id='n'%3E%3CfeTurbulence%20type='fractalNoise'%20baseFrequency='0.85'%20numOctaves='2'%20stitchTiles='stitch'/%3E%3CfeColorMatrix%20type='saturate'%20values='0'/%3E%3C/filter%3E%3Crect%20width='100%25'%20height='100%25'%20filter='url(%23n)'/%3E%3C/svg%3E")`,
-                backgroundSize: "120px 120px",
-                mixBlendMode: "soft-light", opacity: 0.42,
+                maxWidth: "100%", maxHeight: "100%",
+                filter: "drop-shadow(0 10px 22px rgba(90,70,55,0.18))",
               }}
             />
-            <motion.div
-              initial={{ opacity: 0.95 }}
-              animate={{ opacity: 0 }}
-              transition={{ duration: 1.6, ease: "easeOut", delay: 0.45 }}
-              style={{
-                position: "absolute", inset: 0,
-                background: "radial-gradient(circle at 50% 44%, rgba(255,255,255,0.95), transparent 68%)",
-              }}
-            />
-            <span style={{ fontSize: 38, position: "relative" }}>✨</span>
           </motion.div>
         </motion.div>
       </div>
