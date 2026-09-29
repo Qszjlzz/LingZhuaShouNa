@@ -1,6 +1,6 @@
 import { useRef, useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Plus, Sparkles, X, RotateCw, Pencil, ChevronRight, Play, Check, Camera, TriangleAlert } from "lucide-react";
+import { Plus, Sparkles, X, RotateCw, Pencil, ChevronRight, Play, Check, Camera, Trash2, CircleAlert } from "lucide-react";
 import { COFFEE, ORANGE, LINEN, BLUE, WHITE, SOFT } from "./theme";
 import { InProgressDetail } from "./InProgressDetail";
 import { nativeRequest, type NativeSpace } from "../nativeBridge";
@@ -86,7 +86,7 @@ type Piece = {
 const initialPieces: Piece[] = [
   { id: "p1", name: "床", vivid: "#A6B2D6", skin: "bed", items: 24, lastDays: 2, x: 40, y: 60, rot: 0, scale: 1 },
   { id: "p2", name: "桌面", vivid: "#ECC079", skin: "desk", items: 18, lastDays: 8, x: 178, y: 60, rot: 0, scale: 1 },
-  { id: "p3", name: "厨房", vivid: "#A9B486", skin: "kitchen", items: 9, lastDays: 5, x: 40, y: 194, rot: 0, scale: 1 },
+  { id: "p3", name: "厨房", vivid: "#A9B486", skin: "kitchen", items: 9, lastDays: 30, x: 40, y: 194, rot: 0, scale: 1 },
   { id: "p4", name: "茶几", vivid: "#DFA6B0", skin: "teatable", items: 31, lastDays: 15, x: 178, y: 144, rot: 0, scale: 1 },
 ];
 
@@ -254,7 +254,7 @@ function SpaceTile({
               filter: `${fadeFilter} opacity(${fadeAlpha})`,
             }}
           />
-          {/* 名称 + 徽章：代码层渲染（插画里不烤字），跟图标同一套 fade 节奏分层 */}
+          {/* 名称 + 徽章：代码层渲染（插画里不烤字）。照设计稿：名称与徽章保持深色清晰，不随插画褪色 */}
           <div
             className="absolute flex items-center"
             style={{
@@ -262,15 +262,11 @@ function SpaceTile({
               top: 6 * Math.min(piece.scale, 1.15),
               gap: 5,
               maxWidth: w - 14,
-              // 与插画同一套 fadeFilter + 透明度，字跟着图一起变淡
-              filter: fadeFilter,
-              opacity: fadeAlpha,
             }}
           >
             <span
               style={{
-                // 基色也往灰里走一点（力度减半，避免和 filter 叠加过头）
-                color: mix("#4A3B2A", "#9A9086", f * 0.55),
+                color: "#4A3B2A",
                 fontSize: 13 * Math.min(piece.scale, 1.15),
                 fontWeight: 700,
                 letterSpacing: "0.02em",
@@ -282,32 +278,49 @@ function SpaceTile({
             >
               {piece.name}
             </span>
-            {piece.lastDays >= 7 && (() => {
-              // 预警橙 → 变灰后转红（照设计稿两段式）
-              const bad = piece.lastDays >= 14;
+            {piece.lastDays >= 14 && (() => {
+              // 照设计稿：15天档 = 浅底橙字，30天档 = 粉底红字
+              const bad = piece.lastDays >= 30;
               const tone = bad ? "#D9534C" : "#E08A3C";
-              const shown = bad ? mix(tone, "#B0A89D", f) : tone;
               return (
               <span
                 className="flex items-center"
                 style={{
                   gap: 3,
-                  backgroundColor: rgba(tone, bad ? 0.16 - 0.06 * f : 0.16),
+                  backgroundColor: rgba(tone, bad ? 0.18 : 0.15),
                   borderRadius: 999,
                   padding: `${2.5 * piece.scale}px ${6 * piece.scale}px`,
                   fontSize: 10.5 * Math.min(piece.scale, 1.15),
                   fontWeight: 600,
-                  color: shown,
+                  color: tone,
                   whiteSpace: "nowrap",
                   flexShrink: 0,
                 }}
               >
-                <TriangleAlert size={9} color={shown} strokeWidth={2.4} />
+                <Trash2 size={9.5} color={tone} strokeWidth={2.2} />
                 {piece.lastDays}天未维护
               </span>
               );
             })()}
           </div>
+          {/* 30 天以上：卡面中央盖大号红色感叹号（照设计稿） */}
+          {piece.lastDays >= 30 && (
+            <div
+              className="absolute flex items-center justify-center pointer-events-none"
+              style={{
+                left: "50%",
+                top: "52%",
+                transform: "translate(-50%, -50%)",
+                width: 46 * Math.min(piece.scale, 1.15),
+                height: 46 * Math.min(piece.scale, 1.15),
+                borderRadius: "50%",
+                backgroundColor: "rgba(255,255,255,0.92)",
+                boxShadow: "0 2px 10px rgba(120,30,20,0.18)",
+              }}
+            >
+              <CircleAlert size={34 * Math.min(piece.scale, 1.15)} color="#A83226" strokeWidth={2.1} />
+            </div>
+          )}
           {/* born flash — warm bloom from within when a space joins */}
           {born && (
             <>
