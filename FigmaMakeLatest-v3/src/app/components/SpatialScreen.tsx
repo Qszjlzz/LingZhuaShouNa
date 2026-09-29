@@ -1,62 +1,26 @@
 import { useRef, useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Plus, Sparkles, X, RotateCw, Pencil, ChevronRight, Play, Check, Camera } from "lucide-react";
+import { Plus, Sparkles, X, RotateCw, Pencil, ChevronRight, Play, Check, Camera, Trash2, CircleAlert } from "lucide-react";
 import { COFFEE, ORANGE, LINEN, BLUE, WHITE, SOFT } from "./theme";
 import { InProgressDetail } from "./InProgressDetail";
 import { nativeRequest, type NativeSpace } from "../nativeBridge";
+import bedArt from "../../assets/spaces/bed.png";
+import deskArt from "../../assets/spaces/desk.png";
+import kitchenArt from "../../assets/spaces/kitchen.png";
+import teatableArt from "../../assets/spaces/teatable.png";
 
 /* ------------------------------------------------------------------ *
- *  Shape catalog — organic, hand-cut silhouettes that share one edge
- *  language so a varied collage still reads as a single map.
+ *  Space card artwork — hand-drawn room illustrations, one per kind.
+ *  Card size keeps each artwork's aspect ratio; scale multiplies it.
  * ------------------------------------------------------------------ */
-type ShapeKey = "capsule" | "arch" | "leaf" | "slab" | "petal" | "pebble" | "bone";
+type SkinKey = "bed" | "desk" | "kitchen" | "teatable";
 
-// hand-cut silhouettes as normalized (0..1) paths, used via clip-path so
-// edges read like torn / watercolour cut-outs rather than CSS rounding.
-const SHAPES: Record<ShapeKey, { w: number; h: number; path: string }> = {
-  capsule: {
-    w: 142, h: 74,
-    path: "M0.17,0.07 C0.05,0.12 0.0,0.32 0.01,0.52 C0.02,0.74 0.07,0.92 0.21,0.94 L0.82,0.93 C0.95,0.9 1.0,0.68 0.99,0.47 C0.98,0.26 0.93,0.08 0.79,0.07 Z",
-  },
-  arch: {
-    w: 100, h: 118,
-    path: "M0.5,0.02 C0.21,0.03 0.03,0.24 0.05,0.52 L0.06,0.87 C0.06,0.95 0.12,0.98 0.2,0.98 L0.81,0.97 C0.9,0.97 0.95,0.93 0.95,0.85 L0.96,0.5 C0.98,0.23 0.79,0.02 0.5,0.02 Z",
-  },
-  leaf: {
-    w: 120, h: 100,
-    path: "M0.05,0.08 C0.42,0.0 0.72,0.06 0.95,0.27 C1.01,0.35 0.99,0.52 0.9,0.64 C0.66,0.96 0.34,1.01 0.07,0.93 C0.0,0.68 0.0,0.38 0.05,0.08 Z",
-  },
-  slab: {
-    w: 128, h: 94,
-    path: "M0.11,0.07 C0.04,0.11 0.02,0.24 0.04,0.42 L0.02,0.75 C0.02,0.9 0.1,0.96 0.25,0.96 L0.78,0.98 C0.93,0.97 0.98,0.86 0.97,0.72 L0.98,0.27 C0.98,0.11 0.9,0.05 0.75,0.05 Z",
-  },
-  petal: {
-    w: 98, h: 116,
-    path: "M0.5,0.02 C0.75,0.03 0.93,0.19 0.92,0.41 C0.91,0.67 0.79,0.98 0.5,0.98 C0.22,0.98 0.09,0.65 0.09,0.4 C0.09,0.19 0.26,0.03 0.5,0.02 Z",
-  },
-  pebble: {
-    w: 124, h: 98,
-    path: "M0.52,0.03 C0.77,0.02 0.98,0.21 0.97,0.47 C0.97,0.77 0.79,0.98 0.5,0.97 C0.21,0.97 0.02,0.76 0.03,0.47 C0.04,0.2 0.27,0.04 0.52,0.03 Z",
-  },
-  bone: {
-    w: 134, h: 80,
-    path: "M0.15,0.5 C0.14,0.26 0.29,0.13 0.43,0.2 C0.5,0.24 0.5,0.24 0.57,0.2 C0.71,0.12 0.87,0.27 0.86,0.5 C0.86,0.73 0.71,0.87 0.57,0.8 C0.5,0.76 0.5,0.76 0.43,0.8 C0.29,0.87 0.15,0.74 0.15,0.5 Z",
-  },
+const SKINS: Record<SkinKey, { src: string; w: number; h: number }> = {
+  bed: { src: bedArt, w: 138, h: 138 },
+  desk: { src: deskArt, w: 143, h: 78 },
+  kitchen: { src: kitchenArt, w: 138, h: 138 },
+  teatable: { src: teatableArt, w: 139, h: 74 },
 };
-
-function ShapeDefs() {
-  return (
-    <svg width="0" height="0" style={{ position: "absolute" }} aria-hidden>
-      <defs>
-        {(Object.keys(SHAPES) as ShapeKey[]).map((k) => (
-          <clipPath key={k} id={`clip-${k}`} clipPathUnits="objectBoundingBox">
-            <path d={SHAPES[k].path} />
-          </clipPath>
-        ))}
-      </defs>
-    </svg>
-  );
-}
 
 // curated, airy "premium" palette the user can recolour spaces with
 const PALETTE = ["#E29B7B", "#7FB0AA", "#A9B486", "#DFA6B0", "#ECC079", "#A6B2D6", "#C3AAD4", "#9DBBC9"];
@@ -91,11 +55,15 @@ function rgba(c: string, a: number) {
   const [r, g, b] = toRgb(c);
   return `rgba(${r}, ${g}, ${b}, ${a})`;
 }
-// 0 = vivid & fresh, ~1 = washed-out grey. Eased so a space starts
-// visibly losing colour once it has been left for a while.
+// 两段式（照设计稿）：14 天内卡片保持鲜亮，14 天起开始变灰，42 天灰透。
+// 7~14 天只挂橙色徽章预警，卡片本体不动。
+// 连续渐变（天数越多越暗沉，每天都有差别）：
+// 0~14 天 —— 轻微走色（0 → 0.38），8 天时已能看出一点发旧
+// 14 天起 —— 明显暗沉（0.62 起步），到 42 天灰透（0.96）
 function fade(days: number) {
-  const t = Math.min(days / 42, 1);
-  return Math.min(Math.pow(t, 0.72) * 1.03, 0.96);
+  if (days < 14) return 0.38 * Math.pow(days / 14, 1.35);
+  const t = Math.min((days - 14) / 28, 1);
+  return 0.62 + 0.34 * Math.pow(t, 0.72);
 }
 
 /* ------------------------------------------------------------------ *
@@ -104,9 +72,8 @@ function fade(days: number) {
 type Piece = {
   id: string;
   name: string;
-  emoji: string;
   vivid: string;
-  shape: ShapeKey;
+  skin: SkinKey;
   items: number;
   lastDays: number;
   x: number;
@@ -115,25 +82,26 @@ type Piece = {
   scale: number;
 };
 
+// 初始摆位照设计稿 Group 433：床左上、桌面右上、茶几右中、厨房左下（画板 358×408，组稿 282×276 居中偏移 ≈38,60）
 const initialPieces: Piece[] = [
-  { id: "p1", name: "懒人沙发区", emoji: "🛋️", vivid: "#E29B7B", shape: "slab", items: 24, lastDays: 2, x: 24, y: 34, rot: -4, scale: 1.06 },
-  { id: "p2", name: "我的书桌", emoji: "🖥️", vivid: "#7FB0AA", shape: "capsule", items: 18, lastDays: 8, x: 160, y: 24, rot: 5, scale: 1 },
-  { id: "p3", name: "晒太阳的阳台", emoji: "🪴", vivid: "#A9B486", shape: "arch", items: 9, lastDays: 26, x: 192, y: 122, rot: -3, scale: 0.9 },
-  { id: "p4", name: "小卧室", emoji: "🛏️", vivid: "#DFA6B0", shape: "petal", items: 31, lastDays: 48, x: 44, y: 172, rot: 6, scale: 1 },
+  { id: "p1", name: "床", vivid: "#A6B2D6", skin: "bed", items: 24, lastDays: 2, x: 40, y: 60, rot: 0, scale: 1 },
+  { id: "p2", name: "桌面", vivid: "#ECC079", skin: "desk", items: 18, lastDays: 8, x: 178, y: 60, rot: 0, scale: 1 },
+  { id: "p3", name: "厨房", vivid: "#A9B486", skin: "kitchen", items: 9, lastDays: 30, x: 40, y: 194, rot: 0, scale: 1 },
+  { id: "p4", name: "茶几", vivid: "#DFA6B0", skin: "teatable", items: 31, lastDays: 15, x: 178, y: 144, rot: 0, scale: 1 },
 ];
 
-const NEW_TEMPLATES: { name: string; emoji: string; vivid: string; shape: ShapeKey }[] = [
-  { name: "厨房", emoji: "🍳", vivid: "#ECC079", shape: "leaf" },
-  { name: "衣柜", emoji: "👗", vivid: "#C3AAD4", shape: "petal" },
-  { name: "玄关", emoji: "🔑", vivid: "#9DBBC9", shape: "bone" },
-  { name: "工作角落", emoji: "💡", vivid: "#E29B7B", shape: "pebble" },
-  { name: "储物间", emoji: "📦", vivid: "#A6B2D6", shape: "slab" },
+const NEW_TEMPLATES: { name: string; vivid: string; skin: SkinKey }[] = [
+  { name: "厨房", vivid: "#A9B486", skin: "kitchen" },
+  { name: "衣柜", vivid: "#C3AAD4", skin: "bed" },
+  { name: "玄关", vivid: "#9DBBC9", skin: "teatable" },
+  { name: "工作角落", vivid: "#E29B7B", skin: "desk" },
+  { name: "储物间", vivid: "#A6B2D6", skin: "desk" },
 ];
 
 const LONG_PRESS = 420;
 
 function effSize(p: Piece) {
-  const s = SHAPES[p.shape];
+  const s = SKINS[p.skin];
   return { w: s.w * p.scale, h: s.h * p.scale };
 }
 
@@ -173,12 +141,13 @@ function SpaceTile({
   const { w, h } = effSize(piece);
 
   const f = fade(piece.lastDays);
-  const fill = mix(piece.vivid, GREY, f);
+
+  // 插画与叠字共用同一套褪色滤镜，保证两者视觉同步
+  const fadeFilter = `brightness(${1 - 0.18 * f}) saturate(${1 - 0.8 * f}) grayscale(${0.85 * f})`;
+  const fadeAlpha = 1 - f * 0.4;
 
   // urgency → faintness; fresh reads full & textured, stale washes out
   const tileOpacity = 1 - f * 0.4;
-  const fillAlpha = 0.95 - f * 0.22;
-  const grainOpacity = 0.55 - f * 0.32;
 
   function clearPress() {
     if (pressTimer.current) {
@@ -266,28 +235,92 @@ function SpaceTile({
             : { type: "spring", stiffness: 200, damping: 18 },
         }}
       >
-        {/* hand-cut painted body (silhouette via clip-path) */}
+        {/* illustrated card body — artwork fills the tile, fades with days */}
         <div
-          className="relative w-full h-full flex flex-col items-center justify-center text-center"
+          className="relative w-full h-full"
           style={{
-            clipPath: `url(#clip-${piece.shape})`,
-            WebkitClipPath: `url(#clip-${piece.shape})`,
-            backgroundColor: rgba(fill, fillAlpha),
             filter: editing
               ? "drop-shadow(0 10px 18px rgba(90,70,55,0.18))"
               : `drop-shadow(0 5px 12px rgba(90,70,55,${0.13 - f * 0.06}))`,
           }}
         >
-          {/* riso grain texture — matte, strongest when fresh */}
-          <div
-            className="absolute inset-0 pointer-events-none"
+          <img
+            src={SKINS[piece.skin].src}
+            alt=""
+            draggable={false}
+            className="absolute inset-0 w-full h-full pointer-events-none"
             style={{
-              backgroundImage: `url("${GRAIN}")`,
-              backgroundSize: "150px 150px",
-              mixBlendMode: "soft-light",
-              opacity: grainOpacity,
+              // 变暗 + 去饱和 + 转灰 + 略微透明（照设计稿"暗沉下去"的效果）
+              filter: `${fadeFilter} opacity(${fadeAlpha})`,
             }}
           />
+          {/* 名称 + 徽章：代码层渲染（插画里不烤字）。照设计稿：名称与徽章保持深色清晰，不随插画褪色 */}
+          <div
+            className="absolute flex items-center"
+            style={{
+              left: 11 * Math.min(piece.scale, 1.15),
+              top: 6 * Math.min(piece.scale, 1.15),
+              gap: 5,
+              maxWidth: w - 14,
+            }}
+          >
+            <span
+              style={{
+                color: "#4A3B2A",
+                fontSize: 13 * Math.min(piece.scale, 1.15),
+                fontWeight: 700,
+                letterSpacing: "0.02em",
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                textShadow: "0 1px 2px rgba(255,255,255,0.4)",
+              }}
+            >
+              {piece.name}
+            </span>
+            {piece.lastDays >= 14 && (() => {
+              // 照设计稿：15天档 = 浅底橙字，30天档 = 粉底红字
+              const bad = piece.lastDays >= 30;
+              const tone = bad ? "#D9534C" : "#E08A3C";
+              return (
+              <span
+                className="flex items-center"
+                style={{
+                  gap: 3,
+                  backgroundColor: rgba(tone, bad ? 0.18 : 0.15),
+                  borderRadius: 999,
+                  padding: `${2.5 * piece.scale}px ${6 * piece.scale}px`,
+                  fontSize: 10.5 * Math.min(piece.scale, 1.15),
+                  fontWeight: 600,
+                  color: tone,
+                  whiteSpace: "nowrap",
+                  flexShrink: 0,
+                }}
+              >
+                <Trash2 size={9.5} color={tone} strokeWidth={2.2} />
+                {piece.lastDays}天未维护
+              </span>
+              );
+            })()}
+          </div>
+          {/* 30 天以上：卡面中央盖大号红色感叹号（照设计稿） */}
+          {piece.lastDays >= 30 && (
+            <div
+              className="absolute flex items-center justify-center pointer-events-none"
+              style={{
+                left: "50%",
+                top: "52%",
+                transform: "translate(-50%, -50%)",
+                width: 46 * Math.min(piece.scale, 1.15),
+                height: 46 * Math.min(piece.scale, 1.15),
+                borderRadius: "50%",
+                backgroundColor: "rgba(255,255,255,0.92)",
+                boxShadow: "0 2px 10px rgba(120,30,20,0.18)",
+              }}
+            >
+              <CircleAlert size={34 * Math.min(piece.scale, 1.15)} color="#A83226" strokeWidth={2.1} />
+            </div>
+          )}
           {/* born flash — warm bloom from within when a space joins */}
           {born && (
             <>
@@ -326,24 +359,6 @@ function SpaceTile({
               />
             </>
           )}
-          <span
-            className="relative"
-            style={{ fontSize: 24 * piece.scale, lineHeight: 1, filter: `grayscale(${f * 0.75}) opacity(${1 - f * 0.18})` }}
-          >
-            {piece.emoji}
-          </span>
-          <span
-            className="truncate px-2 relative"
-            style={{
-              color: mix("#463222", "#8C8378", f),
-              fontSize: 11 * Math.min(piece.scale, 1.15),
-              fontWeight: 600,
-              marginTop: 4,
-              maxWidth: w - 12,
-            }}
-          >
-            {piece.name}
-          </span>
         </div>
       </motion.div>
 
@@ -474,9 +489,8 @@ export function SpatialScreen({
     const p: Piece = {
       id: "p" + Date.now(),
       name: tpl.name,
-      emoji: tpl.emoji,
       vivid: tpl.vivid,
-      shape: tpl.shape,
+      skin: tpl.skin,
       items: 6 + Math.floor(Math.random() * 20),
       lastDays: 0,
       x: 60 + Math.random() * 110,
@@ -489,9 +503,9 @@ export function SpatialScreen({
 
   function claimReward() {
     if (!reward) return;
-    const shape = SHAPES[reward.shape];
-    const w = Math.round(shape.w * reward.scale);
-    const h = Math.round(shape.h * reward.scale);
+    const s = SKINS[reward.skin];
+    const w = Math.round(s.w * reward.scale);
+    const h = Math.round(s.h * reward.scale);
     setBornPos({ cx: reward.x + w / 2, cy: reward.y + h / 2 });
     setPieces((prev) => [...prev, reward]);
     void nativeRequest("space.add", { name: reward.name }).then(onNativeChange);
@@ -528,7 +542,6 @@ export function SpatialScreen({
 
   return (
     <div className="h-full w-full overflow-y-auto pb-32" style={{ backgroundColor: LINEN }}>
-      <ShapeDefs />
       {/* header — quiet */}
       <div className="px-6 pt-14 pb-1 flex items-end justify-between">
         <div>
@@ -768,15 +781,16 @@ export function SpatialScreen({
               <div className="mx-auto mb-4 rounded-full" style={{ width: 40, height: 4, backgroundColor: SOFT }} />
               <div className="flex items-center gap-3.5">
                 <div
-                  className="h-14 w-14 flex items-center justify-center flex-shrink-0"
-                  style={{
-                    backgroundColor: mix(current.vivid, GREY, fade(current.lastDays)),
-                    clipPath: `url(#clip-${current.shape})`,
-                    WebkitClipPath: `url(#clip-${current.shape})`,
-                    fontSize: 26,
-                  }}
+                  className="h-14 w-14 flex items-center justify-center flex-shrink-0 overflow-hidden"
+                  style={{ borderRadius: 16, boxShadow: "0 2px 8px rgba(90,70,55,0.12)" }}
                 >
-                  {current.emoji}
+                  <img
+                    src={SKINS[current.skin].src}
+                    alt=""
+                    className="w-full h-full"
+                    style={{ objectFit: "cover" }}
+                    draggable={false}
+                  />
                 </div>
                 <div className="flex-1 min-w-0">
                   {renaming ? (
@@ -824,34 +838,19 @@ export function SpatialScreen({
               </div>
 
               {current.lastDays >= 14 && (
-                <div className="mt-4 p-3.5 flex items-center gap-3" style={{ backgroundColor: "#F4EDE4", borderRadius: 18 }}>
-                  <div className="relative flex-shrink-0">
-                    {/* Pulse ring to draw attention */}
-                    <motion.div
-                      className="absolute inset-0 rounded-full"
-                      style={{ backgroundColor: ORANGE }}
-                      animate={{ scale: [1, 1.55], opacity: [0.35, 0] }}
-                      transition={{ duration: 1.4, repeat: Infinity, ease: "easeOut" }}
-                    />
-                    <motion.button
-                      whileTap={{ scale: 0.88 }}
-                      transition={{ type: "spring", stiffness: 440, damping: 22 }}
-                      onClick={handleRelight}
-                      className="relative h-9 w-9 rounded-full flex items-center justify-center"
-                      style={{
-                        backgroundColor: ORANGE,
-                        boxShadow: "0 4px 14px rgba(250,136,58,0.42)",
-                        border: "none",
-                        cursor: "pointer",
-                      }}
-                    >
-                      <Sparkles size={15} color={WHITE} />
-                    </motion.button>
+                <motion.button
+                  whileTap={{ scale: 0.985 }}
+                  onClick={handleRelight}
+                  className="mt-4 p-3.5 flex items-center gap-3 text-left w-full"
+                  style={{ backgroundColor: "#FBEBDB", borderRadius: 18, border: "none", cursor: "pointer" }}
+                >
+                  <div className="h-9 w-9 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: ORANGE }}>
+                    <Sparkles size={15} color={WHITE} />
                   </div>
-                  <p style={{ color: COFFEE, opacity: 0.7, fontSize: 12.5, flex: 1 }}>
-                    这块空间的颜色已经变淡了——{current.lastDays} 天没照顾它,回去点亮它吧。
+                  <p style={{ color: "#8A5A34", fontSize: 12.5, flex: 1, lineHeight: 1.5 }}>
+                    这块空间的颜色已经变淡了——{current.lastDays} 天没照顾它，回去点亮它吧。
                   </p>
-                </div>
+                </motion.button>
               )}
 
               <p style={{ color: COFFEE, opacity: 0.5, fontSize: 12, fontWeight: 600, marginTop: 20, marginBottom: 10 }}>整理记录</p>
@@ -1036,20 +1035,20 @@ export function SpatialScreen({
                 <motion.div
                   initial={{ scale: 0, rotate: -18 }} animate={{ scale: 1, rotate: 0 }}
                   transition={{ type: "spring", stiffness: 250, damping: 15, delay: 0.12 }}
-                  className="absolute inset-0 flex flex-col items-center justify-center"
+                  className="absolute inset-0 flex flex-col items-center justify-center overflow-hidden"
                   style={{
                     width: 96, height: 96, margin: "auto",
-                    clipPath: `url(#clip-${reward.shape})`,
-                    WebkitClipPath: `url(#clip-${reward.shape})`,
-                    backgroundColor: reward.vivid,
+                    borderRadius: 18,
                     filter: "drop-shadow(0 8px 16px rgba(90,70,55,0.2))",
                   }}
                 >
-                  <div
-                    className="absolute inset-0 pointer-events-none"
-                    style={{ backgroundImage: `url("${GRAIN}")`, backgroundSize: "120px 120px", mixBlendMode: "soft-light", opacity: 0.5 }}
+                  <img
+                    src={SKINS[reward.skin].src}
+                    alt=""
+                    className="absolute inset-0 w-full h-full"
+                    style={{ objectFit: "cover" }}
+                    draggable={false}
                   />
-                  <span className="relative" style={{ fontSize: 32 }}>{reward.emoji}</span>
                 </motion.div>
               </div>
 

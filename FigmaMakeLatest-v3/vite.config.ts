@@ -28,5 +28,7 @@ export default defineConfig({
         inlineDynamicImports: true,
       },
     },
+    // 图片全部内联成 data URI：避免运行时相对/绝对路径解析丢图
+    assetsInlineLimit: 4 * 1024 * 1024,
   },
 })

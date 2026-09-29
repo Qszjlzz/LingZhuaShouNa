@@ -1,4 +1,8 @@
 import { useState, useRef, useEffect } from "react";
+import bedArt from "../../assets/spaces/bed.png";
+import deskArt from "../../assets/spaces/desk.png";
+import kitchenArt from "../../assets/spaces/kitchen.png";
+import teatableArt from "../../assets/spaces/teatable.png";
 import {
   ArrowLeft,
   Sparkles,
@@ -45,8 +49,6 @@ const THUMB_IMG =
 
 type Step =
   | "capture"
-  | "review"
-  | "confirm"
   | "generating"
   | "plandeck"
   | "tune"
@@ -223,14 +225,30 @@ function personalizePlans(items: NativeItem[]): GenPlan[] {
 export function ShootFlow({
   onClose,
   onFinish,
+  demoStep,
 }: {
   onClose: () => void;
   onFinish?: () => void;
+  /** dev/演示：跳过拍摄直接落到某一步（?flow=），不影响正常流程 */
+  demoStep?: Step;
 }) {
-  const [step, setStep] = useState<Step>("capture");
+  const [step, setStep] = useState<Step>(demoStep ?? "capture");
   const [assets, setAssets] = useState<CapturedAsset[]>([]);
   // 确认过要收的物品、以及由这些物品生成并勾选的区域，后面每一步都用它。
   const [confirmedItems, setConfirmedItems] = useState<NativeItem[]>([]);
+  // 演示模式没有真实识别结果，喂一组示例物品让中后段有内容可看
+  useEffect(() => {
+    if (demoStep && demoStep !== "capture") {
+      setConfirmedItems([
+        { id: "d1", name: "笔记本电脑", category: "电子产品", confidence: 0.92, suggestedZone: "桌面收纳区", isSelected: true },
+        { id: "d2", name: "书本", category: "学习用品", confidence: 0.9, suggestedZone: "桌面收纳区", isSelected: true },
+        { id: "d3", name: "笔", category: "文具", confidence: 0.88, suggestedZone: "手边工具区", isSelected: true },
+        { id: "d4", name: "键盘", category: "电子产品", confidence: 0.9, suggestedZone: "桌面收纳区", isSelected: true },
+        { id: "d5", name: "水瓶", category: "日用品", confidence: 0.86, suggestedZone: "手边工具区", isSelected: true },
+      ]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [demoStep]);
   const [zoneList, setZoneList] = useState<FlowZone[]>([]);
   const photo = assets[0]?.src;
   const [plans, setPlans] = useState<GenPlan[]>(GEN_PLANS);
@@ -255,35 +273,27 @@ export function ShootFlow({
           onClose={onClose}
           on完成={(captured) => {
             setAssets(captured);
+            // 「检查照片」页已删（设计稿没有这屏，且前面拍摄页已有类似的查看）：
+            // 拍完直接进生成方案。识别等待 + 物品保存挪到后台跑，generating 动画期间正好完成。
             setGenReturn("plandeck");
-            // 设计稿流程：拍完先看照片，再确认识别出的物品，最后才生成方案。
-            setStep("review");
-          }}
-        />
-      )}
-      {step === "review" && (
-        <ReviewStep
-          assets={assets}
-          onBack={() => setStep("capture")}
-          onNext={() => setStep("confirm")}
-          onRetake={() => setStep("capture")}
-          onDelete={(id) => {
-            const next = assets.filter((x) => x.id !== id);
-            setAssets(next);
-            if (next.length === 0) setStep("capture");
-          }}
-        />
-      )}
-      {step === "confirm" && (
-        <ConfirmStep
-          assets={assets}
-          onBack={() => setStep("review")}
-          onNext={(confirmed) => {
-            setConfirmedItems(confirmed);
-            void refreshPlans().finally(() => {
-              setGenReturn("plandeck");
+            void (async () => {
+              try {
+                await nativeRequest("scan.await", {});
+                const state = await nativeRequest<NativeState>("state.get");
+                const payload = state.scannedItems.map((item) => ({
+                  ...item,
+                  category: item.category || "收纳工具",
+                  suggestedZone: item.suggestedZone || "手边工具区",
+                  isSelected: item.isSelected ?? true,
+                }));
+                await nativeRequest("items.save", { items: payload });
+                setConfirmedItems(payload);
+              } catch {
+                /* 识别失败也继续走流程，区域页有兜底 */
+              }
+              await refreshPlans().catch(() => undefined);
               setStep("generating");
-            });
+            })();
           }}
         />
       )}
@@ -1971,7 +1981,11 @@ function CaptureStep({
           {(["photo", "video"] as const).map((m) => (
             <button
               key={m}
-              onClick={() => setMode(m)}
+              onClick={() => {
+                // 从 AR 切回连拍时顺手把实时扫描停掉（AR 页底部已经没有退出按钮了）
+                if (mode === "video" && m === "photo") exitAR();
+                else setMode(m);
+              }}
               disabled={recording}
               className="px-4 py-1.5 flex items-center gap-1.5"
               style={{
@@ -2160,32 +2174,17 @@ function CaptureStep({
       </div>
       )}
 
-      {/* AR 模式底部：只有一个退出按钮，保持全屏扫描画面 */}
-      {mode === "video" && (
-        <div className="absolute bottom-0 left-0 right-0 pb-12 flex flex-col items-center gap-2.5">
-          {camFailed && (
-            <button
-              onClick={retryCamera}
-              className="px-4 py-2"
-              style={{ backgroundColor: "rgba(0,0,0,0.55)", color: WHITE, borderRadius: 999, fontSize: 11 }}
-            >
-              相机未启动 · 点击重试
-            </button>
-          )}
+      {/* AR 模式底部：按设计稿保持干净 —— 画面上只有识别标签，不放任何按钮。
+          退出走左上角 × 或切回「多张连拍」页签。只有相机没起来时才给重试入口。 */}
+      {mode === "video" && camFailed && (
+        <div className="absolute bottom-0 left-0 right-0 pb-12 flex justify-center">
           <button
-            onClick={exitAR}
-            className="h-16 w-16 rounded-full flex items-center justify-center"
-            style={{
-              backgroundColor: WHITE,
-              border: "3px solid rgba(255,255,255,0.55)",
-              boxShadow: "0 8px 24px rgba(0,0,0,0.28)",
-            }}
+            onClick={retryCamera}
+            className="px-4 py-2"
+            style={{ backgroundColor: "rgba(0,0,0,0.55)", color: WHITE, borderRadius: 999, fontSize: 11 }}
           >
-            <ArrowLeft size={24} color={COFFEE} />
+            相机未启动 · 点击重试
           </button>
-          <span style={{ color: WHITE, fontSize: 11, fontWeight: 600, textShadow: "0 1px 4px rgba(0,0,0,0.6)" }}>
-            退出 AR 扫描
-          </span>
         </div>
       )}
     </div>
@@ -2238,33 +2237,20 @@ function ReviewStep({
 
   return (
     <div className="h-full w-full flex flex-col" style={{ backgroundColor: "#16130F" }}>
-      {/* Top bar */}
+      {/* Top bar — 设计稿：左边关闭 ×，中间是「第几张 / 共几张」；没有照片时中间标题为「添加照片」 */}
       <div className="px-5 pt-14 pb-3 flex items-center justify-between">
         <button
           onClick={onBack}
           className="h-10 w-10 rounded-full flex items-center justify-center"
           style={{ backgroundColor: "rgba(255,255,255,0.14)" }}
         >
-          <ArrowLeft size={18} color={WHITE} />
+          <X size={18} color={WHITE} />
         </button>
-        <div className="text-center">
-          <p style={{ color: WHITE, fontSize: 15, fontWeight: 600 }}>检查照片</p>
-          <p style={{ color: "rgba(255,255,255,0.55)", fontSize: 11 }}>
-            {loadingTags
-              ? "正在识别刚刚拍到的物品…"
-              : tags.length > 0
-              ? `识别到 ${tags.length} 件物品`
-              : "还没有识别到物品"}
-          </p>
-        </div>
-        <button
-          onClick={onRetake}
-          className="h-10 px-3 rounded-full flex items-center gap-1"
-          style={{ backgroundColor: "rgba(255,255,255,0.14)" }}
-        >
-          <Plus size={14} color={WHITE} />
-          <span style={{ color: WHITE, fontSize: 11, fontWeight: 600 }}>添加</span>
-        </button>
+        <p style={{ color: WHITE, fontSize: 15, fontWeight: 600 }}>
+          {a ? `${Math.min(primary, assets.length - 1) + 1} / ${assets.length}` : "添加照片"}
+        </p>
+        {/* 右侧占位，让中间标题保持水平居中 */}
+        <div style={{ width: 40, height: 40 }} />
       </div>
 
       {/* Photo + recognition labels */}
@@ -2314,7 +2300,7 @@ function ReviewStep({
         ) : (
           <button
             onClick={onRetake}
-            className="absolute inset-0 flex flex-col items-center justify-center gap-2"
+            className="absolute inset-0 flex flex-col items-center justify-center gap-3"
             style={{
               backgroundColor: "rgba(255,255,255,0.05)",
               border: "2px dashed rgba(255,255,255,0.28)",
@@ -2322,12 +2308,13 @@ function ReviewStep({
             }}
           >
             <div
-              className="h-12 w-12 rounded-full flex items-center justify-center"
-              style={{ backgroundColor: "rgba(255,255,255,0.14)" }}
+              className="rounded-full flex items-center justify-center"
+              style={{ width: 62, height: 62, backgroundColor: "rgba(255,255,255,0.14)", border: "2px solid rgba(255,255,255,0.35)" }}
             >
-              <Plus size={22} color={WHITE} />
+              <Plus size={28} color={WHITE} />
             </div>
-            <span style={{ color: WHITE, fontSize: 12.5, fontWeight: 600 }}>添加照片</span>
+            <span style={{ color: WHITE, fontSize: 14, fontWeight: 600 }}>添加照片</span>
+            <span style={{ color: "rgba(255,255,255,0.5)", fontSize: 11.5 }}>拍一张或从相册里选一张</span>
           </button>
         )}
       </div>
@@ -6271,7 +6258,7 @@ function RelightChoiceStep({
           transition={{ type: "spring", stiffness: 400, damping: 28 }}
           onClick={onTune}
           style={{
-            flex: 1, borderRadius: 26, overflow: "hidden",
+            flexShrink: 0, borderRadius: 26, overflow: "hidden",
             position: "relative", border: "none", cursor: "pointer",
             backgroundColor: spaceVivid, textAlign: "left",
           }}
@@ -6299,7 +6286,7 @@ function RelightChoiceStep({
           transition={{ type: "spring", stiffness: 400, damping: 28 }}
           onClick={onNew}
           style={{
-            flex: 1, borderRadius: 26, overflow: "hidden",
+            flexShrink: 0, borderRadius: 26, overflow: "hidden",
             position: "relative", border: `2px solid ${SOFT}`,
             cursor: "pointer", backgroundColor: WHITE, textAlign: "left",
           }}
@@ -6500,6 +6487,13 @@ function ProofCaptureStep({
   );
 }
 
+const SPACE_ART: Record<string, string> = {
+  床: bedArt,
+  桌面: deskArt,
+  厨房: kitchenArt,
+  茶几: teatableArt,
+};
+
 function RelightCompleteStep({
   spaceName,
   spaceVivid,
@@ -6526,33 +6520,17 @@ function RelightCompleteStep({
         }}
       />
 
-      {/* Spinning sparkle ring + centre tile */}
+      {/* Space illustration card: grey → full colour (照设计稿完成页) */}
       <div style={{ position: "relative", width: 200, height: 200, marginBottom: 36 }}>
         <motion.div
-          animate={{ rotate: 360 }}
-          transition={{ duration: 9, repeat: Infinity, ease: "linear" }}
-          style={{ position: "absolute", inset: 0 }}
-        >
-          {[0, 1, 2, 3, 4, 5].map((i) => (
-            <motion.div
-              key={i}
-              initial={{ opacity: 0, scale: 0 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: 0.45 + i * 0.1, type: "spring", stiffness: 260, damping: 18 }}
-              style={{
-                position: "absolute",
-                left: "50%", top: "50%",
-                transform: `rotate(${i * 60}deg) translateY(-92px) translate(-50%, -50%)`,
-                color: i % 2 === 0 ? ORANGE : BLUE,
-                display: "flex", alignItems: "center", justifyContent: "center",
-              }}
-            >
-              <Sparkles size={i % 2 === 0 ? 14 : 11} />
-            </motion.div>
-          ))}
-        </motion.div>
-
-        {/* Tile: grey → space colour */}
+          animate={{ scale: [1, 1.06, 1], opacity: [0.5, 0.75, 0.5] }}
+          transition={{ duration: 4.2, repeat: Infinity, ease: "easeInOut" }}
+          style={{
+            position: "absolute", inset: 8, borderRadius: 30,
+            background: `radial-gradient(circle at 50% 46%, ${spaceVivid}66, transparent 72%)`,
+            pointerEvents: "none",
+          }}
+        />
         <motion.div
           initial={{ scale: 0.55, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
@@ -6560,34 +6538,22 @@ function RelightCompleteStep({
           style={{ position: "absolute", inset: 22 }}
         >
           <motion.div
-            initial={{ backgroundColor: "#C7C0B4" }}
-            animate={{ backgroundColor: spaceVivid }}
+            initial={{ filter: "grayscale(1)", opacity: 0.55 }}
+            animate={{ filter: "grayscale(0)", opacity: 1 }}
             transition={{ duration: 1.8, ease: "easeOut", delay: 0.45 }}
             style={{
               width: "100%", height: "100%",
-              borderRadius: 28,
               display: "flex", alignItems: "center", justifyContent: "center",
-              position: "relative", overflow: "hidden",
             }}
           >
-            <div
+            <img
+              src={SPACE_ART[spaceName] ?? kitchenArt}
+              alt={spaceName}
               style={{
-                position: "absolute", inset: 0,
-                backgroundImage: `url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='120'%20height='120'%3E%3Cfilter%20id='n'%3E%3CfeTurbulence%20type='fractalNoise'%20baseFrequency='0.85'%20numOctaves='2'%20stitchTiles='stitch'/%3E%3CfeColorMatrix%20type='saturate'%20values='0'/%3E%3C/filter%3E%3Crect%20width='100%25'%20height='100%25'%20filter='url(%23n)'/%3E%3C/svg%3E")`,
-                backgroundSize: "120px 120px",
-                mixBlendMode: "soft-light", opacity: 0.42,
+                maxWidth: "100%", maxHeight: "100%",
+                filter: "drop-shadow(0 10px 22px rgba(90,70,55,0.18))",
               }}
             />
-            <motion.div
-              initial={{ opacity: 0.95 }}
-              animate={{ opacity: 0 }}
-              transition={{ duration: 1.6, ease: "easeOut", delay: 0.45 }}
-              style={{
-                position: "absolute", inset: 0,
-                background: "radial-gradient(circle at 50% 44%, rgba(255,255,255,0.95), transparent 68%)",
-              }}
-            />
-            <span style={{ fontSize: 38, position: "relative" }}>✨</span>
           </motion.div>
         </motion.div>
       </div>
@@ -6672,7 +6638,13 @@ type RelightStep =
   | "complete";
 
 export function RelightFlow({ spaceId, spaceName, spaceVivid, onClose, onComplete }: RelightFlowProps) {
-  const [step, setStep] = useState<RelightStep>("capture");
+  // dev/演示：?relight=choice|tune|proof|complete 可直接跳到对应屏（不带参数走正常流程）
+  const [step, setStep] = useState<RelightStep>(() => {
+    const s = typeof location !== "undefined" ? new URLSearchParams(location.search).get("relight") : null;
+    return (["choice", "tune", "proof", "complete"] as RelightStep[]).includes(s as RelightStep)
+      ? (s as RelightStep)
+      : "capture";
+  });
   const [chosen, setChosen] = useState<GenPlan>(GEN_PLANS[0]);
   const [relightMode, setRelightMode] = useState<"tune" | "new">("tune");
 
