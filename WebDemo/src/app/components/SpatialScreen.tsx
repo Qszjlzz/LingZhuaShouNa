@@ -60,7 +60,8 @@ function rgba(c: string, a: number) {
 function fade(days: number) {
   if (days < 14) return 0;
   const t = Math.min((days - 14) / 28, 1);
-  return Math.min(Math.pow(t, 0.72) * 0.98, 0.96);
+  // 一到 14 天就明显暗下来（0.62），之后 42 天灰透（0.96）
+  return 0.62 + 0.34 * Math.pow(t, 0.72);
 }
 
 /* ------------------------------------------------------------------ *
@@ -243,7 +244,8 @@ function SpaceTile({
             draggable={false}
             className="absolute inset-0 w-full h-full pointer-events-none"
             style={{
-              filter: `saturate(${1 - 0.72 * f}) grayscale(${0.5 * f}) opacity(${1 - f * 0.35})`,
+              // 变暗 + 去饱和 + 转灰 + 略微透明（照设计稿"暗沉下去"的效果）
+              filter: `brightness(${1 - 0.18 * f}) saturate(${1 - 0.8 * f}) grayscale(${0.85 * f}) opacity(${1 - f * 0.4})`,
             }}
           />
           {/* 名称 + 徽章：代码层渲染（插画里不烤字），跟图标同一套 fade 节奏分层 */}
@@ -255,7 +257,7 @@ function SpaceTile({
               gap: 5,
               maxWidth: w - 14,
               // 与插画 filter opacity 同步，字跟着图一起变淡
-              opacity: 1 - f * 0.35,
+              opacity: 1 - f * 0.4,
             }}
           >
             <span
