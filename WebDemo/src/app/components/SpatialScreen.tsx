@@ -16,10 +16,10 @@ import teatableArt from "../../assets/spaces/teatable.png";
 type SkinKey = "bed" | "desk" | "kitchen" | "teatable";
 
 const SKINS: Record<SkinKey, { src: string; w: number; h: number }> = {
-  bed: { src: bedArt, w: 142, h: 144 },
-  desk: { src: deskArt, w: 152, h: 81 },
-  kitchen: { src: kitchenArt, w: 142, h: 144 },
-  teatable: { src: teatableArt, w: 152, h: 78 },
+  bed: { src: bedArt, w: 128, h: 130 },
+  desk: { src: deskArt, w: 137, h: 73 },
+  kitchen: { src: kitchenArt, w: 128, h: 127 },
+  teatable: { src: teatableArt, w: 137, h: 64 },
 };
 
 // curated, airy "premium" palette the user can recolour spaces with
@@ -250,8 +250,8 @@ function SpaceTile({
             style={{
               left: 11 * Math.min(piece.scale, 1.15),
               top: 6 * Math.min(piece.scale, 1.15),
-              gap: 6,
-              maxWidth: w - 20,
+              gap: 5,
+              maxWidth: w - 14,
             }}
           >
             <span
@@ -271,12 +271,12 @@ function SpaceTile({
               <span
                 className="flex items-center"
                 style={{
-                  gap: 4,
+                  gap: 3,
                   backgroundColor: "rgba(255,255,255,0.94)",
                   borderRadius: 999,
-                  padding: `${3 * piece.scale}px ${8 * piece.scale}px`,
+                  padding: `${2.5 * piece.scale}px ${6 * piece.scale}px`,
                   boxShadow: "0 1px 4px rgba(90,70,55,0.12)",
-                  fontSize: 11 * Math.min(piece.scale, 1.15),
+                  fontSize: 10.5 * Math.min(piece.scale, 1.15),
                   fontWeight: 600,
                   color: mix("#E08A3C", "#B0A89D", f),
                   whiteSpace: "nowrap",
