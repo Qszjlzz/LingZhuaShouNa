@@ -174,6 +174,8 @@ final class AppViewModel: ObservableObject {
         #endif
         // 允许从沙箱里的配置文件一次性导入 AI 设置，省去在手机小键盘上粘贴几十位密钥。
         importExternalLLMConfiguration()
+        // App 包里内置一份默认配置：重装 / 清数据后设置会回到出厂默认，这一步自动补回来。
+        restoreBundledLLMDefaultsIfNeeded()
         // 拍照/AR 识别需要知道用户当前保存的 AI 设置，用来决定要不要走云端多模态识别。
         if let router = dependencies.scanService as? RecognitionRouter {
             router.settingsProvider = { [weak self] in self?.llmSettings ?? .default }
@@ -1298,6 +1300,41 @@ final class AppViewModel: ObservableObject {
         try? FileManager.default.removeItem(at: file)
         persist()
         print("SMARTPAW_BOOT 已导入 AI 配置 endpoint=\(updated.endpoint) model=\(updated.model) canRequestVision=\(updated.canRequestVision)")
+    }
+
+    /// App 包里内置一份 AI 配置（`llm-defaults.json`，本地文件、不进仓库）。
+    /// 只要当前配置是"出厂默认"（没有密钥 / 接口还是示例地址 / 云端没开），
+    /// 就用内置的那套补上并写进钥匙串 —— 重装 App、清数据之后再也不用手动灌配置。
+    /// 用户之后在「AI 设置」里改过的值不会被覆盖。
+    private func restoreBundledLLMDefaultsIfNeeded() {
+        guard let url = Bundle.main.url(forResource: "llm-defaults", withExtension: "json"),
+              let data = try? Data(contentsOf: url),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return }
+        let bundledKey = (object["apiKey"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !bundledKey.isEmpty else { return }
+        // 只在"确实没配过"的时候补：没有密钥、或接口还是出厂示例地址。
+        // 用户自己改过的接口 / 自己关掉的开关都不会被强行改回来。
+        let looksDefault = llmSettings.apiKey.isEmpty
+            || llmSettings.endpoint == LLMSettings.default.endpoint
+            || llmSettings.endpoint.isEmpty
+            || llmSettings.model.isEmpty
+        guard looksDefault else { return }
+        var updated = llmSettings
+        if let endpoint = (object["endpoint"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !endpoint.isEmpty { updated.endpoint = endpoint }
+        if let model = (object["model"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !model.isEmpty { updated.model = model }
+        if let visionEndpoint = (object["visionEndpoint"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !visionEndpoint.isEmpty { updated.visionEndpoint = visionEndpoint }
+        if let visionModel = (object["visionModel"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !visionModel.isEmpty { updated.visionModel = visionModel }
+        updated.apiKey = bundledKey
+        updated.isEnabled = true
+        llmSettings = updated
+        _ = dependencies.credentialStore.saveAPIKey(bundledKey)
+        persist()
+        print("SMARTPAW_BOOT 已从内置配置恢复 AI 设置 endpoint=\(updated.endpoint) model=\(updated.model)")
     }
 
     private func writeDiagnostics(note: String, items: [DetectedItem]) {

@@ -44,6 +44,7 @@
 		B11000000000000000000007 /* mobileclip_s0_image.mlpackage in Resources */ = {isa = PBXBuildFile; fileRef = B12000000000000000000007 /* mobileclip_s0_image.mlpackage */; };
 		B11000000000000000000008 /* mobileclip_s0_text.mlpackage in Resources */ = {isa = PBXBuildFile; fileRef = B12000000000000000000008 /* mobileclip_s0_text.mlpackage */; };
 		B11000000000000000000009 /* category_embeddings.json in Resources */ = {isa = PBXBuildFile; fileRef = B12000000000000000000009 /* category_embeddings.json */; };
+		B1100000000000000000000A /* llm-defaults.json in Resources */ = {isa = PBXBuildFile; fileRef = B1200000000000000000000A /* llm-defaults.json */; };
 		B11000000000000000000010 /* RecognitionViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B12000000000000000000010 /* RecognitionViewModel.swift */; };
 		BBC3E894CE0C768648C96DF5 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A335BF6F1730E6236BEF42E7 /* RootView.swift */; };
 		A0E000000000000000000015 /* AppLanguage.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0E000000000000000000016 /* AppLanguage.swift */; };
@@ -114,6 +115,7 @@
 		B12000000000000000000007 /* mobileclip_s0_image.mlpackage */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.mlpackage; path = mobileclip_s0_image.mlpackage; sourceTree = "<group>"; };
 		B12000000000000000000008 /* mobileclip_s0_text.mlpackage */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.mlpackage; path = mobileclip_s0_text.mlpackage; sourceTree = "<group>"; };
 		B12000000000000000000009 /* category_embeddings.json */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.json; path = category_embeddings.json; sourceTree = "<group>"; };
+		B1200000000000000000000A /* llm-defaults.json */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.json; path = "llm-defaults.json"; sourceTree = "<group>"; };
 		B12000000000000000000010 /* RecognitionViewModel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = RecognitionViewModel.swift; sourceTree = "<group>"; };
 		B4C3517B7A6B57B5A410478C /* AppDependencies.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AppDependencies.swift; sourceTree = "<group>"; };
 		C12000000000000000000001 /* eval-editthispic-01-before.jpg */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = image.jpeg; path = "eval-editthispic-01-before.jpg"; sourceTree = "<group>"; };
@@ -214,6 +216,7 @@
 				8A3D85099B1D340186011524 /* Assets.xcassets */,
 				C20000000000000000000002 /* FigmaMakeLatestWeb */,
 				B12000000000000000000009 /* category_embeddings.json */,
+				B1200000000000000000000A /* llm-defaults.json */,
 				0F13121608D7C1E42C168D63 /* ExternalScanTests */,
 				C13000000000000000000001 /* EvaluationScanTests */,
 				B30000000000000000000001 /* MobileCLIPTokenizer */,
@@ -346,6 +349,7 @@
 				186D2E321568AB4702507ED1 /* Sources */,
 				A369DC3FCBFEECDB632620B4 /* Frameworks */,
 				9D0B5B243F6EC4979036A8F5 /* Resources */,
+				A1F0000000000000000000A1 /* CompileCoreMLModels */,
 			);
 			buildRules = (
 			);
@@ -412,6 +416,22 @@
 		};
 /* End PBXProject section */
 
+/* Begin PBXShellScriptBuildPhase section */
+		A1F0000000000000000000A1 /* CompileCoreMLModels */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = CompileCoreMLModels;
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -e\nAPP=\"$BUILT_PRODUCTS_DIR/$TARGET_NAME.app\"\nfor pkg in $(find \"$SRCROOT/Resources/Models\" -name \"*.mlpackage\" -maxdepth 3); do\n  name=$(basename \"$pkg\" .mlpackage)\n  if [ ! -d \"$APP/$name.mlmodelc\" ]; then\n    xcrun coremlc compile \"$pkg\" \"$APP/\" --deployment-target 18.0 --platform ios --container bundle-resources\n  fi\ndone\nfor m in $(find \"$SRCROOT/Resources/Models\" -name \"*.mlmodel\" -maxdepth 3); do\n  name=$(basename \"$m\" .mlmodel)\n  if [ ! -d \"$APP/$name.mlmodelc\" ]; then\n    xcrun coremlc compile \"$m\" \"$APP/\" --deployment-target 18.0 --platform ios --container bundle-resources\n  fi\ndone\n";
+		};
+/* End PBXShellScriptBuildPhase section */
 /* Begin PBXResourcesBuildPhase section */
 		3A7D8BE31A884BEFA72A8B4B /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
@@ -433,19 +453,10 @@
 				C11000000000000000000001 /* eval-editthispic-01-before.jpg in Resources */,
 				C11000000000000000000002 /* eval-editthispic-02-before.jpg in Resources */,
 				C11000000000000000000003 /* eval-editthispic-03-before.jpg in Resources */,
-				9105EE8ADBC4EA93F30BFA1B /* DeepLabV3Int8LUT.mlmodel in Resources */,
-				AD38DC9CA21CBD44DD64C3AD /* yolo11n-seg-640.mlpackage in Resources */,
-				6012CF5A6E8BA96BC32654E6 /* yolo11n-seg.mlpackage in Resources */,
-				A0E000000000000000000001 /* yoloe-11s-seg.mlpackage in Resources */,
-				A0E000000000000000000005 /* yoloe-context-seg.mlpackage in Resources */,
-				A0E000000000000000000003 /* yolov8s-worldv2.mlpackage in Resources */,
-				7F7D28D4C63C494FC0BB0EB8 /* edge_sam_encoder.mlpackage in Resources */,
-				A5B6694A3D4F93F640D5168D /* edge_sam_decoder.mlpackage in Resources */,
 				B11000000000000000000005 /* clip-vocab.json in Resources */,
 				B11000000000000000000006 /* clip-merges.txt in Resources */,
-				B11000000000000000000007 /* mobileclip_s0_image.mlpackage in Resources */,
-				B11000000000000000000008 /* mobileclip_s0_text.mlpackage in Resources */,
 				B11000000000000000000009 /* category_embeddings.json in Resources */,
+				B1100000000000000000000A /* llm-defaults.json in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

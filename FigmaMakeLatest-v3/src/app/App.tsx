@@ -12,9 +12,19 @@ export default function App() {
   const [shooting, setShooting] = useState(false);
   const [scanDone, setScanDone] = useState(false);
   const [relightSpace, setRelightSpace] = useState<{ id: string; name: string; vivid: string } | null>(null);
+  // dev/演示：?flow=plandeck|zones|arguide|reward 直接挂载拍摄主线到指定屏（浏览器无相机也能看）
+  const [demoFlow, setDemoFlow] = useState<string | null>(
+    new URLSearchParams(location.search).get("flow"),
+  );
   const [relitSpaceId, setRelitSpaceId] = useState<string | null>(null);
   const [nativeState, setNativeState] = useState<NativeState | null>(null);
   const refresh = () => getNativeState().then(setNativeState).catch(() => undefined);
+
+  // dev/演示：?relight=choice|tune|proof|complete 直接挂载点亮链路（不带参数不影响正常流程）
+  useEffect(() => {
+    const s = new URLSearchParams(location.search).get("relight");
+    if (s) setRelightSpace({ id: "p3", name: "厨房", vivid: "#A9B486" });
+  }, []);
 
   // 相机在 App 前台期间一直跑着（画面层已铺好、只是透明不可见），
   // 这里只剩"把画面显示出来"一步，不等硬件、不建图层 —— 点下去就是相机。
@@ -23,24 +33,30 @@ export default function App() {
     setShooting(true);
   };
 
+  // 从空间卡进「重新点亮」同样是先拍照：相机画面要在页面透明处透出来，
+  // 所以跟主线一样先把画面叫起来，再卸载首页整层（否则会盖住取景画面）。
+  const openRelight = (id: string, name: string, vivid: string) => {
+    void nativeRequest("camera.preview.show", {}).catch(() => undefined);
+    setRelightSpace({ id, name, vivid });
+  };
+
   useEffect(() => { void refresh(); }, []);
   useEffect(() => { void refresh(); }, [tab]);
 
   return (
     <div
       className={
-        shooting || relightSpace
-          ? // 全屏覆盖页（拍摄/焕新）用 fixed 定位：不依赖祖先高度，
+        shooting || relightSpace || demoFlow          ? // 全屏覆盖页（拍摄/焕新）用 fixed 定位：不依赖祖先高度，
             // 否则没有全局 height:100% 时 size-full 容器会塌成 0 高。
             "fixed inset-0 overflow-hidden"
           : "relative size-full overflow-hidden"
       }
-      style={{ backgroundColor: shooting ? "transparent" : "#EDE5DA" }}
+      style={{ backgroundColor: shooting || relightSpace ? "transparent" : "#EDE5DA" }}
     >
       <div className="relative size-full overflow-hidden">
         {/* 拍摄时把首页整层卸载：拍摄页的取景靠"页面透明 + 原生相机画面从底下透出"，
             首页若还挂在底下，会不透明地盖住相机画面（截图里透出空间地图就是这个原因）。 */}
-        {!shooting && (
+        {!shooting && !relightSpace && (
           <>
             {tab === "spatial" && (
               <SpatialScreen
@@ -51,7 +67,7 @@ export default function App() {
                 scanDone={scanDone}
                 onScanAck={() => setScanDone(false)}
                 onRelightRequest={(id, name, vivid) => {
-                  setRelightSpace({ id, name, vivid });
+                  openRelight(id, name, vivid);
                   setTab("spatial");
                 }}
                 relitSpaceId={relitSpaceId}
@@ -75,6 +91,13 @@ export default function App() {
               setScanDone(true);
               void refresh();
             }}
+          />
+        )}
+
+        {demoFlow && (
+          <ShootFlow
+            onClose={() => setDemoFlow(null)}
+            demoStep={demoFlow as never}
           />
         )}
 

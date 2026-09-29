@@ -82,10 +82,11 @@ type Piece = {
   scale: number;
 };
 
-// 初始摆位照设计稿 Group 433：床左上、桌面右上、茶几右中、厨房左下（画板 358×408，组稿 282×276 居中偏移 ≈38,60）
+// 初始摆位照设计稿：床左上、茶几右中、厨房左下。
+// “桌面”不作为首次进入空间地图时的默认区域；它仍保留在 NEW_TEMPLATES 中，
+// 因此用户后续通过重新收集/新增区域时仍可生成桌面区域。
 const initialPieces: Piece[] = [
   { id: "p1", name: "床", vivid: "#A6B2D6", skin: "bed", items: 24, lastDays: 2, x: 40, y: 60, rot: 0, scale: 1 },
-  { id: "p2", name: "桌面", vivid: "#ECC079", skin: "desk", items: 18, lastDays: 8, x: 178, y: 60, rot: 0, scale: 1 },
   { id: "p3", name: "厨房", vivid: "#A9B486", skin: "kitchen", items: 9, lastDays: 30, x: 40, y: 194, rot: 0, scale: 1 },
   { id: "p4", name: "茶几", vivid: "#DFA6B0", skin: "teatable", items: 31, lastDays: 15, x: 178, y: 144, rot: 0, scale: 1 },
 ];
@@ -781,14 +782,19 @@ export function SpatialScreen({
               <div className="mx-auto mb-4 rounded-full" style={{ width: 40, height: 4, backgroundColor: SOFT }} />
               <div className="flex items-center gap-3.5">
                 <div
-                  className="h-14 w-14 flex items-center justify-center flex-shrink-0 overflow-hidden"
-                  style={{ borderRadius: 16, boxShadow: "0 2px 8px rgba(90,70,55,0.12)" }}
+                  className="flex items-center justify-center flex-shrink-0 overflow-hidden"
+                  style={{
+                    width: 56,
+                    height: Math.round((56 * SKINS[current.skin].h) / SKINS[current.skin].w),
+                    borderRadius: 16,
+                    boxShadow: "0 2px 8px rgba(90,70,55,0.12)",
+                  }}
                 >
                   <img
                     src={SKINS[current.skin].src}
                     alt=""
                     className="w-full h-full"
-                    style={{ objectFit: "cover" }}
+                    style={{ objectFit: "contain" }}
                     draggable={false}
                   />
                 </div>
@@ -1035,9 +1041,9 @@ export function SpatialScreen({
                 <motion.div
                   initial={{ scale: 0, rotate: -18 }} animate={{ scale: 1, rotate: 0 }}
                   transition={{ type: "spring", stiffness: 250, damping: 15, delay: 0.12 }}
-                  className="absolute inset-0 flex flex-col items-center justify-center overflow-hidden"
+                  className="absolute inset-0 flex items-center justify-center overflow-hidden"
                   style={{
-                    width: 96, height: 96, margin: "auto",
+                    width: 96, height: Math.round((96 * SKINS[reward.skin].h) / SKINS[reward.skin].w), margin: "auto",
                     borderRadius: 18,
                     filter: "drop-shadow(0 8px 16px rgba(90,70,55,0.2))",
                   }}
@@ -1046,7 +1052,7 @@ export function SpatialScreen({
                     src={SKINS[reward.skin].src}
                     alt=""
                     className="absolute inset-0 w-full h-full"
-                    style={{ objectFit: "cover" }}
+                    style={{ objectFit: "contain" }}
                     draggable={false}
                   />
                 </motion.div>

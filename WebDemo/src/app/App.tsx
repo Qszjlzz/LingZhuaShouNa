@@ -33,6 +33,13 @@ export default function App() {
     setShooting(true);
   };
 
+  // 从空间卡进「重新点亮」同样是先拍照：相机画面要在页面透明处透出来，
+  // 所以跟主线一样先把画面叫起来，再卸载首页整层（否则会盖住取景画面）。
+  const openRelight = (id: string, name: string, vivid: string) => {
+    void nativeRequest("camera.preview.show", {}).catch(() => undefined);
+    setRelightSpace({ id, name, vivid });
+  };
+
   useEffect(() => { void refresh(); }, []);
   useEffect(() => { void refresh(); }, [tab]);
 
@@ -44,12 +51,12 @@ export default function App() {
             "fixed inset-0 overflow-hidden"
           : "relative size-full overflow-hidden"
       }
-      style={{ backgroundColor: shooting ? "transparent" : "#EDE5DA" }}
+      style={{ backgroundColor: shooting || relightSpace ? "transparent" : "#EDE5DA" }}
     >
       <div className="relative size-full overflow-hidden">
         {/* 拍摄时把首页整层卸载：拍摄页的取景靠"页面透明 + 原生相机画面从底下透出"，
             首页若还挂在底下，会不透明地盖住相机画面（截图里透出空间地图就是这个原因）。 */}
-        {!shooting && (
+        {!shooting && !relightSpace && (
           <>
             {tab === "spatial" && (
               <SpatialScreen
@@ -60,7 +67,7 @@ export default function App() {
                 scanDone={scanDone}
                 onScanAck={() => setScanDone(false)}
                 onRelightRequest={(id, name, vivid) => {
-                  setRelightSpace({ id, name, vivid });
+                  openRelight(id, name, vivid);
                   setTab("spatial");
                 }}
                 relitSpaceId={relitSpaceId}

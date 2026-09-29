@@ -56,3 +56,6 @@ WebDemo/node_modules
 
 # WebDemo 版本归档（发布脚本生成的历史快照，可从 npm run build 重跑）
 WebDemo/versions/
+
+# 本地大模型配置（含密钥，绝不入库）
+Resources/llm-defaults.json
