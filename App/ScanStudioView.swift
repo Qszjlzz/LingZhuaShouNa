@@ -51,6 +51,7 @@ final class ScanStudioModel: ObservableObject {
     @Published var shutterFlash = false
     @Published var recognizing = false
     @Published var torchOn = false
+    private var arGeneration = 0
 
     init(mode: Mode) { self.mode = mode }
 
@@ -76,7 +77,9 @@ final class ScanStudioModel: ObservableObject {
 
     func teardown() {
         // 先摘掉抽帧回调，再停 session，否则最后一帧会带着已经销毁的回调跑。
+        arGeneration += 1
         engine.onLiveFrame = nil
+        recognizing = false
         engine.stop()
     }
 
@@ -114,23 +117,37 @@ final class ScanStudioModel: ObservableObject {
         beginAR()
     }
 
+    func switchToPhoto() {
+        arGeneration += 1
+        engine.onLiveFrame = nil
+        recognizing = false
+        detections.removeAll()
+        mode = .photo
+    }
+
     private func beginAR() {
+        arGeneration += 1
+        let generation = arGeneration
         recognizing = false
         engine.liveFrameInterval = 0.55
         engine.onLiveFrame = { [weak self] image in
             guard let self else { return }
-            Task { @MainActor in self.consumeFrame(image) }
+            Task { @MainActor in self.consumeFrame(image, generation: generation) }
         }
     }
 
-    private func consumeFrame(_ image: UIImage) {
-        guard !recognizing else { return }
+    private func consumeFrame(_ image: UIImage, generation: Int) {
+        guard generation == arGeneration, !recognizing else { return }
         recognizing = true
         let service = scanService
         Task { [weak self] in
             let results = await service.scanLiveImage(image)
             await MainActor.run {
                 guard let self else { return }
+                guard generation == self.arGeneration else {
+                    self.recognizing = false
+                    return
+                }
                 self.recognizing = false
                 if !results.isEmpty { self.merge(results) }
                 self.dropStaleDetections()
@@ -138,27 +155,40 @@ final class ScanStudioModel: ObservableObject {
         }
     }
 
-    /// 跨帧累物：同名同类保留置信度最高的一帧，位置跟随最新一帧。
+    /// 跨帧累物：只有同名且位置相交的结果才视为同一实例，避免画面里的两个同名物品合并。
     private func merge(_ incoming: [DetectedItem]) {
         var merged = detections
         let palette = ["#FA883A", "#7FA8C9", "#8B6F47", "#7BB89A", "#A8B8CC", "#E8B894", "#C98B8B", "#B4C7DC"]
         for item in incoming {
-            if let index = merged.firstIndex(where: { $0.name == item.name }) {
+            guard let hint = item.arHint else { continue }
+            if let index = merged.firstIndex(where: {
+                $0.name == item.name && $0.hint.map { Self.hintIoU($0, hint) >= 0.15 } == true
+            }) {
                 merged[index].confidence = max(merged[index].confidence, item.confidence)
-                merged[index].hint = item.arHint ?? merged[index].hint
+                merged[index].hint = hint
                 merged[index].lastSeen = Date()
             } else {
                 merged.append(ARDetection(
                     id: item.id,
                     name: item.name,
                     confidence: item.confidence,
-                    hint: item.arHint,
+                    hint: hint,
                     color: palette[merged.count % palette.count],
                     lastSeen: Date()
                 ))
             }
         }
         detections = Array(merged.prefix(8))
+    }
+
+    private static func hintIoU(_ lhs: ARHint, _ rhs: ARHint) -> Double {
+        let lx = lhs.x - lhs.width / 2, ly = lhs.y - lhs.height / 2
+        let rx = rhs.x - rhs.width / 2, ry = rhs.y - rhs.height / 2
+        let ix = max(0, min(lx + lhs.width, rx + rhs.width) - max(lx, rx))
+        let iy = max(0, min(ly + lhs.height, ry + rhs.height) - max(ly, ry))
+        let intersection = ix * iy
+        let union = lhs.width * lhs.height + rhs.width * rhs.height - intersection
+        return union > 0 ? intersection / union : 0
     }
 
     private func dropStaleDetections() {
@@ -299,7 +329,7 @@ struct ScanStudioView: View {
 
     private var modeSwitcher: some View {
         HStack(spacing: 2) {
-            ModeChip(title: "多张连拍", icon: "camera", active: isPhoto) { model.mode = .photo }
+            ModeChip(title: "多张连拍", icon: "camera", active: isPhoto) { model.switchToPhoto() }
             ModeChip(title: "AR 扫描", icon: "cube", active: isAR) { model.switchToAR() }
         }
         .padding(4)

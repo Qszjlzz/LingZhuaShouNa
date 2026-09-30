@@ -1,7 +1,16 @@
 export type NativeHint = { x: number; y: number; width: number; height: number };
+export function isUsableNativeHint(hint: NativeHint | null | undefined): hint is NativeHint {
+  if (!hint) return false;
+  const values = [hint.x, hint.y, hint.width, hint.height];
+  return values.every(Number.isFinite)
+    && hint.width > 0 && hint.height > 0
+    && hint.x >= 0 && hint.x <= 1 && hint.y >= 0 && hint.y <= 1
+    && hint.width <= 1 && hint.height <= 1;
+}
 export type NativeItem = {
   id: string; name: string; category: string; confidence: number;
   suggestedZone: string; isSelected: boolean;
+  captureID?: string;
   /** 归一化定位框，AR/照片上叠标签用 */
   arHint?: NativeHint;
 };

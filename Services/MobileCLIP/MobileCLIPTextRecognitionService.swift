@@ -125,7 +125,15 @@ enum MobileCLIPCategoryEmbeddingBuilder {
         MobileCLIPCategoryPrompt(name: "收纳盒", text: "a photo of a storage box"),
         MobileCLIPCategoryPrompt(name: "餐具", text: "a photo of a bowl, plate, dish or kitchen utensil"),
         MobileCLIPCategoryPrompt(name: "杯子", text: "a photo of a drinking cup or mug"),
-        MobileCLIPCategoryPrompt(name: "垃圾包装", text: "a photo of trash or packaging")
+        MobileCLIPCategoryPrompt(name: "垃圾包装", text: "a photo of trash or packaging"),
+        MobileCLIPCategoryPrompt(name: "耳机", text: "a photo of earphones or headphones"),
+        MobileCLIPCategoryPrompt(name: "平板", text: "a photo of a tablet computer"),
+        MobileCLIPCategoryPrompt(name: "鼠标垫", text: "a photo of a computer mouse pad"),
+        MobileCLIPCategoryPrompt(name: "发夹", text: "a photo of a hair clip or hair accessory"),
+        MobileCLIPCategoryPrompt(name: "瓶罐", text: "a photo of a bottle, jar or can"),
+        MobileCLIPCategoryPrompt(name: "纸质资料", text: "a photo of stacked paper documents and files"),
+        MobileCLIPCategoryPrompt(name: "化妆品", text: "a photo of cosmetics or skincare bottles"),
+        MobileCLIPCategoryPrompt(name: "数据线", text: "a photo of a charging cable or wire")
     ]
 
     static func ensureDefaultEmbeddings(

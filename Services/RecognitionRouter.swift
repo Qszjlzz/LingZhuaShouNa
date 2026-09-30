@@ -15,6 +15,9 @@ final class RecognitionRouter: ScanService, @unchecked Sendable {
 
     private let local = YOLOSegmentationScanService()
     private let cloud = CloudVisionRecognitionService()
+    /// 开放词表语义层：本地 YOLO 词表里没有耳机 / 鼠标垫 / 发夹这类小物件，
+    /// 由它对已检出的候选框重新命名（仍是设备端模型，不联网）。
+    private let semantic = SemanticRecognitionScanService()
     private let lock = NSLock()
     private var report: [String: String] = [:]
 
@@ -51,17 +54,22 @@ final class RecognitionRouter: ScanService, @unchecked Sendable {
     // 所以这里与拍照识别完全分开，不请求任何网络、不读 AI 设置。
 
     func scanLiveImage(_ image: UIImage) async -> [DetectedItem] {
-        let local = await local.scanLiveImage(image)
+        var items = await local.scanLiveImage(image)
+        // 本地词表认得太少时补一次开放词表命名：把"认成别的东西"的候选框改成真实名称，
+        // 只对少量候选跑，控制在几十毫秒级，不会拖慢常规帧。
+        if items.count < 3 {
+            items = await semantic.refineLiveItems(items, in: image)
+        }
         lock.lock(); defer { lock.unlock() }
         let summary = [
-            "source": local.isEmpty ? "空" : "本地实时",
-            "本地": "\(local.count)",
+            "source": items.isEmpty ? "空" : "本地实时+语义",
+            "本地": "\(items.count)",
             "云端": "未启用",
         ]
         report = summary
         report["云端已配置"] = "不适用（AR 走本地实时）"
         report["本地模型"] = "\(YOLOSegmentationScanService.loadedModelNames.joined(separator: "、"))"
-        return Array(local.prefix(8))
+        return Array(items.prefix(8))
     }
 
     // MARK: - 结果合并
@@ -97,9 +105,6 @@ final class RecognitionRouter: ScanService, @unchecked Sendable {
                 item.confidence = max(item.confidence, local[index].confidence)
             } else if let hint = item.arHint {
                 item.arMask = softMask(for: hint)
-            } else {
-                item.arHint = ARHint.centerFallback
-                item.arMask = softMask(for: ARHint.centerFallback)
             }
             merged.append(item)
         }

@@ -262,6 +262,14 @@ enum SceneSemanticCalibration {
         case "工具": return ("工具", .tools)
         case "收纳盒": return ("收纳盒", .tools)
         case "餐具": return ("餐具", .tools)
+        case "耳机": return ("耳机", .electronics)
+        case "平板": return ("平板电脑", .electronics)
+        case "鼠标垫": return ("鼠标垫", .electronics)
+        case "发夹": return ("发夹", .tools)
+        case "瓶罐": return ("瓶罐", .tools)
+        case "纸质资料": return ("纸质资料", .books)
+        case "化妆品": return ("化妆品", .tools)
+        case "数据线": return ("数据线", .electronics)
         case "垃圾包装": return ("待清理杂物", .trash)
         default: return nil
         }
@@ -341,7 +349,27 @@ struct SemanticRecognitionScanService: ScanService {
         return ordered
     }
 
-    private func semanticItem(for item: DetectedItem, in image: UIImage) async -> (DetectedItem, [(String, Float)]) {
+    /// 实时画面的低成本语义补名：候选少的时候才跑，只给前几个候选做一次开放词表命名，
+    /// 其余原样返回，避免每帧都为 8 个候选付一次 CLIP 编码的代价。
+    func refineLiveItems(_ items: [DetectedItem], in image: UIImage, limit: Int = 4, minScore: Float = 0.20) async -> [DetectedItem] {
+        guard extractor.isAvailable, vectorDB.isAvailable, !items.isEmpty else { return items }
+        await MobileCLIPCategoryEmbeddingBuilder.ensureDefaultEmbeddings(
+            vectorDB: vectorDB,
+            extractor: textExtractor
+        )
+        var refined: [DetectedItem] = []
+        for item in items.prefix(limit) {
+            let (result, _) = await semanticItem(for: item, in: image, minScore: minScore)
+            refined.append(result)
+        }
+        return refined + items.dropFirst(limit)
+    }
+
+    private func semanticItem(
+        for item: DetectedItem,
+        in image: UIImage,
+        minScore: Float = 0.0
+    ) async -> (DetectedItem, [(String, Float)]) {
         guard let hint = item.arHint else { return (item, []) }
         let box = DetectionBox(
             x: Float(hint.x), y: Float(hint.y), width: Float(hint.width), height: Float(hint.height), confidence: Float(item.confidence)
@@ -351,7 +379,8 @@ struct SemanticRecognitionScanService: ScanService {
         else { return (item, []) }
 
         let matches = vectorDB.search(imageEmbedding: embedding, topK: 3)
-        guard let topMatch = matches.first else { return (item, []) }
+        // 语义相似度太低就别改名字：宁可沿用 YOLO 的类别，也不要把"书本"硬说成别的。
+        guard let topMatch = matches.first, topMatch.1 >= minScore else { return (item, matches) }
 
         var semanticItem = item
         semanticItem.name = topMatch.0
@@ -364,7 +393,7 @@ struct SemanticRecognitionScanService: ScanService {
     private static func category(for name: String, fallback: ItemCategory) -> ItemCategory {
         let lowercased = name.lowercased()
         if ["书", "本", "纸", "资料", "book", "paper"].contains(where: { lowercased.contains($0) }) { return .books }
-        if ["电脑", "键盘", "鼠标", "手机", "平板", "线", "充电", "computer", "keyboard", "phone", "cable"].contains(where: { lowercased.contains($0) }) { return .electronics }
+        if ["电脑", "键盘", "鼠标", "手机", "平板", "线", "充电", "耳机", "computer", "keyboard", "phone", "cable"].contains(where: { lowercased.contains($0) }) { return .electronics }
         if ["笔", "文具", "便签", "尺", "pen", "marker", "stationery"].contains(where: { lowercased.contains($0) }) { return .stationery }
         if ["衣", "鞋", "包", "shirt", "coat", "shoe"].contains(where: { lowercased.contains($0) }) { return .clothes }
         if ["玩具", "玩偶", "toy", "doll"].contains(where: { lowercased.contains($0) }) { return .toys }

@@ -49,6 +49,7 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
         private var capturePurpose = "scan"
         /// 拍完照后的识别任务链。快门不等识别，识别在后台串行跑完再通知网页。
         private var scanQueueTask: Task<Void, Never>?
+        private var photoScanResults: [String: [DetectedItem]] = [:]
 
         init(viewModel: AppViewModel) { self.viewModel = viewModel }
 
@@ -99,7 +100,32 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
             case "ar.scan.poll": pollARScan(requestID: requestID)
             case "ar.scan.stop": stopARScan(); respond(requestID, data: ["ok": true])
             case "camera.capture": await captureInline(requestID: requestID, payload: payload)
-            case "scan.await": await scanQueueTask?.value; respondWithState(requestID)
+            case "scan.begin":
+                await scanQueueTask?.value
+                photoScanResults = [:]
+                viewModel.beginPhotoScanSession()
+                respond(requestID, data: ["ready": true])
+            case "scan.results":
+                guard let captureID = payload["captureID"] as? String else { return fail(requestID, "缺少照片编号") }
+                if let items = photoScanResults[captureID] {
+                    respond(requestID, data: ["ready": true, "items": nativeItemObjects(items, captureID: captureID)])
+                } else {
+                    respond(requestID, data: ["ready": false, "items": []])
+                }
+            case "scan.await":
+                await scanQueueTask?.value
+                if let captureIDs = payload["captureIDs"] as? [String] {
+                    let items = mergePhotoScanResults(captureIDs)
+                    viewModel.replaceScannedItems(items)
+                    let sourceItems = captureIDs.flatMap { captureID in
+                        (photoScanResults[captureID] ?? []).map { item in
+                            nativeItemObject(item, captureID: captureID)
+                        }
+                    }
+                    respond(requestID, data: ["state": stateObject(), "items": sourceItems])
+                    return
+                }
+                respondWithState(requestID)
             case "scan.diagnose":
                 respond(requestID, data: [
                     "modelCount": YOLOSegmentationScanService.loadedModelCount,
@@ -248,7 +274,10 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
             pendingRequestID = requestID
             // 先把图送回页面：识别（10 个模型）要几秒，不能让快门等它。
             let preview = Self.thumbnailDataURL(for: image)
-            respond(requestID, data: ["preview": preview as Any, "state": stateObject()])
+            let captureID = payload["captureID"] as? String
+            var captureResponse: [String: Any] = ["preview": preview as Any, "state": stateObject()]
+            if let captureID { captureResponse["captureID"] = captureID }
+            respond(requestID, data: captureResponse)
             // 整理后的照片不参与识别，避免把成果照里的物品重复计入本次扫描。
             if isAfter { return }
 
@@ -257,9 +286,36 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
                 // 连拍时识别必须串行，否则两次扫描会同时读写 scannedItems。
                 await previous?.value
                 guard let self else { return }
-                await self.viewModel.scanImages([image], accumulate: true)
+                let items = await self.viewModel.scanImages([image], accumulate: true)
+                if let captureID { self.photoScanResults[captureID] = items }
                 self.emit(["event": "scan.updated", "state": self.stateObject()])
             }
+        }
+
+        private func mergePhotoScanResults(_ captureIDs: [String]) -> [DetectedItem] {
+            // 每张照片的结果都是独立实例。按名称合并会把两张照片里同名的
+            // 真实物品压成一个，并把其中一张的坐标错误地画到另一张照片上。
+            return captureIDs.flatMap { photoScanResults[$0] ?? [] }
+        }
+
+        private func nativeItemObjects(_ items: [DetectedItem], captureID: String? = nil) -> [[String: Any]] {
+            items.map { nativeItemObject($0, captureID: captureID) }
+        }
+
+        private func nativeItemObject(_ item: DetectedItem, captureID: String? = nil) -> [String: Any] {
+            var object: [String: Any] = [
+                "id": item.id.uuidString,
+                "name": item.name,
+                "category": item.category.rawValue,
+                "confidence": item.confidence,
+                "suggestedZone": item.suggestedZone,
+                "isSelected": item.isSelected,
+            ]
+            if let captureID { object["captureID"] = captureID }
+            if let hint = item.arHint {
+                object["arHint"] = ["x": hint.x, "y": hint.y, "width": hint.width, "height": hint.height]
+            }
+            return object
         }
 
         /// 直接用 App 内置取景框拍照，避免跳到系统相机破坏演示连贯性。
@@ -385,20 +441,25 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
         /// 网页 AR 实时通道：这一层只负责"喂帧 + 累积结果"，
         /// 识别本体沿用原生那套已验证的本地实时管线（`RecognitionRouter.scanLiveImage`）。
         private struct AREntry {
+            var id: UUID
             var name: String
             var confidence: Double
-            var hint: ARHint?
+            var hint: ARHint
             var lastSeen: Date
         }
 
         private var arEntries: [AREntry] = []
         private var arRecognizing = false
+        private var arPendingFrame: UIImage? = nil
+        private var arSessionGeneration = 0
+        private var arStartedEngine = false
         private let arPalette = ["#FA883A", "#7FA8C9", "#8B6F47", "#7BB89A", "#A8B8CC", "#E8B894", "#C98B8B", "#B4C7DC"]
 
         private func startARScan(requestID: String) async {
             let engine = CameraEngine.shared
             // AR 是连续识别，必须自己把相机跑起来（页面可能还没起画面）。
             if !engine.isRunning {
+                arStartedEngine = true
                 await engine.start()
                 _ = await engine.waitUntilReady(timeout: 2)
             }
@@ -408,38 +469,54 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
             }
             arEntries = []
             arRecognizing = false
-            engine.liveFrameInterval = 0.55
+            arPendingFrame = nil
+            arSessionGeneration += 1
+            let generation = arSessionGeneration
+            // 画面喂得快一点，标签才跟得上移动；识别慢的帧会被下面的"最新帧优先"丢掉。
+            engine.liveFrameInterval = 0.22
             engine.onLiveFrame = { [weak self] image in
                 guard let self else { return }
-                Task { self.consumeARFrame(image) }
+                self.arPendingFrame = image
+                self.pumpARFrame(generation: generation)
             }
             respond(requestID, data: ["ok": true])
         }
 
-        private func consumeARFrame(_ image: UIImage) {
-            guard !arRecognizing else { return }
+        /// 只处理最新一帧：识别期间新来的旧帧直接作废，
+        /// 这样气泡永远贴着"当前"画面，不会因为排队结果滞后半拍。
+        private func pumpARFrame(generation: Int) {
+            guard generation == arSessionGeneration, !arRecognizing, let image = arPendingFrame else { return }
+            arPendingFrame = nil
             arRecognizing = true
             Task {
                 let results = await RecognitionRouter.shared.scanLiveImage(image)
+                guard generation == self.arSessionGeneration else {
+                    self.arRecognizing = false
+                    return
+                }
                 self.arRecognizing = false
                 self.mergeARResults(results)
+                // 识别这一帧的时间里又来了新画面：立刻接着跑，不等下一个相机帧。
+                self.pumpARFrame(generation: generation)
             }
         }
 
-        /// 跨帧累物：同名保留置信度最高的一帧、位置跟着最新一帧走，2.5 秒没再出现就撤掉。
+        /// 跨帧累物：同名保留置信度最高的一帧、位置跟着最新一帧走，9 秒没再出现才撤掉
+        /// （撤得太快会让气泡一闪一闪，看起来像"扫不出来"）。
         private func mergeARResults(_ incoming: [DetectedItem]) {
             for item in incoming {
-                if let index = arEntries.firstIndex(where: { $0.name == item.name }) {
-                    if item.confidence >= arEntries[index].confidence {
-                        arEntries[index].confidence = item.confidence
-                        arEntries[index].hint = item.arHint ?? arEntries[index].hint
-                    }
+                guard let hint = item.arHint else { continue }
+                if let index = arEntries.firstIndex(where: {
+                    $0.name == item.name && Self.hintIoU($0.hint, hint) >= 0.10
+                }) {
+                    arEntries[index].confidence = max(arEntries[index].confidence, item.confidence)
+                    arEntries[index].hint = hint
                     arEntries[index].lastSeen = Date()
                 } else {
-                    arEntries.append(AREntry(name: item.name, confidence: item.confidence, hint: item.arHint, lastSeen: Date()))
+                    arEntries.append(AREntry(id: item.id, name: item.name, confidence: item.confidence, hint: hint, lastSeen: Date()))
                 }
             }
-            let cutoff = Date().addingTimeInterval(-2.5)
+            let cutoff = Date().addingTimeInterval(-9.0)
             arEntries = Array(arEntries.filter { $0.lastSeen > cutoff }.sorted { $0.confidence > $1.confidence }.prefix(8))
         }
 
@@ -450,18 +527,33 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
                     "confidence": entry.confidence,
                     "color": arPalette[index % arPalette.count],
                 ]
-                if let hint = entry.hint {
-                    dict["hint"] = ["x": hint.x, "y": hint.y, "width": hint.width, "height": hint.height]
-                }
+                let hint = entry.hint
+                dict["hint"] = ["x": hint.x, "y": hint.y, "width": hint.width, "height": hint.height]
                 return dict
             }
             respond(requestID, data: ["items": items, "count": items.count])
         }
 
         private func stopARScan() {
+            arSessionGeneration += 1
+            arPendingFrame = nil
             CameraEngine.shared.onLiveFrame = nil
+            if arStartedEngine {
+                CameraEngine.shared.stop()
+                arStartedEngine = false
+            }
             arEntries = []
             arRecognizing = false
+        }
+
+        private static func hintIoU(_ lhs: ARHint, _ rhs: ARHint) -> Double {
+            let lx = lhs.x - lhs.width / 2, ly = lhs.y - lhs.height / 2
+            let rx = rhs.x - rhs.width / 2, ry = rhs.y - rhs.height / 2
+            let ix = max(0, min(lx + lhs.width, rx + rhs.width) - max(lx, rx))
+            let iy = max(0, min(ly + lhs.height, ry + rhs.height) - max(ly, ry))
+            let intersection = ix * iy
+            let union = lhs.width * lhs.height + rhs.width * rhs.height - intersection
+            return union > 0 ? intersection / union : 0
         }
 
         private func stateObject() -> Any {
@@ -506,9 +598,20 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
         // 注意：CSS 可能是可选的 —— 打包一旦把样式并进 JS（现在的构建就是这样），
         // assets 里就不会再有 .css 文件。以前这里把 css 写成必需条件，缺.css 就直接 return，
         // 结果整页不加载、只剩白屏。现在允许为空，样式由 JS 自己注入。
-        // JS 入口优先取 index- 开头的那个，避免误把懒加载的分包当入口（同样会白屏）。
+        // 从 Vite 的 index.html 读取入口文件名，避免旧构建资源仍在 Bundle 中时随机加载错版。
         let assetURLs = Bundle.main.urls(forResourcesWithExtension: "js", subdirectory: "FigmaMakeLatestWeb/assets")
-        let jsURL = assetURLs?.first(where: { $0.lastPathComponent.hasPrefix("index-") }) ?? assetURLs?.first
+        let htmlURL = Bundle.main.url(forResource: "index", withExtension: "html", subdirectory: "FigmaMakeLatestWeb")
+        let html = htmlURL.flatMap { try? String(contentsOf: $0, encoding: .utf8) } ?? ""
+        let entryPattern = #"src="/assets/(index-[^"]+\.js)""#
+        let entryName: String? = html.range(of: entryPattern, options: .regularExpression).flatMap { range in
+            let entry = String(html[range])
+            let prefix = "src=\"/assets/"
+            guard entry.hasPrefix(prefix), entry.hasSuffix("\"") else { return nil }
+            return String(entry.dropFirst(prefix.count).dropLast())
+        }
+        let jsURL = assetURLs?.first(where: { $0.lastPathComponent == entryName })
+            ?? assetURLs?.first(where: { $0.lastPathComponent.hasPrefix("index-") })
+            ?? assetURLs?.first
         guard let base = Bundle.main.url(forResource: "FigmaMakeLatestWeb", withExtension: nil),
               let jsURL,
               let js = try? String(contentsOf: jsURL, encoding: .utf8) else { return }
@@ -516,9 +619,9 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
             .flatMap { try? String(contentsOf: $0, encoding: .utf8) } ?? ""
         // 设计稿画布是 390×844。直接让网页拉伸铺满会把布局拉变形（拍摄页取景区
         // 变高、dock 沉底），所以这里固定 root 为设计稿尺寸，再整体等比缩放到屏宽
-        //（cover 模式，溢出的零点几 pt 裁掉），保证和 Figma 里的比例逐像素一致。
+        //（contain 模式，确保底部导航和安全区始终完整可见），保证和 Figma 里的比例一致。
         webView.loadHTMLString("""
-        <!doctype html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>html,body{width:100%;height:100%;margin:0;overflow:hidden;background:#EDE5DA}#root{position:absolute;top:0;left:0;width:390px;height:844px;transform-origin:top left;overflow:hidden}</style><style>\(css)</style></head><body><div id="root"></div><script>\(js)</script><script>(function(){function fit(){var s=Math.max(window.innerWidth/390,window.innerHeight/844);var r=document.getElementById('root');if(r)r.style.transform='scale('+s+')';}window.addEventListener('resize',fit);fit();})();</script></body></html>
+        <!doctype html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>html,body{width:100%;height:100%;margin:0;overflow:hidden;background:#EDE5DA}#root{position:absolute;top:0;left:0;width:390px;height:844px;transform-origin:top left;overflow:hidden}</style><style>\(css)</style></head><body><div id="root"></div><script>\(js)</script><script>(function(){function fit(){var s=Math.min(window.innerWidth/390,window.innerHeight/844);var r=document.getElementById('root');if(r)r.style.transform='scale('+s+')';}window.addEventListener('resize',fit);fit();})();</script></body></html>
         """, baseURL: base)
     }
 }
@@ -529,4 +632,3 @@ extension CurrentFigmaMakeWebView.Coordinator: WKNavigationDelegate {
         NotificationCenter.default.post(name: .smartPawWebReady, object: nil)
     }
 }
-

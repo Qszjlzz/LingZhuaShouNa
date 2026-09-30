@@ -817,6 +817,25 @@ final class SmartPawTests: XCTestCase {
     }
 
     @MainActor
+    func testPhotoScanSessionReturnsPerImageResultsAndClearsOnlyTransientItems() async {
+        let viewModel = AppViewModel(dependencies: .outOfOrderScan)
+        let firstImage = UIGraphicsImageRenderer(size: CGSize(width: 24, height: 24)).image { _ in }
+        let secondImage = UIGraphicsImageRenderer(size: CGSize(width: 25, height: 25)).image { _ in }
+
+        let first = await viewModel.scanImages([firstImage], accumulate: true)
+        let second = await viewModel.scanImages([secondImage], accumulate: true)
+
+        XCTAssertEqual(first.map(\.name), ["first"])
+        XCTAssertEqual(second.map(\.name), ["second"])
+        XCTAssertEqual(Set(viewModel.scannedItems.map(\.name)), Set(["first", "second"]))
+
+        viewModel.beginPhotoScanSession()
+
+        XCTAssertTrue(viewModel.scannedItems.isEmpty)
+        XCTAssertEqual(Set(viewModel.selectedSpace.detectedItems.map(\.name)), Set(["first", "second"]))
+    }
+
+    @MainActor
     func testRoomPlanObjectsAreImportedIntoCurrentSpace() {
         let viewModel = AppViewModel(dependencies: .test)
         let initialCount = viewModel.catalogItems.count

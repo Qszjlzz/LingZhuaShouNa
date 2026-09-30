@@ -300,6 +300,14 @@ final class AppViewModel: ObservableObject {
         persist()
     }
 
+    func beginPhotoScanSession() {
+        scanGeneration += 1
+        activeScanID = UUID()
+        scannedItems = []
+        isScanning = false
+        usedCloudRecognitionInBatch = false
+    }
+
     func scanImage(_ image: UIImage) async {
         let scanID = UUID()
         activeScanID = scanID
@@ -332,8 +340,9 @@ final class AppViewModel: ObservableObject {
     }
 
     /// Merges complementary views of the same space before the user confirms the result.
-    func scanImages(_ images: [UIImage], accumulate: Bool = false) async {
-        guard let primaryImage = images.first else { return }
+    @discardableResult
+    func scanImages(_ images: [UIImage], accumulate: Bool = false) async -> [DetectedItem] {
+        guard let primaryImage = images.first else { return [] }
         let scanID = UUID()
         activeScanID = scanID
         scanGeneration += 1
@@ -387,11 +396,13 @@ final class AppViewModel: ObservableObject {
                 }
                 persist()
             }
+            return mergedItems
         } catch {
-            guard generation == scanGeneration else { return }
+            guard generation == scanGeneration else { return [] }
             // 连拍中单张失败不清空已攒下的结果，否则整段拍摄白费。
             if !accumulate { scannedItems = [] }
             message = "扫描失败：\(error.localizedDescription)"
+            return []
         }
     }
 

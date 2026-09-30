@@ -221,22 +221,15 @@ struct VisionScanService: ScanService {
                         category: .tools,
                         confidence: Double(topObservation.confidence),
                         suggestedZone: "待确认收纳区",
-                        arHint: visualRegions.first?.hint ?? .centerFallback,
+                        arHint: visualRegions.first?.hint,
                         arMask: visualRegions.first?.mask
                     )
                 ]
             }
 
-            return [
-                DetectedItem(
-                    name: "待确认区域",
-                    category: .tools,
-                    confidence: 0.30,
-                    suggestedZone: "待确认收纳区",
-                    arHint: visualRegions.first?.hint ?? .centerFallback,
-                    arMask: visualRegions.first?.mask
-                )
-            ]
+            // 没有可核对的分类或视觉区域时返回空结果；“待确认区域”没有
+            // 对应照片内容，不能作为识别标签或收纳分区展示。
+            return []
         }.value
     }
 
@@ -738,11 +731,30 @@ struct YOLOSegmentationScanService: ScanService {
     // available for the higher-quality still-image scan above.
     func scanLiveImage(_ image: UIImage) async -> [DetectedItem] {
         guard let cgImage = image.normalizedCGImage else { return [] }
-        let detected = await Self.detectItems(in: cgImage, live: true)
-        return Array(Self.presentationItems(Self.cleanedItems(detected), mode: .live).prefix(8))
+        // 实时优先速度：常规帧只跑收纳词表主模型，一个模型一张图，帧率跟得上画面。
+        // 常规帧跑收纳词表主模型 + 通用小模型：瓶罐、书本这类靠通用模型补召回。
+        var detected = await Self.detectItems(in: cgImage, live: true)
+        var strict = Array(Self.presentationItems(Self.cleanedItems(detected, live: true), mode: .live).prefix(8))
+        // 还是太少就再补一轮补充词表（平板 / 收纳盒 / 碗 / 成堆书本）。
+        if strict.count < 2 {
+            let extra = await Self.detectItems(in: cgImage, live: true, liveExtra: true)
+            detected = Self.mergeModelCandidates(detected + extra)
+            strict = Array(Self.presentationItems(Self.cleanedItems(detected, live: true), mode: .live).prefix(8))
+        }
+        if strict.count >= 2 { return strict }
+        // 轮廓层出得太少时补一层宽松口径：只用模型真实给出的检测框（不编位置、不编名字），
+        // 只是不要求精确轮廓。这样"扫到了但没轮廓"的物体也能在画面上出标签。
+        let relaxed = Self.relaxedItems(detected, minConfidence: 0.18).filter { item in
+            guard let hint = item.arHint else { return false }
+            return !strict.contains { existing in
+                guard let existingHint = existing.arHint else { return false }
+                return existing.name == item.name && Self.hintIoU(existingHint, hint) >= 0.3
+            }
+        }
+        return Array((strict + Self.presentationItems(relaxed, mode: .live)).prefix(8))
     }
 
-    private enum PresentationMode {
+    private enum PresentationMode: Equatable {
         case still
         case live
 
@@ -752,7 +764,8 @@ struct YOLOSegmentationScanService: ScanService {
             // keeps a little more recall than the live overlay. The separate
             // unknown-label gate below still removes the most visible noise.
             case .still: 0.12
-            case .live: 0.22
+            // AR 是边扫边看，宁可多标几个也不要扫半天一个不出：实时口径放宽。
+            case .live: 0.15
             }
         }
 
@@ -762,9 +775,9 @@ struct YOLOSegmentationScanService: ScanService {
             // thresholds only for candidates that already carry a real mask;
             // box-only guesses are removed before this stage.
             switch item.name {
-            case "书本/资料", "笔记本", "笔", "笔类文具": return 0.18
-            case "杯子": return 0.24
-            case "电脑设备": return 0.20
+            case "书本/资料", "笔记本", "笔", "笔类文具": return 0.13
+            case "杯子": return 0.18
+            case "电脑设备": return 0.15
             default: return minimumConfidence
             }
         }
@@ -773,7 +786,7 @@ struct YOLOSegmentationScanService: ScanService {
     // A segmentation model can emit tiny islands or nearly identical labels for
     // the same object. They are technically valid masks, but make the camera
     // view look noisy and are not useful candidates for a storage plan.
-    private static func cleanedItems(_ items: [DetectedItem]) -> [DetectedItem] {
+    private static func cleanedItems(_ items: [DetectedItem], live: Bool = false) -> [DetectedItem] {
         let renderable = items.compactMap { item -> DetectedItem? in
             var item = item
             if item.arMask == nil {
@@ -788,8 +801,9 @@ struct YOLOSegmentationScanService: ScanService {
             guard let mask = item.arMask, mask.hasRaster else { return nil }
             let pixelCount = mask.rasterPixelCount
             let rasterArea = max(1, (mask.rasterWidth ?? 0) * (mask.rasterHeight ?? 0))
-            guard pixelCount >= 6,
-                Double(pixelCount) / Double(rasterArea) >= 0.004
+            // 实时画面里笔、线这类小物件的轮廓本来就只有几个像素，门槛按场景再放宽一档。
+            guard pixelCount >= (live ? 3 : 6),
+                Double(pixelCount) / Double(rasterArea) >= (live ? 0.0018 : 0.004)
             else { return nil }
             return item
         }
@@ -808,16 +822,15 @@ struct YOLOSegmentationScanService: ScanService {
 
     /// 放宽一层口径：不强制要求精确轮廓，只要有可信的检测框就呈现出来。
     /// 用在严格过滤后结果为空的场合，避免"拍了但什么都没识别到"。
-    private static func relaxedItems(_ items: [DetectedItem]) -> [DetectedItem] {
+    private static func relaxedItems(_ items: [DetectedItem], minConfidence: Double = 0.25) -> [DetectedItem] {
         var kept: [DetectedItem] = []
         for item in items.sorted(by: { $0.confidence > $1.confidence }) {
-            guard item.confidence >= 0.25, item.name != "待确认物体" else { continue }
-            var item = item
-            if item.arHint == nil { item.arHint = ARHint.centerFallback }
-            if item.arMask == nil {
-                item.arMask = softMask(from: item.arHint ?? ARHint.centerFallback)
-            }
+            guard item.confidence >= minConfidence, item.name != "待确认物体" else { continue }
             guard let hint = item.arHint else { continue }
+            var item = item
+            if item.arMask == nil {
+                item.arMask = softMask(from: hint)
+            }
             let duplicate = kept.contains { existing in
                 guard let existingHint = existing.arHint else { return false }
                 return existing.name == item.name || hintIoU(existingHint, hint) >= 0.7
@@ -844,7 +857,7 @@ struct YOLOSegmentationScanService: ScanService {
                 // guess is worse than showing no tag because it gets saved into
                 // the user's space and later drives the storage plan.
                 guard item.confidence >= mode.minimumConfidence(for: item) else { return false }
-                guard item.name != "待确认物体" || item.confidence >= 0.50 else { return false }
+                guard item.name != "待确认物体" || item.confidence >= (mode == .live ? 0.34 : 0.50) else { return false }
                 guard item.category == .books else { return true }
                 return groupedCategorySeen.insert(item.category).inserted
             }
@@ -977,7 +990,13 @@ struct YOLOSegmentationScanService: ScanService {
         return unionArea > 0 ? Double(intersectionArea / unionArea) : 0
     }
 
-    private static func detectItems(in cgImage: CGImage, live: Bool = false) async -> [DetectedItem] {
+    private static func detectItems(
+        in cgImage: CGImage,
+        live: Bool = false,
+        onlyPrimary: Bool = false,
+        onlyGeneric: Bool = false,
+        liveExtra: Bool = false
+    ) async -> [DetectedItem] {
         await Task.detached(priority: .userInitiated) {
             guard !cachedModels.isEmpty else { return [] }
             var mergedItems: [DetectedItem] = []
@@ -992,7 +1011,20 @@ struct YOLOSegmentationScanService: ScanService {
             if live {
                 let promptable = cachedModels.filter { $0.sourceName == "yoloe-11s-seg" }
                 let realtimeGeneric = cachedModels.filter { $0.sourceName == "yolo11n-seg-640" }
-                models = Array((promptable + realtimeGeneric).prefix(2))
+                // 补充词表：worldv2 覆盖平板 / 收纳盒 / 碗，context 覆盖成堆的书本与衣物。
+                // 这两个只在常规模型认得太少时才跑，避免每帧都付代价。
+                let extra = cachedModels.filter {
+                    $0.sourceName == "yolov8s-worldv2" || $0.sourceName == "yoloe-context-seg"
+                }
+                if onlyGeneric {
+                    models = realtimeGeneric
+                } else if onlyPrimary {
+                    models = promptable
+                } else if liveExtra {
+                    models = extra
+                } else {
+                    models = Array((promptable + realtimeGeneric).prefix(2))
+                }
             } else {
                 models = cachedModels
             }
@@ -1886,7 +1918,10 @@ struct RuleBasedPlanningService: PlanningService {
     func makePlan(for space: StorageSpace, selectedItems: [DetectedItem], style: StorageStyle, timeBudget: TimeBudget, goal: String = "", focusZone: String = "") -> StoragePlan {
         let items = selectedItems.filter(\.isSelected)
         let grouped = Dictionary(grouping: items, by: \.category)
-        let orderedCategories = ItemCategory.allCases.filter { grouped[$0] != nil }
+        // 没有模型提供的真实框时，名称不能被放到固定中心点上冒充 AR 位置。
+        let orderedCategories = ItemCategory.allCases.filter {
+            grouped[$0]?.contains(where: { $0.arHint != nil }) == true
+        }
         let normalizedGoal = goal.trimmingCharacters(in: .whitespacesAndNewlines)
         let normalizedFocusZone = focusZone.trimmingCharacters(in: .whitespacesAndNewlines)
         let maxSteps: Int
@@ -1897,16 +1932,17 @@ struct RuleBasedPlanningService: PlanningService {
         }
 
         let categories = Array(orderedCategories.prefix(maxSteps))
-        let steps = categories.enumerated().map { index, category in
+        let steps = categories.enumerated().compactMap { index, category -> StorageStep? in
             let categoryItems = grouped[category] ?? []
             let names = categoryItems.map(\.name).joined(separator: "、")
             let anchor = anchorItem(for: categoryItems)
+            guard let anchorHint = anchor?.arHint else { return nil }
             return StorageStep(
                 title: title(for: category, items: categoryItems, index: index),
                 detail: detail(for: category, items: categoryItems, itemNames: names, style: style, goal: normalizedGoal),
                 zone: normalizedFocusZone.isEmpty ? category.suggestedZone : "\(normalizedFocusZone) · \(category.suggestedZone)",
                 status: index == 0 ? .active : .pending,
-                arHint: anchor?.arHint ?? .centerFallback,
+                arHint: anchorHint,
                 arMask: anchor?.arMask,
                 itemIDs: categoryItems.map(\.id)
             )

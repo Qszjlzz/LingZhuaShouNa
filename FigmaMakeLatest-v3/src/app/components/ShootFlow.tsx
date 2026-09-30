@@ -3,6 +3,13 @@ import bedArt from "../../assets/spaces/bed.png";
 import deskArt from "../../assets/spaces/desk.png";
 import kitchenArt from "../../assets/spaces/kitchen.png";
 import teatableArt from "../../assets/spaces/teatable.png";
+// 真机演示专用：书桌场景的整理步骤图（预先生成好的成品图）
+import demoAfterOverall from "../../assets/demo/after-overall.jpg";
+import demoStepClear from "../../assets/demo/step-clear.jpg";
+import demoStepItems from "../../assets/demo/step-items.jpg";
+import demoStepComputer from "../../assets/demo/step-computer.jpg";
+import demoStepLamp from "../../assets/demo/step-lamp.jpg";
+import demoRoomBefore from "../../assets/demo/room-before.jpg";
 import {
   ArrowLeft,
   Sparkles,
@@ -40,7 +47,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { Raccoon } from "./Raccoon";
 import { COFFEE, ORANGE, LINEN, BLUE, WHITE, SOFT } from "./theme";
-import { nativeRequest, type NativeState, type NativeItem } from "../nativeBridge";
+import { isUsableNativeHint, nativeRequest, type NativeState, type NativeItem, type NativeHint } from "../nativeBridge";
 
 const ROOM_IMG =
   "https://images.unsplash.com/photo-1768548273848-ebab6f26b48c?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080";
@@ -62,8 +69,8 @@ type Step =
 type PlanTier = "basic" | "smart" | "pro";
 
 export type CapturedAsset =
-  | { id: string; kind: "photo"; src: string; label: string }
-  | { id: string; kind: "video"; src: string; label: string; duration: number };
+  | { id: string; kind: "photo"; src: string; label: string; items?: NativeItem[] }
+  | { id: string; kind: "video"; src: string; label: string; duration: number; items?: NativeItem[] };
 
 // A finished-room concept the AI proposes right after the shoot.
 export type GenPlan = {
@@ -278,9 +285,18 @@ export function ShootFlow({
             setGenReturn("plandeck");
             void (async () => {
               try {
-                await nativeRequest("scan.await", {});
+                // 连拍时识别是串行跑完所有照片，等满可能要几十秒。
+                // 这里最多等 8 秒：点完提交马上有反馈，识别没跑完也先继续（后面步骤仍能拿到已识别的部分）。
+                await Promise.race([
+                  nativeRequest("scan.await", {}).catch(() => undefined),
+                  new Promise<void>((resolve) => window.setTimeout(resolve, 8000)),
+                ]);
                 const state = await nativeRequest<NativeState>("state.get");
-                const payload = state.scannedItems.map((item) => ({
+                // 识别还没落库时，用每张照片自己轮询到的结果兜底，后面的分区/引导才有物品可用。
+                const scanned = (state.scannedItems ?? []).length > 0
+                  ? state.scannedItems
+                  : captured.flatMap((a) => a.items ?? []);
+                const payload = scanned.map((item) => ({
                   ...item,
                   category: item.category || "收纳工具",
                   suggestedZone: item.suggestedZone || "手边工具区",
@@ -289,7 +305,7 @@ export function ShootFlow({
                 await nativeRequest("items.save", { items: payload });
                 setConfirmedItems(payload);
               } catch {
-                /* 识别失败也继续走流程，区域页有兜底 */
+                setConfirmedItems([]);
               }
               await refreshPlans().catch(() => undefined);
               setStep("generating");
@@ -752,7 +768,8 @@ function PlanDeckStep({
       {/* ── 照片：全出血贴顶大图（约占上半屏），X / 预计时长 / 翻页箭头叠在照片上 ── */}
       <div className="relative flex-shrink-0 overflow-hidden" style={{ height: "52%" }}>
         <ImageWithFallback
-          src={photo || plan.image}
+          // 演示场景：方案页顶部直接展示这张书桌整理后的成品效果图（真实照片前面拍摄页已经看过）。
+          src={DEMO_GUIDE ? demoAfterOverall : photo || plan.image}
           alt={plan.name}
           className="h-full w-full object-cover"
         />
@@ -1264,23 +1281,27 @@ function TuneChatStep({
 
 const ANGLE_HINTS = ["广角", "左侧", "右侧", "俯视"];
 
-/* 筛选页照片上的识别气泡（示例内容，点击可选中/取消） */
-const TAG_SETS: { text: string; x: number; y: number }[][] = [
-  [
-    { text: "电脑", x: 46, y: 16 },
-    { text: "护肤品", x: 10, y: 30 },
-    { text: "文具文献", x: 26, y: 52 },
-    { text: "清洁用品", x: 74, y: 36 },
-    { text: "插头", x: 66, y: 66 },
-  ],
-  [
-    { text: "书籍", x: 14, y: 20 },
-    { text: "台灯", x: 72, y: 18 },
-    { text: "水杯", x: 40, y: 44 },
-    { text: "数据线", x: 70, y: 58 },
-    { text: "收纳盒", x: 18, y: 68 },
-  ],
-];
+/**
+ * 照片是 objectFit:cover 显示的（会裁掉一部分），而识别框是相对整张原图的归一化坐标
+ * （x/y 是中心点）。这里换算成裁切后画面里的真实像素位置，标签才不会飘。
+ */
+function hintFrame(
+  hint: { x: number; y: number; width: number; height: number },
+  box: { w: number; h: number } | null,
+  ratio?: number,
+) {
+  if (!box || !ratio) return null;
+  const imgW = Math.max(box.w, box.h * ratio);
+  const imgH = imgW / ratio;
+  const ox = (box.w - imgW) / 2;
+  const oy = (box.h - imgH) / 2;
+  return {
+    left: ox + (hint.x - hint.width / 2) * imgW,
+    top: oy + (hint.y - hint.height / 2) * imgH,
+    width: hint.width * imgW,
+    height: hint.height * imgH,
+  };
+}
 
 function CaptureStep({
   onClose,
@@ -1300,7 +1321,6 @@ function CaptureStep({
   const [currentIdx, setCurrentIdx] = useState(0);
   const [reshootIdx, setReshootIdx] = useState<number | null>(null);
   const [freshEntryId, setFreshEntryId] = useState<string | null>(null);
-  const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const recTimer = useRef<any>(null);
@@ -1314,6 +1334,64 @@ function CaptureStep({
   // 取景失败只在这页里提示 + 重试，绝不跳到系统相机页。
   const [camFailed, setCamFailed] = useState(false);
   const [camReason, setCamReason] = useState<string | null>(null);
+  // 照片上的真实识别标签：拍完由原生后台识别（10 个模型要几秒），这里轮询取回结果。
+  const hintPollers = useRef<number[]>([]);
+  const [shotBox, setShotBox] = useState<{ w: number; h: number } | null>(null);
+  const [shotRatio, setShotRatio] = useState<Record<string, number>>({});
+  const measureShotBox = (el: HTMLDivElement | null) => {
+    if (!el || shotBox) return;
+    const r = el.getBoundingClientRect();
+    if (r.width > 0 && r.height > 0) setShotBox({ w: r.width, h: r.height });
+  };
+  const [scanning, setScanning] = useState<Record<string, boolean>>({});
+  // 提交只在点第一下时生效：之后按钮进 loading，避免连点触发多次提交。
+  const [submitting, setSubmitting] = useState(false);
+  const pollShotItems = (captureID: string) => {
+    let tries = 0;
+    // 拍完立刻在照片上显示「正在识别中…」，识别结果回来后换成真实标签。
+    setScanning((prev) => ({ ...prev, [captureID]: true }));
+    const finish = (items: NativeItem[] | null) => {
+      setScanning((prev) => ({ ...prev, [captureID]: false }));
+      if (items && items.length > 0) {
+        const list = items.slice(0, 8);
+        setShots((arr) => arr.map((s) => (s.id === captureID ? { ...s, items: list } : s)));
+      }
+    };
+    const timer = window.setInterval(async () => {
+      tries += 1;
+      try {
+        const res = await nativeRequest<{ ready?: boolean; items?: NativeItem[] }>("scan.results", { captureID });
+        if (res?.ready && Array.isArray(res.items) && res.items.length > 0) {
+          window.clearInterval(timer);
+          finish(res.items!);
+          return;
+        }
+      } catch {
+        /* 还没识别完，继续等下一轮 */
+      }
+      // 兜底：单张编号没取到结果时，从全局识别结果里拿（仍是真实识别结果）。
+      if (tries % 3 === 0) {
+        try {
+          const state = await nativeRequest<NativeState>("state.get");
+          const all = (state?.scannedItems ?? []).filter((it: NativeItem) => it && it.name);
+          if (all.length > 0) {
+            window.clearInterval(timer);
+            finish(all);
+            return;
+          }
+        } catch {
+          /* 继续等 */
+        }
+      }
+      if (tries >= 30) {
+        window.clearInterval(timer);
+        finish(null); // 约 20 秒还没结果就放弃，不挡流程
+      }
+    }, 700);
+    hintPollers.current.push(timer);
+  };
+  useEffect(() => () => { hintPollers.current.forEach((t) => window.clearInterval(t)); }, []);
+
   // AR 页签 = 真·实时扫描：逐帧过本地模型，结果只作为名称标签叠在取景框上（无轮廓）。
   const [arTags, setArTags] = useState<{ name: string; color: string; x: number; y: number }[]>([]);
   const [arCount, setArCount] = useState(0);
@@ -1406,6 +1484,7 @@ function CaptureStep({
     }
     let alive = true;
     let timer = 0;
+    let emptyPolls = 0;
     (async () => {
       try {
         await nativeRequest("ar.scan.start", {});
@@ -1417,22 +1496,31 @@ function CaptureStep({
               count?: number;
             }>("ar.scan.poll", {});
             if (!alive) return;
-            setArCount(res.count ?? 0);
-            setArTags(
-              (res.items ?? []).map((it, i) => ({
-                name: it.name,
-                color: it.color || "#FA883A",
-                // 模型没给位置时做一点错位，别让标签全叠在正中间。
-                x: it.hint?.x ?? 0.3 + (i % 3) * 0.2,
-                y: it.hint?.y ?? 0.3 + Math.floor(i / 3) * 0.16,
-              })),
-            );
+            const positionedItems = (res.items ?? []).filter((it) => it.name && it.hint);
+            if (positionedItems.length > 0) {
+              emptyPolls = 0;
+              setArCount(positionedItems.length);
+              // 位置做一点平滑：同名标签往新位置缓一步走，画面里不会一跳一跳。
+              setArTags((prev) =>
+                positionedItems.map((it) => {
+                  const target = { name: it.name, color: it.color || "#FA883A", x: it.hint!.x, y: it.hint!.y };
+                  const old = prev.find((p) => p.name === it.name);
+                  if (!old) return target;
+                  return { ...target, x: old.x + (target.x - old.x) * 0.45, y: old.y + (target.y - old.y) * 0.45 };
+                }),
+              );
+            } else {
+              // 真的没扫到东西就一个标签都别放，画面保持干净。
+              emptyPolls += 1;
+              setArCount(0);
+              setArTags([]);
+            }
           } catch {
             /* 轮询失败不打断画面 */
           }
         };
         await poll();
-        timer = window.setInterval(poll, 400);
+        timer = window.setInterval(poll, 200);
       } catch (e) {
         if (alive) setArError((e as Error).message);
       }
@@ -1470,13 +1558,14 @@ function CaptureStep({
         void startPreview().then((ok) => setCamFailed(!ok));
         return;
       }
-      const shot = await nativeRequest<{ preview?: string }>("camera.capture", {});
+      // 带上照片编号，原生才能把这一张的识别结果单独存起来，供预览页叠真实标签。
+      const newId = `p${Date.now()}`;
+      const shot = await nativeRequest<{ preview?: string }>("camera.capture", { captureID: newId });
       const src = shot.preview;
       if (!src) {
         setError("没有拿到照片，光线亮一点再试一次");
         return;
       }
-    const newId = `p${Date.now()}`;
     const newShot: CapturedAsset = {
       id: newId,
       kind: "photo",
@@ -1498,6 +1587,9 @@ function CaptureStep({
       });
       setFreshEntryId(newId);
     }
+
+    // 识别在后台跑，结果回来后自动叠到这张照片上。
+    pollShotItems(newId);
 
     setTimeout(() => setPreviewMode(true), 220);
     } catch (e) {
@@ -1610,6 +1702,17 @@ function CaptureStep({
 
     return (
       <div className="absolute inset-0" style={{ backgroundColor: "#0d0b09" }}>
+        {/* 点提交后立刻给反馈：识别在后台跑，不能让按钮像没反应一样。 */}
+        {submitting && (
+          <div
+            className="absolute inset-0 flex flex-col items-center justify-center gap-3"
+            style={{ backgroundColor: "rgba(13,11,9,0.72)", zIndex: 120 }}
+          >
+            <Loader2 size={26} className="animate-spin" color={WHITE} />
+            <p style={{ color: WHITE, fontSize: 13, fontWeight: 600 }}>正在识别你拍的照片…</p>
+            <p style={{ color: "rgba(255,255,255,0.6)", fontSize: 11 }}>最多等 8 秒，识别不完也会继续</p>
+          </div>
+        )}
         {/* Shutter flash overlay */}
         <AnimatePresence>
           {shutter && (
@@ -1692,6 +1795,7 @@ function CaptureStep({
                 }}
               >
                 <div
+                  ref={measureShotBox}
                   style={{
                     width: "100%",
                     height: "100%",
@@ -1707,6 +1811,13 @@ function CaptureStep({
                   <img
                     src={shot.src}
                     alt={shot.label}
+                    onLoad={(e) => {
+                      const el = e.currentTarget;
+                      if (el.naturalWidth > 0 && el.naturalHeight > 0) {
+                        const r = el.naturalWidth / el.naturalHeight;
+                        setShotRatio((prev) => (prev[shot.id] === r ? prev : { ...prev, [shot.id]: r }));
+                      }
+                    }}
                     style={{
                       width: "100%",
                       height: "100%",
@@ -1717,46 +1828,57 @@ function CaptureStep({
                     }}
                     draggable={false}
                   />
-                  {/* 识别气泡标签 */}
-                  {TAG_SETS[i % TAG_SETS.length].map((tag) => {
-                    const key = `${shot.id}-${tag.text}`;
-                    const picked = selectedTags.has(key);
-                    return (
-                      <button
-                        key={tag.text}
-                        onMouseDown={(e) => e.stopPropagation()}
-                        onTouchStart={(e) => e.stopPropagation()}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedTags((prev) => {
-                            const next = new Set(prev);
-                            if (next.has(key)) next.delete(key);
-                            else next.add(key);
-                            return next;
-                          });
-                        }}
-                        style={{
-                          position: "absolute",
-                          left: `${tag.x}%`,
-                          top: `${tag.y}%`,
-                          padding: "5px 12px",
-                          borderRadius: 999,
-                          backgroundColor: picked ? "rgba(250,136,58,0.92)" : "rgba(22,17,13,0.55)",
-                          border: picked ? "1.5px solid #FA883A" : "1px solid rgba(255,255,255,0.22)",
-                          backdropFilter: "blur(6px)",
-                          WebkitBackdropFilter: "blur(6px)",
-                          color: WHITE,
-                          fontSize: 11,
-                          fontWeight: 500,
-                          whiteSpace: "nowrap",
-                          boxShadow: picked ? "0 4px 14px rgba(250,136,58,0.4)" : "none",
-                          transition: "background-color 0.18s, border-color 0.18s",
-                        }}
-                      >
-                        {tag.text}
-                      </button>
-                    );
-                  })}
+                  {/* 真实识别标签：原生识别完回传，按框画在这张照片上 */}
+                  {(shot.items ?? [])
+                    .filter((it) => isUsableNativeHint(it.arHint))
+                    .slice(0, 10)
+                    .map((it, i) => {
+                      // 只画真实检测结果：有框才画标签，没框就不画（绝不编位置）。
+                      const hint = it.arHint!;
+                      const f = shotBox ? hintFrame(hint, shotBox, shotRatio[shot.id]) : null;
+                      return (
+                        <div
+                          key={it.id || `${it.name}-${i}`}
+                          className="absolute pointer-events-none"
+                          style={{
+                            left: f ? `${f.left + f.width / 2}px` : `${Math.min(88, Math.max(12, hint.x * 100))}%`,
+                            top: f ? `${f.top + f.height / 2}px` : `${Math.min(86, Math.max(12, hint.y * 100))}%`,
+                            transform: "translate(-50%, -50%)",
+                          }}
+                        >
+                          <span
+                            style={{
+                              backgroundColor: "rgba(255,255,255,0.95)",
+                              color: COFFEE,
+                              fontSize: 10.5,
+                              fontWeight: 600,
+                              borderRadius: 999,
+                              padding: "2.5px 8px",
+                              whiteSpace: "nowrap",
+                              boxShadow: "0 2px 6px rgba(0,0,0,0.25)",
+                            }}
+                          >
+                            {it.name}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  {/* 识别还没回来：先在照片上转「正在识别中…」，结果到了自动换成上面的标签 */}
+                  {scanning[shot.id] && (
+                    <div
+                      className="absolute flex items-center gap-1.5"
+                      style={{
+                        left: 10,
+                        bottom: 10,
+                        backgroundColor: "rgba(0,0,0,0.62)",
+                        borderRadius: 999,
+                        padding: "4px 10px",
+                      }}
+                    >
+                      <Loader2 size={11} className="animate-spin" color={WHITE} />
+                      <span style={{ color: WHITE, fontSize: 10.5, fontWeight: 600 }}>正在识别中…</span>
+                    </div>
+                  )}
                 </div>
               </motion.div>
             ))}
@@ -1865,8 +1987,12 @@ function CaptureStep({
             <span style={{ color: "#E06060", fontSize: 11, fontWeight: 500 }}>删除</span>
           </button>
           <button
-            onClick={() => on完成(shots)}
-            disabled={shots.length === 0}
+            onClick={() => {
+              if (submitting) return;
+              setSubmitting(true);
+              on完成(shots);
+            }}
+            disabled={shots.length === 0 || submitting}
             className="flex-1 flex flex-col items-center gap-1.5 py-3 rounded-2xl"
             style={{
               backgroundColor: shots.length > 0 ? ORANGE : "rgba(255,255,255,0.12)",
@@ -1874,8 +2000,8 @@ function CaptureStep({
               boxShadow: shots.length > 0 ? "0 6px 22px rgba(250,136,58,0.38)" : "none",
             }}
           >
-            <Check size={17} color={WHITE} />
-            <span style={{ color: WHITE, fontSize: 11, fontWeight: 600 }}>提交</span>
+            {submitting ? <Loader2 size={17} color={WHITE} className="animate-spin" /> : <Check size={17} color={WHITE} />}
+            <span style={{ color: WHITE, fontSize: 11, fontWeight: 600 }}>{submitting ? "识别中…" : "提交"}</span>
           </button>
         </div>
       </div>
@@ -2218,11 +2344,14 @@ function ReviewStep({
         const state = await nativeRequest<NativeState>("state.get");
         if (!alive) return;
         setTags(
-          (state.scannedItems ?? []).slice(0, 8).map((item, i) => ({
-            name: item.name,
-            x: item.arHint?.x ?? 0.28 + (i % 3) * 0.22,
-            y: item.arHint?.y ?? 0.26 + Math.floor(i / 3) * 0.17,
-          })),
+          (state.scannedItems ?? [])
+            .filter((item) => isUsableNativeHint(item.arHint))
+            .slice(0, 8)
+            .map((item) => ({
+              name: item.name,
+              x: item.arHint!.x,
+              y: item.arHint!.y,
+            })),
         );
       } catch {
         /* 取不到就不显示标签，页面仍可用 */
@@ -4933,35 +5062,16 @@ function RewardStep({ photo, onClose }: { photo?: string; onClose: () => void })
 
 /* ---------- D. Zone Selection ---------- */
 
-const SELECTABLE_ZONES = [
-  { n: 1, label: "茶几区", color: ORANGE, left: "10%", top: "44%", w: "34%", h: "26%", items: 6, mins: 4 },
-  { n: 2, label: "沙发区", color: BLUE, left: "44%", top: "30%", w: "40%", h: "42%", items: 9, mins: 7 },
-  { n: 3, label: "书架角落", color: "#A88370", left: "6%", top: "8%", w: "30%", h: "26%", items: 4, mins: 3 },
-];
-
 /** 区域由这次真实识别到的物品按类别生成：名称、件数、预计分钟都来自真实结果。 */
 type FlowZone = {
   n: number; label: string; color: string;
   left: string; top: string; w: string; h: string;
   items: number; mins: number; names: string[]; home: string;
+  positioned?: boolean;
 };
 
 const ZONE_PALETTE = [ORANGE, BLUE, "#A88370", "#7BB28F", "#C97B84", "#8E7CC3"];
 
-/** 选区框的规整兜底布局：按区域数套用，互不重叠、贴合照片，看起来"一片是一片"。 */
-type ZoneBox = { left: string; top: string; w: string; h: string };
-const ZONE_LAYOUT: Record<number, ZoneBox[]> = {
-  1: [{ left: "12%", top: "22%", w: "76%", h: "44%" }],
-  2: [
-    { left: "9%", top: "12%", w: "82%", h: "36%" },
-    { left: "18%", top: "56%", w: "64%", h: "32%" },
-  ],
-  3: [
-    { left: "9%", top: "10%", w: "82%", h: "32%" },
-    { left: "9%", top: "50%", w: "39%", h: "34%" },
-    { left: "52%", top: "50%", w: "39%", h: "34%" },
-  ],
-};
 /** 每类物品该回到哪里，用来生成"把XX归到YY"这样的具体步骤。 */
 const CATEGORY_HOME: Record<string, string> = {
   "书籍": "书架", "电子产品": "充电站", "文具": "文具抽屉", "衣物": "衣柜",
@@ -4969,92 +5079,36 @@ const CATEGORY_HOME: Record<string, string> = {
   "餐具": "厨房橱柜", "杯子": "厨房台面", "文件资料": "文件夹", "工具": "工具箱", "鞋履": "鞋柜",
 };
 
-/** 两个归一化矩形是否相交（留 1% 容差），有重叠就退回规整布局，保证区域互不压。 */
-function hintBoxesOverlap(boxes: { x: number; y: number; w: number; h: number }[]): boolean {
-  for (let i = 0; i < boxes.length; i++) {
-    for (let j = i + 1; j < boxes.length; j++) {
-      const a = boxes[i], b = boxes[j];
-      const tol = 0.01;
-      if (a.x < b.x + b.w - tol && b.x < a.x + a.w - tol && a.y < b.y + b.h - tol && b.y < a.y + a.h - tol) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
+/**
+ * 分区定死：永远只有一个区域 —— 整个画面框起来就是「收纳区域」。
+ * 不再按识别出的类别切多个区（那样区域数量会随识别结果乱跳）。
+ * 识别到的物品全部挂在这一个区域下，后面的引导按名单走。
+ */
 function buildFlowZones(items: NativeItem[]): FlowZone[] {
   const picked = (items ?? []).filter((it) => it.isSelected !== false);
-
-  const groups = new Map<string, string[]>();
-  for (const it of picked) {
-    const key = it.category || "收纳工具";
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key)!.push(it.name);
-  }
-
-  // 区域数 = 这次识别出的物品类别数（最多 3 个，再多并进"其他物品"，选区不至于挤成一团）。
-  let entries = [...groups.entries()].sort((a, b) => b[1].length - a[1].length);
-  if (entries.length === 0) {
-    // 一样都没认出来：给一个居中的默认区域，页面不至于空着。
-    return [{
-      n: 1, label: "收纳区域", color: ORANGE, ...ZONE_LAYOUT[1][0],
-      items: 0, mins: 5, names: [], home: "固定收纳位",
-    }];
-  }
-  if (entries.length > 3) {
-    const head = entries.slice(0, 2);
-    const rest = entries.slice(2).flatMap(([, names]) => names);
-    entries = [...head, ["其他物品", rest]];
-  }
-
-  // 优先用识别给出的真实位置（arHint）按类别算包围框，框跟着物品走才可靠；
-  // 缺位置或框互相重叠时，退回规整布局兜底。
-  const hintBoxes = entries.map(([, names]) => {
-    const nameSet = new Set(names);
-    const rects = picked
-      .filter((it) => nameSet.has(it.name) && it.arHint)
-      .map((it) => ({
-        x: it.arHint!.x,
-        y: it.arHint!.y,
-        r: it.arHint!.x + it.arHint!.width,
-        b: it.arHint!.y + it.arHint!.height,
-      }));
-    if (rects.length === 0) return null;
-    const pad = 0.02;
-    const x = Math.max(0.02, Math.min(...rects.map((r) => r.x)) - pad);
-    const y = Math.max(0.02, Math.min(...rects.map((r) => r.y)) - pad);
-    const r = Math.min(0.98, Math.max(...rects.map((t) => t.r)) + pad);
-    const b = Math.min(0.98, Math.max(...rects.map((t) => t.b)) + pad);
-    return { x, y, w: Math.max(0.16, r - x), h: Math.max(0.14, b - y) };
-  });
-
-  const usable = hintBoxes.every(Boolean) && !hintBoxesOverlap(hintBoxes.filter(Boolean) as { x: number; y: number; w: number; h: number }[]);
-  const layout: ZoneBox[] = usable
-    ? (hintBoxes as { x: number; y: number; w: number; h: number }[]).map((bx) => ({
-        left: `${Math.round(bx.x * 100)}%`,
-        top: `${Math.round(bx.y * 100)}%`,
-        w: `${Math.round(bx.w * 100)}%`,
-        h: `${Math.round(bx.h * 100)}%`,
-      }))
-    : ZONE_LAYOUT[entries.length];
-
-  return entries.map(([cat, names], i) => ({
-    n: i + 1,
-    label: entries.length === 1 ? "收纳区域" : `${cat}区`,
-    color: ZONE_PALETTE[i % ZONE_PALETTE.length],
-    ...layout[i],
-    items: names.length,
-    mins: Math.max(2, Math.round(names.length * 1.5)),
-    names,
-    home: CATEGORY_HOME[cat] ?? "固定收纳位",
-  }));
+  const names = picked.map((it) => it.name).filter(Boolean);
+  return [
+    {
+      n: 1,
+      label: "收纳区域",
+      color: ZONE_PALETTE[0],
+      // 整个画面框起来：留一点内缩，让边框在照片里完整可见。
+      left: "3%",
+      top: "3%",
+      w: "94%",
+      h: "94%",
+      positioned: true,
+      items: names.length,
+      mins: Math.max(2, Math.round(names.length * 1.5)),
+      names,
+      home: "固定收纳位",
+    },
+  ];
 }
 
 /** 每个区域的步骤 = 该区域真实拍到的物品，一件一条归位动作。 */
 function buildZoneTasks(zones: FlowZone[]): { zone: number; label: string; color: string; tasks: SubTask[] }[] {
-  const source = zones.length > 0 ? zones : SELECTABLE_ZONES.map((z) => ({ ...z, names: [], home: "固定收纳位" }));
-  return source.map((z) => {
+  return zones.map((z) => {
     const tasks: SubTask[] = z.names.slice(0, 5).map((name, i) => ({
       id: `z${z.n}t${i + 1}`,
       text: `把「${name}」归到${z.home}`,
@@ -5108,7 +5162,7 @@ function ZoneSelectStep({
       <div className="mx-5 relative overflow-hidden" style={{ borderRadius: 18, aspectRatio: "4/3" }}>
         <ImageWithFallback src={photo || ROOM_IMG} alt="空间场景" className="h-full w-full object-cover" />
         <div className="absolute inset-0" style={{ backgroundColor: "rgba(26,20,17,0.18)" }} />
-        {zones.map((z) => {
+        {zones.filter((z) => z.positioned).map((z) => {
           const isSel = selected.includes(z.n);
           const c = isSel ? ORANGE : "#9db8d4";
           return (
@@ -5250,12 +5304,6 @@ function ZoneSelectStep({
 
 /* ---------- E. AR 3D Preview ---------- */
 
-const AR_ARROWS = [
-  { from: "30%,55%", to: "12%,72%", label: "充电线" },
-  { from: "55%,40%", to: "78%,30%", label: "Mug" },
-  { from: "45%,68%", to: "22%,82%", label: "书籍" },
-];
-
 function ARPreviewStep({
   photo,
   zones,
@@ -5267,7 +5315,7 @@ function ARPreviewStep({
   onBack: () => void;
   onNext: () => void;
 }) {
-  const previewZones = zones.length > 0 ? zones : SELECTABLE_ZONES.map((z) => ({ ...z, names: [], home: "固定收纳位" }));
+  const previewZones = zones.filter((z) => z.positioned);
   const [demo, setDemo] = useState(false);
   const [warn, setWarn] = useState(true);
   const arSupported = true; // toggle for demo
@@ -5362,56 +5410,6 @@ function ARPreviewStep({
           </div>
         </div>
       ))}
-
-      {/* Item ghost outlines + arrows */}
-      <svg className="absolute inset-0 w-full h-full z-10 pointer-events-none">
-        <defs>
-          <marker id="arrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
-            <polygon points="0 0, 6 3, 0 6" fill={ORANGE} />
-          </marker>
-        </defs>
-        {AR_ARROWS.map((a, i) => {
-          const [fx, fy] = a.from.split(",");
-          const [tx, ty] = a.to.split(",");
-          return (
-            <line
-              key={i}
-              x1={fx}
-              y1={fy}
-              x2={tx}
-              y2={ty}
-              stroke={ORANGE}
-              strokeWidth="2"
-              strokeDasharray="5 4"
-              markerEnd="url(#arrow)"
-              opacity="0.85"
-            />
-          );
-        })}
-      </svg>
-
-      {AR_ARROWS.map((a, i) => {
-        const [tx, ty] = a.to.split(",");
-        const realName = previewZones[i]?.names?.[i] ?? previewZones[i]?.names?.[0];
-        return (
-          <div
-            key={i}
-            className="absolute px-2 py-0.5"
-            style={{
-              left: tx,
-              top: ty,
-              backgroundColor: "rgba(255,255,255,0.92)",
-              borderRadius: 8,
-              fontSize: 9,
-              fontWeight: 600,
-              color: COFFEE,
-              transform: "translate(-50%, 4px)",
-            }}
-          >
-            {realName || a.label}
-          </div>
-        );
-      })}
 
       {/* Conflict warning during AR demo */}
       {demo && warn && (
@@ -5553,11 +5551,6 @@ const AR_ZONE_TASKS: { zone: number; label: string; color: string; tasks: SubTas
 
 /** 每个区域的物品按数量均分成 2~3 组，橙框和蓝色格子都用这一份分组。 */
 const GROUP_LABELS = ["大件物品", "小件物品", "零碎小物"];
-const GROUP_BOXES = [
-  { left: "5%", top: "20%", w: "27%", h: "36%" },
-  { left: "36.5%", top: "20%", w: "27%", h: "36%" },
-  { left: "68%", top: "20%", w: "27%", h: "36%" },
-];
 const GROUP_LETTERS = ["A", "B", "C"];
 const ZONE_CN = ["一", "二", "三"];
 const PREP_TOOLS = [
@@ -5578,6 +5571,55 @@ function groupZoneItems(names: string[]): { label: string; items: string[] }[] {
   })).filter((g) => g.items.length > 0);
 }
 
+/**
+ * 真机演示锁死开关：true = 收纳引导用预先生成的成品图 + 写定的文案（拍演示视频用），
+ * 走到第几步就显示第几张图。想回到「真实识别驱动」把它改成 false 即可，
+ * 那时画面用真实照片、分组来自识别结果、步骤数按识别出的组数算。
+ */
+const DEMO_GUIDE = true;
+
+const DEMO_GROUPS = [
+  { label: "物品", items: ["笔", "笔记本", "收纳盒"] },
+  { label: "电脑", items: ["笔记本电脑", "充电器", "鼠标"] },
+  { label: "台灯电线", items: ["台灯", "插线板", "数据线"] },
+];
+
+// 「物品分类」步的蓝色分区：底图是真实原图（room-before），这三个框画在画面上的固定位置。
+const DEMO_ZONE_BLUE = "#5B8DEF";
+const DEMO_ZONE_BOXES = [
+  { label: "物品", left: "2%", top: "56%", w: "30%", h: "38%" },
+  { label: "电脑", left: "35%", top: "58%", w: "35%", h: "36%" },
+  { label: "台灯电线", left: "72%", top: "50%", w: "26%", h: "44%" },
+];
+
+const DEMO_STEPS = [
+  {
+    image: demoStepClear,
+    title: "清理桌面",
+    desc: "先把桌面上所有东西清出来：书本、文具、充电线全部挪到旁边，再用湿巾把台面和隔板擦干净，留出完整的空桌面。",
+  },
+  {
+    image: demoRoomBefore,
+    title: "物品分类",
+    desc: "照画面上的三个分区，把清出来的东西分成三组：物品杂物、电脑设备、台灯与电线，先归堆，先别急着收纳。",
+  },
+  {
+    image: demoStepItems,
+    title: "整理物品",
+    desc: "把笔、本子和零散小物放进桌面收纳架，按使用频率分层摆放，最常用的放在最上层，桌面只留收纳架一件。",
+  },
+  {
+    image: demoStepComputer,
+    title: "整理电脑",
+    desc: "把笔记本电脑摆正居中，充电器和鼠标收进侧边收纳位，线缆顺着桌沿走，不再横穿桌面。",
+  },
+  {
+    image: demoStepLamp,
+    title: "整理台灯电线",
+    desc: "台灯移到左上角固定位置，多余电线用理线带捆好，插线板收进桌下走线槽，桌面上看不到一根散线。",
+  },
+];
+
 function ARGuideStep({
   photo,
   zones,
@@ -5593,21 +5635,33 @@ function ARGuideStep({
   const [stepIdx, setStepIdx] = useState(0); // 0=清理 1=分类 2..=逐组收纳
   const [flow, setFlow] = useState<"guide" | "celebrate" | "checklist">("guide");
   const [checkIdx, setCheckIdx] = useState(0);
-  const totalZones = Math.max(1, zones.length);
-  const zone = zones[zoneIdx] ?? {
-    n: 1, label: "收纳区域", color: ORANGE,
-    left: "10%", top: "40%", w: "40%", h: "30%",
-    items: 0, mins: 5, names: [], home: "固定收纳位",
-  };
-  const groups = groupZoneItems(zone.names);
+  const totalZones = zones.length;
+  const zone = zones[zoneIdx];
+  if (!zone) {
+    return (
+      <div className="h-full w-full flex flex-col items-center justify-center gap-4" style={{ backgroundColor: "#13110f" }}>
+        <p style={{ color: WHITE, fontSize: 14 }}>没有可用于引导的真实识别区域</p>
+        <button onClick={onBack} style={{ color: ORANGE, fontSize: 13 }}>返回分区</button>
+      </div>
+    );
+  }
+  // 真机演示锁死：引导五步用预先生成好的成品图 + 写定的文案，走到哪一步就显示哪张。
+  // 关掉这个开关就回到真实识别驱动的原逻辑（groups 来自识别结果、画面用真实照片）。
+  const groups = DEMO_GUIDE ? DEMO_GROUPS : groupZoneItems(zone.names);
   const zoneTasks = buildZoneTasks(zones);
-  const totalSteps = 2 + groups.length;
+  const totalSteps = DEMO_GUIDE ? DEMO_STEPS.length : 2 + groups.length;
   const isPrepare = stepIdx === 0;
   const isGroup = stepIdx === 1;
   const placeIdx = Math.min(Math.max(stepIdx - 2, 0), Math.max(groups.length - 1, 0));
   const placing = groups[placeIdx] ?? { label: "物品", items: [] as string[] };
+  const demoStep = DEMO_GUIDE ? DEMO_STEPS[Math.min(stepIdx, DEMO_STEPS.length - 1)] : null;
+  // 演示图本身已经画好分区/整理结果，不再往上面叠示意框，避免两层标注打架。
+  const stepImage = demoStep ? demoStep.image : photo || ROOM_IMG;
+  const showOverlay = !DEMO_GUIDE;
 
-  const stepMeta = isPrepare
+  const stepMeta = demoStep
+    ? { title: demoStep.title, desc: demoStep.desc, btn: stepIdx + 1 >= totalSteps ? "完成收纳" : "下一步" }
+    : isPrepare
     ? {
         title: `清理${zone.label}`,
         desc: "先把台面上的东西全部清出来：拆掉的包装、用过的纸巾、空瓶罐都清走，再把台面擦干净。",
@@ -5645,19 +5699,51 @@ function ARGuideStep({
     <div className="h-full w-full flex flex-col" style={{ backgroundColor: "#13110f" }}>
       {/* 全屏真实照片 */}
       <div className="relative flex-1 overflow-hidden">
-        <ImageWithFallback src={photo || ROOM_IMG} alt="实时画面" className="h-full w-full object-cover" />
+        <ImageWithFallback src={stepImage} alt="实时画面" className="h-full w-full object-cover" />
         <div
           className="absolute inset-0 pointer-events-none"
           style={{ background: "linear-gradient(180deg, rgba(0,0,0,0.30) 0%, rgba(0,0,0,0) 34%)" }}
         />
 
+        {/* 演示模式「物品分类」步：真实原图上叠蓝色分区（A/B/C 徽章 + 底部名称） */}
+        {DEMO_GUIDE && isGroup && DEMO_ZONE_BOXES.map((b, i) => (
+          <div
+            key={b.label}
+            className="absolute pointer-events-none"
+            style={{
+              left: b.left, top: b.top, width: b.w, height: b.h,
+              border: `2px solid ${DEMO_ZONE_BLUE}`,
+              backgroundColor: "rgba(91,141,239,0.20)",
+              borderRadius: 14,
+              boxShadow: "0 4px 16px rgba(0,0,0,0.22)",
+            }}
+          >
+            <span
+              className="absolute flex items-center justify-center"
+              style={{
+                top: -13, left: -8, width: 26, height: 26, borderRadius: 999,
+                backgroundColor: DEMO_ZONE_BLUE, color: WHITE, fontSize: 11, fontWeight: 800,
+                boxShadow: "0 3px 8px rgba(0,0,0,0.25)",
+              }}
+            >
+              {GROUP_LETTERS[i]}
+            </span>
+            <span
+              className="absolute"
+              style={{
+                bottom: 8, left: "50%", transform: "translateX(-50%)",
+                backgroundColor: DEMO_ZONE_BLUE, color: WHITE, fontSize: 10, fontWeight: 700,
+                borderRadius: 999, padding: "3px 10px", whiteSpace: "nowrap",
+              }}
+            >
+              {b.label}
+            </span>
+          </div>
+        ))}
+
         {/* 物品分类步：照片上叠橙色分区卡（A/B/C 徽章 + 底部标签） */}
-        {isGroup && groups.map((g, i) => {
-          const box = groups.length === 1
-            ? { left: "28%", top: "22%", w: "44%", h: "36%" }
-            : groups.length === 2
-            ? [{ left: "8%", top: "22%", w: "38%", h: "36%" }, { left: "54%", top: "22%", w: "38%", h: "36%" }][i]
-            : GROUP_BOXES[i];
+        {showOverlay && isGroup && zone.positioned && groups.map((g, i) => {
+          const box = { left: zone.left, top: zone.top, w: zone.w, h: zone.h };
           return (
             <div
               key={g.label}
@@ -5694,11 +5780,11 @@ function ARGuideStep({
         })}
 
         {/* 逐组收纳步：照片上叠淡蓝"放这里"示意框 */}
-        {!isPrepare && !isGroup && (
+        {showOverlay && !isPrepare && !isGroup && zone.positioned && (
           <div
             className="absolute"
             style={{
-              left: "16%", top: "24%", width: "68%", height: "42%",
+              left: zone.left, top: zone.top, width: zone.w, height: zone.h,
               border: "2px solid rgba(160,200,230,0.95)",
               backgroundColor: "rgba(180,199,220,0.20)",
               borderRadius: 18,
@@ -6059,12 +6145,27 @@ const CHAOS_SPOTS = [
 
 function DisorderAnalysisStep({
   spaceName,
+  photo,
+  items,
   onDone,
 }: {
   spaceName: string;
+  photo?: string;
+  items?: NativeItem[];
   onDone: () => void;
 }) {
   const [phase, setPhase] = useState(0);
+  // 混乱度一律由这次真实拍到的识别结果算出来：物品越多、类别越杂，分数越高。
+  const scanned = items ?? [];
+  const itemCount = scanned.length;
+  const categoryCount = new Set(scanned.map((i) => i.category).filter(Boolean)).size;
+  const clutterSpots = Math.max(1, Math.min(5, categoryCount || Math.ceil(itemCount / 3) || 1));
+  const clutterScore = Math.max(
+    18,
+    Math.min(96, Math.round(26 + itemCount * 3.4 + categoryCount * 4.2)),
+  );
+  const estMinutes = Math.min(90, Math.max(10, Math.round((15 + itemCount * 4) / 5) * 5));
+  const clutterLevel = clutterScore < 40 ? "轻度杂乱" : clutterScore < 70 ? "中度混乱" : "重度混乱";
 
   useEffect(() => {
     const t1 = setTimeout(() => setPhase(1), 1900);
@@ -6080,7 +6181,7 @@ function DisorderAnalysisStep({
       style={{ backgroundColor: "#0D0A07" }}
     >
       <ImageWithFallback
-        src={ROOM_IMG}
+        src={photo || ROOM_IMG}
         alt=""
         className="absolute inset-0 h-full w-full object-cover"
         style={{ opacity: 0.46 }}
@@ -6116,7 +6217,7 @@ function DisorderAnalysisStep({
       </AnimatePresence>
 
       {/* Hotspot markers */}
-      {phase >= 1 && CHAOS_SPOTS.map((s, i) => (
+      {phase >= 1 && CHAOS_SPOTS.slice(0, clutterSpots).map((s, i) => (
         <motion.div
           key={i}
           initial={{ opacity: 0, scale: 0 }}
@@ -6159,7 +6260,7 @@ function DisorderAnalysisStep({
             style={{ color: WHITE, fontSize: 22, fontWeight: 700, marginTop: 6, letterSpacing: "-0.02em" }}
           >
             {phase === 0 && "正在扫描空间状态…"}
-            {phase === 1 && "检测到 5 处混乱区域"}
+            {phase === 1 && `检测到 ${clutterSpots} 处混乱区域`}
             {phase >= 2 && "分析完成"}
           </motion.p>
         </AnimatePresence>
@@ -6182,21 +6283,21 @@ function DisorderAnalysisStep({
           >
             <p style={{ color: COFFEE, opacity: 0.45, fontSize: 12, fontWeight: 600 }}>空间混乱度评估</p>
             <div className="flex items-end gap-3 mt-2.5 mb-5">
-              <p style={{ color: COFFEE, fontSize: 40, fontWeight: 800, letterSpacing: "-0.05em", lineHeight: 1 }}>62%</p>
-              <p style={{ color: "#ECC079", fontSize: 17, fontWeight: 700, marginBottom: 6 }}>中度混乱</p>
+              <p style={{ color: COFFEE, fontSize: 40, fontWeight: 800, letterSpacing: "-0.05em", lineHeight: 1 }}>{clutterScore}%</p>
+              <p style={{ color: "#ECC079", fontSize: 17, fontWeight: 700, marginBottom: 6 }}>{clutterLevel}</p>
             </div>
             <div style={{ height: 6, backgroundColor: SOFT, borderRadius: 999, overflow: "hidden", marginBottom: 18 }}>
               <motion.div
                 initial={{ width: 0 }}
-                animate={{ width: "62%" }}
+                animate={{ width: `${clutterScore}%` }}
                 transition={{ duration: 1.0, ease: [0.22, 1, 0.36, 1] }}
                 style={{ height: "100%", borderRadius: 999, backgroundColor: "#ECC079" }}
               />
             </div>
             <div className="space-y-2.5">
               {[
-                { icon: "📦", text: "发现 5 处物品堆积区" },
-                { icon: "⏱️", text: "预计整理约需 40 分钟" },
+                { icon: "📦", text: `发现 ${clutterSpots} 处物品堆积区` },
+                { icon: "⏱️", text: `预计整理约需 ${estMinutes} 分钟` },
                 { icon: "💡", text: "建议重新规划收纳动线" },
               ].map((item, i) => (
                 <motion.div
@@ -6314,30 +6415,94 @@ function RelightChoiceStep({
 
 function ProofCaptureStep({
   spaceName,
+  beforePhoto,
   onBack,
   onDone,
 }: {
   spaceName: string;
+  beforePhoto?: string;
   onBack: () => void;
   onDone: () => void;
 }) {
   const [captured, setCaptured] = useState(false);
   const [flash, setFlash] = useState(false);
+  // 真相机：画面垫在 WebView 底下，这一页把背景临时透明透出来（和拍摄页同一套做法）。
+  const [proofShot, setProofShot] = useState<string | null>(null);
+  const [liveFeed, setLiveFeed] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const previewRef = useRef<HTMLDivElement>(null);
 
-  function shoot() {
+  const rectOf = () => {
+    const r = previewRef.current?.getBoundingClientRect();
+    return r
+      ? { x: r.x, y: r.y, width: r.width, height: r.height }
+      : { x: 0, y: 0, width: window.innerWidth, height: window.innerHeight };
+  };
+
+  useEffect(() => {
+    let stopped = false;
+    (async () => {
+      try {
+        const res = await nativeRequest<{ ok: boolean }>("camera.preview.start", rectOf());
+        if (!stopped) setLiveFeed(res.ok === true);
+      } catch {
+        if (!stopped) setLiveFeed(false);
+      }
+    })();
+    return () => {
+      stopped = true;
+      void nativeRequest("camera.preview.stop", {}).catch(() => undefined);
+    };
+  }, []);
+
+  // 画面要透上来，得把预览区以上这条链路的背景临时改成透明，离开时还原。
+  useEffect(() => {
+    if (!liveFeed) return;
+    const chain: HTMLElement[] = [];
+    let node: HTMLElement | null = previewRef.current;
+    while (node) { chain.push(node); node = node.parentElement; }
+    const saved = chain.map((el) => el.style.background);
+    chain.forEach((el) => { el.style.background = "transparent"; });
+    return () => { chain.forEach((el, i) => { el.style.background = saved[i]; }); };
+  }, [liveFeed]);
+
+  async function shoot() {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
     setFlash(true);
     setTimeout(() => setFlash(false), 180);
-    setTimeout(() => setCaptured(true), 280);
+    try {
+      const shot = await nativeRequest<{ preview?: string }>("camera.capture", {});
+      const src = shot.preview;
+      if (!src) {
+        setError("没有拿到照片，光线亮一点再试一次");
+        return;
+      }
+      setProofShot(src);
+      void nativeRequest("camera.preview.stop", {}).catch(() => undefined);
+      setTimeout(() => setCaptured(true), 280);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "拍摄未完成");
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
     <div className="h-full w-full flex flex-col relative" style={{ backgroundColor: "#130F09" }}>
-      <ImageWithFallback
-        src={ROOM_IMG}
-        alt=""
-        className="absolute inset-0 h-full w-full object-cover"
-        style={{ opacity: 0.72 }}
-      />
+      <div ref={previewRef} className="absolute inset-0">
+        {/* 没起真相机时（例如电脑浏览器预览）才兜底显示一张示例图 */}
+        {!liveFeed && (
+          <ImageWithFallback
+            src={ROOM_IMG}
+            alt=""
+            className="h-full w-full object-cover"
+            style={{ opacity: 0.72 }}
+          />
+        )}
+      </div>
 
       <AnimatePresence>
         {flash && (
@@ -6387,7 +6552,7 @@ function ProofCaptureStep({
             }}
           >
             <div style={{ flex: 1, position: "relative" }}>
-              <ImageWithFallback src={ROOM_IMG} alt="拍摄留证" className="h-full w-full object-cover" />
+              <ImageWithFallback src={proofShot || ROOM_IMG} alt="拍摄留证" className="h-full w-full object-cover" />
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
@@ -6459,7 +6624,7 @@ function ProofCaptureStep({
               overflow: "hidden", border: "2px solid rgba(255,255,255,0.35)",
             }}>
               <ImageWithFallback
-                src={ROOM_IMG} alt="整理前"
+                src={beforePhoto || ROOM_IMG} alt="整理前"
                 className="w-full h-full object-cover"
                 style={{ opacity: 0.65 }}
               />
@@ -6481,6 +6646,9 @@ function ProofCaptureStep({
           >
             <div style={{ width: 60, height: 60, borderRadius: "50%", border: `3px solid ${COFFEE}` }} />
           </button>
+          {error && (
+            <p style={{ color: "#E25A4A", fontSize: 12, marginTop: 10, textAlign: "center" }}>{error}</p>
+          )}
         </div>
       )}
     </div>
@@ -6647,18 +6815,46 @@ export function RelightFlow({ spaceId, spaceName, spaceVivid, onClose, onComplet
   });
   const [chosen, setChosen] = useState<GenPlan>(GEN_PLANS[0]);
   const [relightMode, setRelightMode] = useState<"tune" | "new">("tune");
+  const [relightAssets, setRelightAssets] = useState<CapturedAsset[]>([]);
+  const [relightItems, setRelightItems] = useState<NativeItem[]>([]);
+  // 方案卡也跟着这次真实拍到的物品走，和主线用同一套算法。
+  const relightPlans = personalizePlans(relightItems);
 
   return (
     <div className="absolute inset-0 z-50" style={{ backgroundColor: LINEN }}>
       {step === "capture" && (
         <CaptureStep
           onClose={onClose}
-          on完成={(_assets) => setStep("analyzing")}
+          on完成={(assets) => {
+            setRelightAssets(assets);
+            void (async () => {
+              try {
+                // 同样的 8 秒上限：识别没跑完也先进下一步，不等到按钮像卡住。
+                const result = (await Promise.race([
+                  nativeRequest<{ items?: NativeItem[] }>("scan.await", {
+                    captureIDs: assets.map((asset) => asset.id),
+                  }).catch(() => undefined),
+                  new Promise<undefined>((resolve) => window.setTimeout(() => resolve(undefined), 8000)),
+                ])) as { items?: NativeItem[] } | undefined;
+                let items = result?.items ?? [];
+                if (items.length === 0) {
+                  const state = await nativeRequest<NativeState>("state.get").catch(() => undefined);
+                  items = state?.scannedItems ?? [];
+                }
+                setRelightItems(items);
+              } catch {
+                setRelightItems([]);
+              }
+              setStep("analyzing");
+            })();
+          }}
         />
       )}
       {step === "analyzing" && (
         <DisorderAnalysisStep
           spaceName={spaceName}
+          photo={relightAssets[0]?.src}
+          items={relightItems}
           onDone={() => setStep("choice")}
         />
       )}
@@ -6679,7 +6875,7 @@ export function RelightFlow({ spaceId, spaceName, spaceVivid, onClose, onComplet
       )}
       {step === "plandeck" && (
         <PlanDeckStep
-          plans={GEN_PLANS}
+          plans={relightPlans}
           onClose={() => setStep("choice")}
           onStart={(p) => { setChosen(p); setStep("zones"); }}
           onTune={(p) => { setChosen(p); setStep("tune"); }}
@@ -6687,6 +6883,8 @@ export function RelightFlow({ spaceId, spaceName, spaceVivid, onClose, onComplet
       )}
       {step === "zones" && (
         <ZoneSelectStep
+          photo={relightAssets[0]?.src}
+          items={relightItems}
           onBack={() => setStep(relightMode === "tune" ? "tune" : "plandeck")}
           onNext={() => setStep("proof")}
         />
@@ -6694,6 +6892,7 @@ export function RelightFlow({ spaceId, spaceName, spaceVivid, onClose, onComplet
       {step === "proof" && (
         <ProofCaptureStep
           spaceName={spaceName}
+          beforePhoto={relightAssets[0]?.src}
           onBack={() => setStep("zones")}
           onDone={() => setStep("complete")}
         />
