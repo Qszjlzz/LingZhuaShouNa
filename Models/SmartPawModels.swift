@@ -8,8 +8,23 @@ enum ItemCategory: String, Codable, CaseIterable, Identifiable {
     case toys = "玩偶杂物"
     case trash = "待丢弃"
     case tools = "收纳工具"
+    case kitchen = "厨房"
+    case drinks = "饮品"
+    case health = "健康"
+    case decor = "装饰"
 
     var id: String { rawValue }
+
+    init?(webValue: String) {
+        switch webValue {
+        case "服饰": self = .clothes
+        case "玩具": self = .toys
+        case "工具": self = .tools
+        default:
+            guard let category = Self(rawValue: webValue) else { return nil }
+            self = category
+        }
+    }
 
     var suggestedZone: String {
         switch self {
@@ -20,6 +35,10 @@ enum ItemCategory: String, Codable, CaseIterable, Identifiable {
         case .toys: "展示格 / 低频收纳区"
         case .trash: "垃圾袋 / 回收袋"
         case .tools: "手边工具区"
+        case .kitchen: "厨房柜台 / 厨具区"
+        case .drinks: "杯具 / 饮品区"
+        case .health: "药箱 / 健康用品区"
+        case .decor: "展示架 / 装饰区"
         }
     }
 }
@@ -221,11 +240,11 @@ struct StorageStep: Identifiable, Codable, Equatable {
     var detail: String
     var zone: String
     var status: StepStatus
-    var arHint: ARHint
+    var arHint: ARHint?
     var arMask: ARMask?
     var itemIDs: [UUID]
 
-    init(id: UUID = UUID(), title: String, detail: String, zone: String, status: StepStatus = .pending, arHint: ARHint, arMask: ARMask? = nil, itemIDs: [UUID]) {
+    init(id: UUID = UUID(), title: String, detail: String, zone: String, status: StepStatus = .pending, arHint: ARHint? = nil, arMask: ARMask? = nil, itemIDs: [UUID]) {
         self.id = id
         self.title = title
         self.detail = detail
@@ -244,16 +263,53 @@ struct StoragePlan: Identifiable, Codable, Equatable {
     var summary: String
     var toolList: [String]
     var steps: [StorageStep]
+    var isPaused: Bool
     var completedAt: Date?
 
-    init(id: UUID = UUID(), style: StorageStyle, timeBudget: TimeBudget, summary: String, toolList: [String], steps: [StorageStep], completedAt: Date? = nil) {
+    init(id: UUID = UUID(), style: StorageStyle, timeBudget: TimeBudget, summary: String, toolList: [String], steps: [StorageStep], isPaused: Bool = false, completedAt: Date? = nil) {
         self.id = id
         self.style = style
         self.timeBudget = timeBudget
         self.summary = summary
         self.toolList = toolList
         self.steps = steps
+        self.isPaused = isPaused
         self.completedAt = completedAt
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case style
+        case timeBudget
+        case summary
+        case toolList
+        case steps
+        case isPaused
+        case completedAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        style = try container.decode(StorageStyle.self, forKey: .style)
+        timeBudget = try container.decode(TimeBudget.self, forKey: .timeBudget)
+        summary = try container.decode(String.self, forKey: .summary)
+        toolList = try container.decode([String].self, forKey: .toolList)
+        steps = try container.decode([StorageStep].self, forKey: .steps)
+        isPaused = try container.decodeIfPresent(Bool.self, forKey: .isPaused) ?? false
+        completedAt = try container.decodeIfPresent(Date.self, forKey: .completedAt)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(style, forKey: .style)
+        try container.encode(timeBudget, forKey: .timeBudget)
+        try container.encode(summary, forKey: .summary)
+        try container.encode(toolList, forKey: .toolList)
+        try container.encode(steps, forKey: .steps)
+        try container.encode(isPaused, forKey: .isPaused)
+        try container.encodeIfPresent(completedAt, forKey: .completedAt)
     }
 
     var progress: Double {

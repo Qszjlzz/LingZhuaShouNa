@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { Plus, Sparkles, X, RotateCw, Pencil, ChevronRight, Play, Check, Camera, Trash2, CircleAlert } from "lucide-react";
 import { COFFEE, ORANGE, LINEN, BLUE, WHITE, SOFT } from "./theme";
 import { InProgressDetail } from "./InProgressDetail";
-import { nativeRequest, type NativeSpace } from "../nativeBridge";
+import { nativeRequest, type NativeSpace, type NativeState } from "../nativeBridge";
 import bedArt from "../../assets/spaces/bed.png";
 import deskArt from "../../assets/spaces/desk.png";
 import kitchenArt from "../../assets/spaces/kitchen.png";
@@ -80,6 +80,7 @@ type Piece = {
   y: number;
   rot: number;
   scale: number;
+  organized?: boolean;
 };
 
 // 初始摆位照设计稿：床左上、茶几右中、厨房左下。
@@ -91,13 +92,40 @@ const initialPieces: Piece[] = [
   { id: "p4", name: "茶几", vivid: "#DFA6B0", skin: "teatable", items: 31, lastDays: 15, x: 178, y: 144, rot: 0, scale: 1 },
 ];
 
-const NEW_TEMPLATES: { name: string; vivid: string; skin: SkinKey }[] = [
-  { name: "厨房", vivid: "#A9B486", skin: "kitchen" },
-  { name: "衣柜", vivid: "#C3AAD4", skin: "bed" },
-  { name: "玄关", vivid: "#9DBBC9", skin: "teatable" },
-  { name: "工作角落", vivid: "#E29B7B", skin: "desk" },
-  { name: "储物间", vivid: "#A6B2D6", skin: "desk" },
-];
+type PieceLayout = Pick<Piece, "x" | "y" | "rot" | "scale" | "vivid">;
+const LAYOUT_KEY = "smartpaw-space-map-layout-v1";
+
+function savedLayouts(): Record<string, PieceLayout> {
+  try {
+    const value = JSON.parse(localStorage.getItem(LAYOUT_KEY) || "{}");
+    return value && typeof value === "object" ? value : {};
+  } catch { return {}; }
+}
+
+function nativePieces(spaces: NativeSpace[], previous: Piece[] = []): Piece[] {
+  const layouts = savedLayouts();
+  return spaces.map((space, index) => {
+    const old = previous.find((piece) => piece.id === space.id);
+    const slot = initialPieces[index % initialPieces.length];
+    const skin: SkinKey = /厨房|餐|kitchen/i.test(space.name) ? "kitchen"
+      : /床|卧室|衣柜|bed/i.test(space.name) ? "bed"
+      : /茶|客厅|浴室|沙发|living/i.test(space.name) ? "teatable" : "desk";
+    const layout = old || layouts[space.id];
+    const organizedAt = space.lastOrganizedAt ? Date.parse(space.lastOrganizedAt) : NaN;
+    const validNumber = (value: unknown, fallback: number) => typeof value === "number" && Number.isFinite(value) ? value : fallback;
+    const scale = Math.max(0.72, Math.min(1.45, validNumber(layout?.scale, 1)));
+    return {
+      id: space.id, name: space.name, skin, items: space.detectedItems.length,
+      lastDays: Number.isFinite(organizedAt) ? Math.max(0, Math.floor((Date.now() - organizedAt) / 86400000)) : 0,
+      organized: Number.isFinite(organizedAt),
+      vivid: typeof layout?.vivid === "string" && /^#[0-9a-f]{6}$/i.test(layout.vivid) ? layout.vivid : slot.vivid,
+      x: Math.max(6, Math.min(352 - SKINS[skin].w * scale, validNumber(layout?.x, slot.x))),
+      y: Math.max(6, Math.min(402 - SKINS[skin].h * scale, validNumber(layout?.y, slot.y))),
+      rot: validNumber(layout?.rot, 0),
+      scale,
+    };
+  });
+}
 
 const LONG_PRESS = 420;
 
@@ -420,18 +448,24 @@ export function SpatialScreen({
   relitSpaceId,
   onRelitAck,
   nativeSpaces,
+  selectedSpaceID,
   onNativeChange,
 }: {
-  onReshoot?: (mode: "compare" | "same" | "new") => void;
+  onReshoot?: (mode: "compare" | "same" | "new", space?: { id: string; name: string; vivid: string }) => void;
   scanDone?: boolean;
   onScanAck?: () => void;
   onRelightRequest?: (id: string, name: string, vivid: string) => void;
   relitSpaceId?: string | null;
   onRelitAck?: () => void;
   nativeSpaces?: NativeSpace[];
+  selectedSpaceID?: string;
   onNativeChange?: () => void;
 } = {}) {
-  const [pieces, setPieces] = useState<Piece[]>(initialPieces);
+  const [pieces, setPieces] = useState<Piece[]>(() => nativeSpaces ? nativePieces(nativeSpaces) : window.webkit?.messageHandlers?.smartpaw ? [] : initialPieces);
+  const [localSpaces, setLocalSpaces] = useState(nativeSpaces);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const mutating = useRef(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
@@ -440,19 +474,61 @@ export function SpatialScreen({
   const [reward, setReward] = useState<Piece | null>(null);
   const [bornId, setBornId] = useState<string | null>(null);
   const [bornPos, setBornPos] = useState<{ cx: number; cy: number } | null>(null);
-  const [openProgress, setOpenProgress] = useState(false);
+  const [openProgress, setOpenProgress] = useState<string | null>(null);
   const [retidy, setRetidy] = useState(false);
   const [relitId, setRelitId] = useState<string | null>(null);
   const boardRef = useRef<HTMLDivElement>(null);
 
-  // When ShootFlow finishes, auto-trigger the new-space reward flow
   useEffect(() => {
-    if (scanDone) {
-      addSpace();
-      onScanAck?.();
-    }
+    setLocalSpaces(nativeSpaces);
+    if (nativeSpaces) setPieces((previous) => nativePieces(nativeSpaces, previous));
+  }, [nativeSpaces]);
+
+  useEffect(() => {
+    try {
+      const layouts = savedLayouts();
+      pieces.forEach(({ id, x, y, rot, scale, vivid }) => { layouts[id] = { x, y, rot, scale, vivid }; });
+      localStorage.setItem(LAYOUT_KEY, JSON.stringify(layouts));
+    } catch { /* A full or unavailable web store must not block native spaces. */ }
+  }, [pieces]);
+
+  // The native completion already saved this space. Reuse it for the reward
+  // rather than creating an unrelated, randomly named second space.
+  useEffect(() => {
+    if (!scanDone) return;
+    let cancelled = false;
+    void nativeRequest<NativeState>("state.get").then((state) => {
+      if (cancelled) return;
+      const updatedPieces = nativePieces(state.spaces, pieces);
+      setLocalSpaces(state.spaces);
+      setPieces(updatedPieces);
+      const completed = state.spaces.find((space) => space.id === state.selectedSpaceID);
+      if (completed?.completedPlans.length) setReward(updatedPieces.find((piece) => piece.id === completed.id) ?? null);
+    }).catch((cause) => {
+      if (!cancelled) setError(cause instanceof Error ? cause.message : "无法读取刚完成的空间，请重试。");
+    }).finally(() => { if (!cancelled) onScanAck?.(); });
+    return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scanDone]);
+
+  const updateNativeState = (state: NativeState) => {
+    setLocalSpaces(state.spaces);
+    setPieces((previous) => nativePieces(state.spaces, previous));
+    onNativeChange?.();
+  };
+
+  const mutate = async (operation: () => Promise<void>) => {
+    if (mutating.current) return;
+    mutating.current = true; setBusy(true); setError("");
+    try { await operation(); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : "操作保存失败，请重试。"); }
+    finally { mutating.current = false; setBusy(false); }
+  };
+
+  const selectSpace = async (id: string) => {
+    if (!localSpaces) return;
+    updateNativeState(await nativeRequest<NativeState>("space.select", { id }));
+  };
 
   // When RelightFlow completes, reset lastDays and play colour-restore animation
   useEffect(() => {
@@ -466,40 +542,35 @@ export function SpatialScreen({
   }, [relitSpaceId]);
 
   function reshoot(mode: "compare" | "same" | "new") {
-    setRetidy(false);
-    setSelected(null);
-    onReshoot?.(mode);
+    void mutate(async () => {
+      const target = current ?? pieces.find((piece) => piece.id === selectedSpaceID);
+      if (target) await selectSpace(target.id);
+      setRetidy(false); setSelected(null);
+      onReshoot?.(mode, target ? { id: target.id, name: target.name, vivid: target.vivid } : undefined);
+    });
   }
 
   const current = pieces.find((p) => p.id === selected) ?? null;
+  const currentNative = localSpaces?.find((space) => space.id === selected);
   const toDelete = pieces.find((p) => p.id === confirmDelete) ?? null;
+  const progressSpaces = (localSpaces ?? []).filter((space) => space.activePlan);
+  const hasCompletedOrganization = (localSpaces ?? []).some((space) => space.completedPlans.length > 0 || Number.isFinite(Date.parse(space.lastOrganizedAt ?? "")));
+  const progressSpace = progressSpaces.find((space) => space.id === selectedSpaceID) ?? progressSpaces[0];
+  const progressPlan = progressSpace?.activePlan;
+  const progress = progressPlan?.steps.length ? Math.round(progressPlan.steps.filter((step) => step.status === "done").length / progressPlan.steps.length * 100) : 0;
+  const detailSpace = localSpaces?.find((space) => space.id === openProgress);
 
   function handleRelight() {
     if (!current) return;
-    setSelected(null);
-    setRetidy(false);
-    onRelightRequest?.(current.id, current.name, current.vivid);
+    void mutate(async () => {
+      await selectSpace(current.id);
+      setSelected(null); setRetidy(false);
+      onRelightRequest?.(current.id, current.name, current.vivid);
+    });
   }
 
-  if (openProgress) {
-    return <InProgressDetail onBack={() => setOpenProgress(false)} />;
-  }
-
-  function addSpace() {
-    const tpl = NEW_TEMPLATES[pieces.length % NEW_TEMPLATES.length];
-    const p: Piece = {
-      id: "p" + Date.now(),
-      name: tpl.name,
-      vivid: tpl.vivid,
-      skin: tpl.skin,
-      items: 6 + Math.floor(Math.random() * 20),
-      lastDays: 0,
-      x: 60 + Math.random() * 110,
-      y: 70 + Math.random() * 120,
-      rot: Math.round((Math.random() - 0.5) * 12),
-      scale: 1,
-    };
-    setReward(p);
+  if (detailSpace) {
+    return <InProgressDetail onBack={() => setOpenProgress(null)} space={detailSpace} onNativeChange={updateNativeState} />;
   }
 
   function claimReward() {
@@ -508,37 +579,44 @@ export function SpatialScreen({
     const w = Math.round(s.w * reward.scale);
     const h = Math.round(s.h * reward.scale);
     setBornPos({ cx: reward.x + w / 2, cy: reward.y + h / 2 });
-    setPieces((prev) => [...prev, reward]);
-    void nativeRequest("space.add", { name: reward.name }).then(onNativeChange);
     setBornId(reward.id);
     setReward(null);
     setTimeout(() => setBornPos(null), 2200);
   }
 
-  const patch = (id: string, d: Partial<Piece>) =>
+  function patch(id: string, d: Partial<Piece>) {
     setPieces((prev) => prev.map((p) => (p.id === id ? { ...p, ...d } : p)));
+  }
 
   function saveName() {
-    if (current && draft.trim()) {
-      patch(current.id, { name: draft.trim() });
-      void nativeRequest("space.rename", { id: current.id, name: draft.trim() }).then(onNativeChange);
-    }
+    const name = draft.trim();
     setRenaming(false);
+    if (!current || !name || name === current.name) return;
+    void mutate(async () => {
+      if (!localSpaces) { patch(current.id, { name }); return; }
+      updateNativeState(await nativeRequest<NativeState>("space.rename", { id: current.id, name }));
+    });
   }
 
   function reviewNow() {
     if (!current) return;
-    patch(current.id, { lastDays: 0 });
-    setSelected(null);
+    void mutate(async () => {
+      await selectSpace(current.id);
+      setSelected(null);
+      if (currentNative?.activePlan) setOpenProgress(current.id);
+      else onReshoot?.("same");
+    });
   }
 
   function doDelete() {
-    if (confirmDelete) {
-      setPieces((prev) => prev.filter((p) => p.id !== confirmDelete));
-      void nativeRequest("space.delete", { id: confirmDelete }).then(onNativeChange);
-    }
-    setConfirmDelete(null);
-    setEditingId(null);
+    if (!confirmDelete) return;
+    const id = confirmDelete;
+    void mutate(async () => {
+      if (localSpaces) updateNativeState(await nativeRequest<NativeState>("space.delete", { id }));
+      else setPieces((previous) => previous.filter((piece) => piece.id !== id));
+      setConfirmDelete(null); setEditingId(null);
+      if (selected === id) setSelected(null);
+    });
   }
 
   return (
@@ -564,6 +642,8 @@ export function SpatialScreen({
           )}
         </AnimatePresence>
       </div>
+
+      {error && <p role="alert" className="mx-6 mt-3" style={{ color: "#9A4230", fontSize: 12 }}>{error}</p>}
 
       {/* ================  HERO : the growing collage  ================ */}
       <div className="px-4 mt-3">
@@ -591,13 +671,13 @@ export function SpatialScreen({
           />
           {pieces.map((p) => (
             <SpaceTile
-              key={p.id}
+              key={`${p.id}:${bornId === p.id ? "born" : "settled"}`}
               piece={p}
               boardRef={boardRef}
               editing={editingId === p.id}
               born={bornId === p.id}
               relit={relitId === p.id}
-              onOpen={() => { setSelected(p.id); setRenaming(false); void nativeRequest("space.select", { id: p.id }); }}
+              onOpen={() => { setSelected(p.id); setRenaming(false); void mutate(() => selectSpace(p.id)); }}
               onMove={(x, y) => patch(p.id, { x, y })}
               onResize={(scale) => patch(p.id, { scale })}
               onEnterEdit={() => setEditingId(p.id)}
@@ -678,7 +758,7 @@ export function SpatialScreen({
             <motion.button
               whileTap={{ scale: 0.88 }}
               transition={{ type: "spring", stiffness: 440, damping: 26 }}
-              onClick={() => onReshoot?.("compare")}
+              onClick={() => reshoot("compare")}
               className="h-10 w-10 flex items-center justify-center"
               style={{
                 backgroundColor: WHITE,
@@ -695,7 +775,7 @@ export function SpatialScreen({
             <motion.button
               whileTap={{ scale: 0.95 }}
               transition={{ type: "spring", stiffness: 400, damping: 28 }}
-              onClick={() => onReshoot?.("new")}
+              onClick={() => reshoot("new")}
               className="flex items-center gap-1.5 pl-2.5 pr-3.5 py-2.5"
               style={{
                 backgroundColor: WHITE,
@@ -744,7 +824,7 @@ export function SpatialScreen({
       </div>
       <div className="px-6">
         <button
-          onClick={() => setOpenProgress(true)}
+          onClick={() => progressSpace ? void mutate(async () => { await selectSpace(progressSpace.id); setOpenProgress(progressSpace.id); }) : reshoot("new")}
           className="w-full flex items-center gap-3.5 p-3 text-left active:scale-[0.99] transition-transform"
           style={{ backgroundColor: WHITE, borderRadius: 22, boxShadow: "0 2px 12px rgba(90,70,55,0.05)" }}
         >
@@ -752,12 +832,12 @@ export function SpatialScreen({
             <Play size={18} color={WHITE} fill={WHITE} />
           </div>
           <div className="flex-1">
-            <p style={{ color: COFFEE, fontSize: 14, fontWeight: 600 }}>浴室 · 正在进行中</p>
+            <p style={{ color: COFFEE, fontSize: 14, fontWeight: 600 }}>{progressSpace ? `${progressSpace.name} · ${progressPlan?.isPaused ? "已暂停" : progress === 100 ? "待保存完成照" : "正在进行中"}` : hasCompletedOrganization ? "开始下一次整理" : "开始第一次整理"}</p>
             <div className="flex items-center gap-2 mt-1.5">
               <div className="flex-1 h-1.5 rounded-full" style={{ backgroundColor: LINEN }}>
-                <div style={{ width: "35%", height: "100%", backgroundColor: ORANGE, borderRadius: 999 }} />
+                <div style={{ width: `${progress}%`, height: "100%", backgroundColor: ORANGE, borderRadius: 999 }} />
               </div>
-              <span style={{ color: COFFEE, opacity: 0.6, fontSize: 11 }}>35%</span>
+              <span style={{ color: COFFEE, opacity: 0.6, fontSize: 11 }}>{progress}%</span>
             </div>
           </div>
           <ChevronRight size={18} color={COFFEE} style={{ opacity: 0.4 }} />
@@ -771,15 +851,16 @@ export function SpatialScreen({
             <motion.div
               initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               onClick={() => setSelected(null)}
-              className="absolute inset-0 z-40" style={{ backgroundColor: "rgba(42,32,26,0.32)" }}
+              className="absolute inset-0 z-[55]" style={{ backgroundColor: "rgba(42,32,26,0.32)" }}
             />
             <motion.div
               initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
               transition={{ type: "spring", stiffness: 320, damping: 32 }}
-              className="absolute left-0 right-0 bottom-0 z-50 px-6 pt-3 pb-8"
+              className="absolute left-0 right-0 bottom-0 z-[60] max-h-[90%] overflow-y-auto px-6 pt-3 pb-8"
               style={{ backgroundColor: WHITE, borderTopLeftRadius: 30, borderTopRightRadius: 30 }}
             >
               <div className="mx-auto mb-4 rounded-full" style={{ width: 40, height: 4, backgroundColor: SOFT }} />
+              {error && <p role="alert" className="mb-3" style={{ color: "#9A4230", fontSize: 12 }}>{error}</p>}
               <div className="flex items-center gap-3.5">
                 <div
                   className="flex items-center justify-center flex-shrink-0 overflow-hidden"
@@ -815,7 +896,7 @@ export function SpatialScreen({
                     </button>
                   )}
                   <p style={{ color: COFFEE, opacity: 0.5, fontSize: 12, marginTop: 2 }}>
-                    {current.items} 件物品 · {current.lastDays === 0 ? "刚刚整理" : `${current.lastDays} 天前整理`}
+                    {current.items} 件物品 · {current.organized === false ? "等待首次整理" : current.lastDays === 0 ? "刚刚整理" : `${current.lastDays} 天前整理`}
                   </p>
                 </div>
                 <button onClick={() => setSelected(null)} className="h-9 w-9 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: LINEN }}>
@@ -861,10 +942,10 @@ export function SpatialScreen({
 
               <p style={{ color: COFFEE, opacity: 0.5, fontSize: 12, fontWeight: 600, marginTop: 20, marginBottom: 10 }}>整理记录</p>
               <div className="space-y-2.5">
-                {[
+                {(current.organized === false ? [{ t: "等待整理", s: currentNative?.activePlan ? "整理计划已保存，可继续上次进度" : "拍摄这个空间，开始首次整理" }] : [
                   { t: current.lastDays === 0 ? "今天" : current.lastDays + " 天前", s: "完成整理,收纳 " + current.items + " 件物品" },
                   { t: "获得拼图", s: `“${current.name}”加入了空间地图` },
-                ].map((r, i) => (
+                ]).map((r, i) => (
                   <div key={i} className="flex gap-3">
                     <div className="flex flex-col items-center pt-1">
                       <span className="w-2 h-2 rounded-full" style={{ backgroundColor: i === 0 ? ORANGE : BLUE }} />
@@ -993,6 +1074,7 @@ export function SpatialScreen({
                 <p style={{ color: COFFEE, opacity: 0.55, fontSize: 12.5, marginTop: 6, lineHeight: 1.5 }}>
                   删除后,“{toDelete.name}”及其整理记录将从空间地图中移除。
                 </p>
+                {error && <p role="alert" className="mt-3" style={{ color: "#9A4230", fontSize: 12 }}>{error}</p>}
               </div>
               <div className="grid grid-cols-2" style={{ borderTop: "1px solid rgba(90,70,55,0.12)" }}>
                 <button
@@ -1002,7 +1084,7 @@ export function SpatialScreen({
                 >
                   取消
                 </button>
-                <button onClick={doDelete} className="py-3.5 active:bg-black/5" style={{ color: "#C25C43", fontSize: 15, fontWeight: 700 }}>
+                <button disabled={busy} onClick={doDelete} className="py-3.5 active:bg-black/5" style={{ color: "#C25C43", fontSize: 15, fontWeight: 700 }}>
                   删除
                 </button>
               </div>

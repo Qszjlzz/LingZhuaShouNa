@@ -1,0 +1,17 @@
+PASS Xcode project found
+FAIL Xcode 16.4 does not meet Apple's Xcode 26 + iOS 26 SDK upload requirement (effective 2026-04-28)
+PASS Privacy manifest is present and copied into the app
+PASS UserDefaults required-reason declaration is present
+PASS optional cloud-photo data flow is represented in the manifest
+PASS Privacy manifest parses and associates required reasons/data purposes correctly
+PASS Bundled web entry references existing assets and matches dist when present
+PASS project has no hard-coded iPhoneOS26 SDK path
+PASS llm-defaults.json is not an app resource
+WARN local ignored Resources/llm-defaults.json exists; remove it before archiving and revoke any key it contained
+PASS no common service credential pattern found in tracked files
+PASS marketing/build versions are 1.0.0 (1)
+PASS Release display name is 灵爪收纳
+FAIL bundled model metadata identifies Ultralytics AGPL-3.0 models; obtain commercial rights or replace them
+WARN model license files are not present beside bundled weights; see docs/app-store/model-license-inventory.md
+
+Preflight result: 2 failure(s), 2 warning(s).

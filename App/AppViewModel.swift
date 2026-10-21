@@ -59,6 +59,8 @@ final class AppViewModel: ObservableObject {
     @Published private(set) var llmConnectionState: LLMConnectionState = .idle
     @Published private(set) var notificationAuthorizationState: NotificationAuthorizationState = .unknown
     @Published private(set) var isScanning = false
+    /// 最近一次图片识别是否已经成功写入本地快照。桥接层用它避免把内存结果误报成已保存。
+    private(set) var lastScanPersisted = true
     @Published private(set) var isPlanning = false
     @Published private(set) var message: String?
 
@@ -69,10 +71,23 @@ final class AppViewModel: ObservableObject {
     private static let communityFollowsKey = "SmartPaw.community.followedAuthors"
     private static let languageKey = "SmartPaw.appLanguage"
     private var activeScanID: UUID?
+    private var scanContextID = UUID()
+    private var activePlanningID: UUID?
+    private var llmSettingsGeneration = 0
+    private var storageRecoveryMode = false
     /// 连拍时每张照片都会起一轮扫描，用递增代号区分先后，避免旧一轮的结果覆盖新一轮。
     private var scanGeneration = 0
     /// 同一批拍摄里云端识别只调用一次，标记在这里。
     private var usedCloudRecognitionInBatch = false
+    /// 扫描页的中间结果会先写入本地以便跨任务读取；用户取消时恢复进入扫描页前的快照。
+    private struct PhotoScanSessionSnapshot {
+        let spaceID: UUID?
+        let space: StorageSpace?
+        let scannedItems: [DetectedItem]
+        let capturedImage: UIImage?
+    }
+    private var photoScanSessionSnapshot: PhotoScanSessionSnapshot?
+    private var photoScanSessionImageNames: Set<String> = []
 
     init(dependencies: AppDependencies) {
         self.dependencies = dependencies
@@ -85,13 +100,14 @@ final class AppViewModel: ObservableObject {
         let snapshot: AppStateSnapshot
         let loadErrorMessage: String?
         do {
-            snapshot = try dependencies.storageStore.loadState() ?? DemoData.snapshot
+            snapshot = try dependencies.storageStore.loadState() ?? AppStateSnapshot.initial
             loadErrorMessage = nil
         } catch {
-            snapshot = DemoData.snapshot
+            snapshot = AppStateSnapshot.initial
+            storageRecoveryMode = true
             loadErrorMessage = "本地数据读取失败，已进入恢复模式；原文件未被删除。\(error.localizedDescription)"
         }
-        let persistedSpaces = snapshot.spaces.isEmpty ? DemoData.spaces : snapshot.spaces
+        let persistedSpaces = snapshot.spaces.isEmpty ? AppStateSnapshot.initial.spaces : snapshot.spaces
         spaces = persistedSpaces.map { space in
             var sanitized = space
             if space.beforeAssetName?.hasPrefix("SmartPawVideo") == true {
@@ -118,8 +134,9 @@ final class AppViewModel: ObservableObject {
             return sanitized
         }
         communityComments = snapshot.communityComments
-        scheduleItems = snapshot.scheduleItems.isEmpty ? DemoData.scheduleItems : snapshot.scheduleItems
+        scheduleItems = snapshot.scheduleItems
         var restoredLLMSettings = snapshot.llmSettings
+        if !restoredLLMSettings.hasCloudConsent { restoredLLMSettings.isEnabled = false }
         let legacyAPIKey = restoredLLMSettings.apiKey
         let storedAPIKey = dependencies.credentialStore.loadAPIKey()
         restoredLLMSettings.apiKey = storedAPIKey ?? legacyAPIKey
@@ -145,7 +162,7 @@ final class AppViewModel: ObservableObject {
         message = nil
         #endif
         #if DEBUG
-        if let screenshotTab = CommandLine.arguments.drop { $0 != "-SmartPawScreenshotTab" }.dropFirst().first,
+        if let screenshotTab = CommandLine.arguments.drop(while: { $0 != "-SmartPawScreenshotTab" }).dropFirst().first,
            let tab = Self.screenshotTab(named: screenshotTab) {
             selectedTab = tab
             message = nil
@@ -172,25 +189,18 @@ final class AppViewModel: ObservableObject {
             message = nil
         }
         #endif
-        // 允许从沙箱里的配置文件一次性导入 AI 设置，省去在手机小键盘上粘贴几十位密钥。
-        importExternalLLMConfiguration()
-        // App 包里内置一份默认配置：重装 / 清数据后设置会回到出厂默认，这一步自动补回来。
-        restoreBundledLLMDefaultsIfNeeded()
         // 拍照/AR 识别需要知道用户当前保存的 AI 设置，用来决定要不要走云端多模态识别。
         if let router = dependencies.scanService as? RecognitionRouter {
             router.settingsProvider = { [weak self] in self?.llmSettings ?? .default }
         }
-        // 启动时把识别家底打出来：本地模型有没有加载、云端接口有没有配好。
-        // 只打印接口与模型名，不打印密钥。
-        print("SMARTPAW_BOOT models=\(YOLOSegmentationScanService.loadedModelCount) names=\(YOLOSegmentationScanService.loadedModelNames.joined(separator: "、"))")
-        print("SMARTPAW_BOOT llm_enabled=\(llmSettings.isEnabled) endpoint=\(llmSettings.endpoint) model=\(llmSettings.model) hasKey=\(!llmSettings.apiKey.isEmpty) visionEndpoint=\(llmSettings.visionEndpoint ?? "(复用主接口)") visionModel=\(llmSettings.visionModel ?? "(复用主模型)") canRequestVision=\(llmSettings.canRequestVision)")
-        writeDiagnostics(note: "启动", items: [])
         #if DEBUG
         // 启动时用 bundle 里的真实测试图跑一遍本地识别，结果落到文件，方便排查识别链路。
-        Task.detached(priority: .utility) {
-            let text = await YOLOSegmentationScanService.runSelfTest()
-            let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-            try? text.write(to: documents.appendingPathComponent("smartpaw-selftest.txt"), atomically: true, encoding: .utf8)
+        if CommandLine.arguments.contains("-SmartPawRunSelfTest") {
+            Task.detached(priority: .utility) {
+                let text = await YOLOSegmentationScanService.runSelfTest()
+                let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+                try? text.write(to: documents.appendingPathComponent("smartpaw-selftest.txt"), atomically: true, encoding: .utf8)
+            }
         }
         #endif
         Task { [weak self] in
@@ -253,6 +263,7 @@ final class AppViewModel: ObservableObject {
 
     func selectSpace(_ id: UUID) {
         guard spaces.contains(where: { $0.id == id }) else { return }
+        invalidateScanContext()
         selectedSpaceID = id
         scannedItems = []
         capturedImage = nil
@@ -260,6 +271,7 @@ final class AppViewModel: ObservableObject {
         selectedExecutionZones = Set(spaces.first(where: { $0.id == id })?.activePlan?.steps.map(\.zone) ?? [])
     }
 
+    @discardableResult
     func addSpace(name: String) -> UUID? {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
@@ -270,46 +282,123 @@ final class AppViewModel: ObservableObject {
             afterImageName: "",
             detectedItems: []
         )
+        let previousSelectedSpaceID = selectedSpaceID
         spaces.append(space)
+        invalidateScanContext()
         selectedSpaceID = space.id
-        persist()
+        scannedItems = []
+        capturedImage = nil
+        referenceImage = nil
+        guard persist() else {
+            spaces.removeAll { $0.id == space.id }
+            selectedSpaceID = previousSelectedSpaceID ?? spaces.first?.id
+            invalidateScanContext()
+            return nil
+        }
         return space.id
     }
 
-    func renameSpace(_ id: UUID, name: String) {
+    @discardableResult
+    func renameSpace(_ id: UUID, name: String) -> Bool {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, let index = spaces.firstIndex(where: { $0.id == id }) else { return }
+        guard !trimmed.isEmpty, let index = spaces.firstIndex(where: { $0.id == id }) else { return false }
+        let previous = spaces[index]
         spaces[index].name = trimmed
-        persist()
+        guard persist() else { spaces[index] = previous; return false }
+        return true
     }
 
-    func deleteSpace(_ id: UUID) {
+    @discardableResult
+    func deleteSpace(_ id: UUID) -> Bool {
         guard spaces.count > 1, let index = spaces.firstIndex(where: { $0.id == id }) else {
             message = "至少保留一个空间。"
-            return
+            return false
         }
+        let previousSpaces = spaces
+        let previousSelectedSpaceID = selectedSpaceID
         spaces.remove(at: index)
         if selectedSpaceID == id { selectSpace(spaces[0].id) }
-        persist()
+        guard persist() else {
+            spaces = previousSpaces
+            selectedSpaceID = previousSelectedSpaceID
+            return false
+        }
+        return true
     }
 
-    func replaceScannedItems(_ items: [DetectedItem]) {
+    @discardableResult
+    func replaceScannedItems(_ items: [DetectedItem]) -> Bool {
+        guard let selectedSpaceID, let index = spaces.firstIndex(where: { $0.id == selectedSpaceID }) else {
+            message = "请先选择一个有效空间。"
+            return false
+        }
+        let previousItems = scannedItems
+        let previousSpace = spaces[index]
         scannedItems = items
-        guard let selectedSpaceID, let index = spaces.firstIndex(where: { $0.id == selectedSpaceID }) else { return }
         spaces[index].detectedItems = items
-        persist()
+        guard persist() else {
+            scannedItems = previousItems
+            spaces[index] = previousSpace
+            return false
+        }
+        return true
+    }
+
+    private func invalidateScanContext() {
+        scanContextID = UUID()
+        activeScanID = nil
+        scanGeneration += 1
+        isScanning = false
+    }
+
+    func cancelScanWork() {
+        invalidateScanContext()
+        guard let snapshot = photoScanSessionSnapshot else { return }
+        if let spaceID = snapshot.spaceID {
+            if let index = spaces.firstIndex(where: { $0.id == spaceID }), let space = snapshot.space {
+                spaces[index] = space
+            }
+        }
+        scannedItems = snapshot.scannedItems
+        capturedImage = snapshot.capturedImage
+        for imageName in photoScanSessionImageNames {
+            try? FileManager.default.removeItem(at: imageDirectory.appendingPathComponent(imageName))
+        }
+        photoScanSessionImageNames.removeAll()
+        photoScanSessionSnapshot = nil
+        lastScanPersisted = persist()
     }
 
     func beginPhotoScanSession() {
-        scanGeneration += 1
+        invalidateScanContext()
+        let space = selectedSpaceID.flatMap { id in spaces.first(where: { $0.id == id }) }
+        photoScanSessionSnapshot = PhotoScanSessionSnapshot(
+            spaceID: selectedSpaceID,
+            space: space,
+            scannedItems: scannedItems,
+            capturedImage: capturedImage
+        )
+        photoScanSessionImageNames.removeAll()
         activeScanID = UUID()
         scannedItems = []
         isScanning = false
         usedCloudRecognitionInBatch = false
     }
 
+    /// The scan flow calls this after its confirmation request has been persisted.
+    /// From this point onward cancelling the view must not restore the pre-scan data.
+    func commitPhotoScanSession() {
+        photoScanSessionSnapshot = nil
+        photoScanSessionImageNames.removeAll()
+    }
+
     func scanImage(_ image: UIImage) async {
+        lastScanPersisted = true
         let scanID = UUID()
+        let spaceID = selectedSpaceID
+        let contextID = scanContextID
+        let previousCapturedImage = capturedImage
+        let previousScannedItems = scannedItems
         activeScanID = scanID
         capturedImage = image
         isScanning = true
@@ -320,15 +409,28 @@ final class AppViewModel: ObservableObject {
         }
         do {
             let results = try await dependencies.scanService.scanImage(image)
-            guard activeScanID == scanID else { return }
-            scannedItems = results
-            if let selectedSpaceID, let index = spaces.firstIndex(where: { $0.id == selectedSpaceID }) {
-                spaces[index].detectedItems = scannedItems
-                spaces[index].beforeImageName = try saveImage(image, prefix: "before")
-                persist()
+            guard !Task.isCancelled, activeScanID == scanID, scanContextID == contextID, selectedSpaceID == spaceID else { return }
+            if let index = spaces.firstIndex(where: { $0.id == spaceID }) {
+                let previousSpace = spaces[index]
+                let imageName = try saveImage(image, prefix: "before")
+                photoScanSessionImageNames.insert(imageName)
+                scannedItems = results
+                spaces[index].detectedItems = results
+                spaces[index].beforeImageName = imageName
+                spaces[index].beforeAssetName = nil
+                spaces[index].hasVerifiedComparison = false
+                guard persist() else {
+                    lastScanPersisted = false
+                    spaces[index] = previousSpace
+                    scannedItems = previousScannedItems
+                    capturedImage = previousCapturedImage
+                    try? FileManager.default.removeItem(at: imageDirectory.appendingPathComponent(imageName))
+                    photoScanSessionImageNames.remove(imageName)
+                    return
+                }
             }
         } catch {
-            guard activeScanID == scanID else { return }
+            guard !Task.isCancelled, activeScanID == scanID, scanContextID == contextID, selectedSpaceID == spaceID else { return }
             scannedItems = []
             message = "扫描失败：\(error.localizedDescription)"
         }
@@ -343,6 +445,12 @@ final class AppViewModel: ObservableObject {
     @discardableResult
     func scanImages(_ images: [UIImage], accumulate: Bool = false) async -> [DetectedItem] {
         guard let primaryImage = images.first else { return [] }
+        lastScanPersisted = true
+        let spaceID = selectedSpaceID
+        let contextID = scanContextID
+        let previousSpace = spaces.first(where: { $0.id == spaceID })
+        let previousScannedItems = scannedItems
+        let previousCapturedImage = capturedImage
         let scanID = UUID()
         activeScanID = scanID
         scanGeneration += 1
@@ -368,6 +476,7 @@ final class AppViewModel: ObservableObject {
                 } else {
                     results = try await dependencies.scanService.scanImage(image)
                 }
+                guard !Task.isCancelled, scanContextID == contextID, selectedSpaceID == spaceID else { return [] }
                 // 这里不再用 activeScanID 提前退出：连拍时新一轮会把上一轮的代号顶掉，
                 // 旧写法会让前面几张的识别结果直接作废，最后方案里只剩最后一张的东西。
                 for item in results {
@@ -388,20 +497,42 @@ final class AppViewModel: ObservableObject {
             scannedItems = Self.merging(base, with: mergedItems)
             writeDiagnostics(note: "拍照识别（\(images.count) 张）", items: scannedItems)
 
-            if let selectedSpaceID, let index = spaces.firstIndex(where: { $0.id == selectedSpaceID }) {
+            if let index = spaces.firstIndex(where: { $0.id == spaceID }) {
                 spaces[index].detectedItems = scannedItems
                 // before 图只认最后拍的那张，防止慢一轮的旧回调把图换回去。
+                var savedImageName: String?
                 if isLatest {
-                    spaces[index].beforeImageName = try saveImage(primaryImage, prefix: "before")
+                    let imageName = try saveImage(primaryImage, prefix: "before")
+                    photoScanSessionImageNames.insert(imageName)
+                    savedImageName = imageName
+                    spaces[index].beforeImageName = imageName
+                    spaces[index].beforeAssetName = nil
+                    spaces[index].hasVerifiedComparison = false
                 }
-                persist()
+                guard persist() else {
+                    lastScanPersisted = false
+                    if let previousSpace, let currentIndex = spaces.firstIndex(where: { $0.id == spaceID }) {
+                        spaces[currentIndex] = previousSpace
+                    }
+                    scannedItems = previousScannedItems
+                    capturedImage = previousCapturedImage
+                    if let savedImageName {
+                        try? FileManager.default.removeItem(at: imageDirectory.appendingPathComponent(savedImageName))
+                        photoScanSessionImageNames.remove(savedImageName)
+                    }
+                    return []
+                }
             }
             return mergedItems
         } catch {
-            guard generation == scanGeneration else { return [] }
-            // 连拍中单张失败不清空已攒下的结果，否则整段拍摄白费。
-            if !accumulate { scannedItems = [] }
+            guard !Task.isCancelled, generation == scanGeneration, scanContextID == contextID, selectedSpaceID == spaceID else { return [] }
+            if let previousSpace, let currentIndex = spaces.firstIndex(where: { $0.id == spaceID }) {
+                spaces[currentIndex] = previousSpace
+            }
+            scannedItems = accumulate ? previousScannedItems : []
+            capturedImage = previousCapturedImage
             message = "扫描失败：\(error.localizedDescription)"
+            lastScanPersisted = false
             return []
         }
     }
@@ -429,19 +560,27 @@ final class AppViewModel: ObservableObject {
         await scanImage(image)
     }
 
-    func importRoomPlanObjects(_ categoryNames: [String]) {
+    @discardableResult
+    func importRoomPlanObjects(_ categoryNames: [String]) -> Bool {
         guard let selectedSpaceID,
               let spaceIndex = spaces.firstIndex(where: { $0.id == selectedSpaceID })
-        else { return }
+        else { return false }
         let imported = categoryNames.map(Self.detectedItemFromRoomCategory)
         guard !imported.isEmpty else {
             message = "空间结构已扫描，但没有识别到可归档的家具。"
-            return
+            return false
         }
+        let previousSpace = spaces[spaceIndex]
+        let previousScannedItems = scannedItems
         spaces[spaceIndex].detectedItems.append(contentsOf: imported)
         scannedItems = imported
-        persist()
+        guard persist() else {
+            spaces[spaceIndex] = previousSpace
+            scannedItems = previousScannedItems
+            return false
+        }
         message = "空间扫描完成，已归档 \(imported.count) 个家具与区域。"
+        return true
     }
 
     func toggleScannedItem(_ itemID: UUID) {
@@ -449,15 +588,23 @@ final class AppViewModel: ObservableObject {
         scannedItems[index].isSelected.toggle()
     }
 
-    func updateScannedItem(_ item: DetectedItem) {
-        guard let index = scannedItems.firstIndex(where: { $0.id == item.id }) else { return }
+    @discardableResult
+    func updateScannedItem(_ item: DetectedItem) -> Bool {
+        guard let index = scannedItems.firstIndex(where: { $0.id == item.id }) else { return false }
+        let previousScannedItems = scannedItems
+        let previousSpaces = spaces
         scannedItems[index] = item
         if let selectedSpaceID, let spaceIndex = spaces.firstIndex(where: { $0.id == selectedSpaceID }) {
             if let itemIndex = spaces[spaceIndex].detectedItems.firstIndex(where: { $0.id == item.id }) {
                 spaces[spaceIndex].detectedItems[itemIndex] = item
             }
-            persist()
+            guard persist() else {
+                scannedItems = previousScannedItems
+                spaces = previousSpaces
+                return false
+            }
         }
+        return true
     }
 
     func togglePlanningTag(_ tag: String) {
@@ -484,33 +631,61 @@ final class AppViewModel: ObservableObject {
         selectedExecutionZones = Set(executionZoneOptions)
     }
 
-    func addManualItem(name: String, category: ItemCategory, forScan: Bool = false) {
+    @discardableResult
+    func addManualItem(name: String, category: ItemCategory, suggestedZone: String? = nil, forScan: Bool = false) -> Bool {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedName.isEmpty,
-              let selectedSpaceID,
-              let index = spaces.firstIndex(where: { $0.id == selectedSpaceID })
-        else { return }
+        guard !trimmedName.isEmpty else {
+            message = "请输入物品名称。"
+            return false
+        }
+        guard let selectedSpaceID, let index = spaces.firstIndex(where: { $0.id == selectedSpaceID }) else {
+            message = "请先选择一个有效空间。"
+            return false
+        }
 
-        let item = DetectedItem(name: trimmedName, category: category, confidence: 1)
+        let previousSpace = spaces[index]
+        let previousItems = scannedItems
+        let trimmedZone = suggestedZone?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let item = DetectedItem(name: trimmedName, category: category, confidence: 1, suggestedZone: trimmedZone?.isEmpty == false ? trimmedZone : nil)
         spaces[index].detectedItems.insert(item, at: 0)
         if forScan {
             scannedItems.insert(item, at: 0)
         }
+        guard persist() else {
+            spaces[index] = previousSpace
+            scannedItems = previousItems
+            return false
+        }
         message = "已添加「\(trimmedName)」到 \(spaces[index].name)。"
-        persist()
+        return true
     }
 
-    func removeCatalogItem(_ itemID: UUID) {
+    @discardableResult
+    func removeCatalogItem(_ itemID: UUID) -> Bool {
+        guard spaces.contains(where: { $0.detectedItems.contains(where: { $0.id == itemID }) })
+                || scannedItems.contains(where: { $0.id == itemID }) else { return false }
+        let previousSpaces = spaces
+        let previousScannedItems = scannedItems
         for index in spaces.indices {
             spaces[index].detectedItems.removeAll { $0.id == itemID }
             spaces[index].activePlan = removingItemReference(itemID, from: spaces[index].activePlan)
             spaces[index].completedPlans = spaces[index].completedPlans.compactMap { removingItemReference(itemID, from: $0) }
         }
         scannedItems.removeAll { $0.id == itemID }
-        persist()
+        guard persist() else {
+            spaces = previousSpaces
+            scannedItems = previousScannedItems
+            return false
+        }
+        return true
     }
 
-    func updateCatalogItem(_ item: DetectedItem) {
+    @discardableResult
+    func updateCatalogItem(_ item: DetectedItem) -> Bool {
+        guard spaces.contains(where: { $0.detectedItems.contains(where: { $0.id == item.id }) })
+                || scannedItems.contains(where: { $0.id == item.id }) else { return false }
+        let previousSpaces = spaces
+        let previousScannedItems = scannedItems
         for spaceIndex in spaces.indices {
             guard let itemIndex = spaces[spaceIndex].detectedItems.firstIndex(where: { $0.id == item.id }) else { continue }
             spaces[spaceIndex].detectedItems[itemIndex] = item
@@ -518,16 +693,25 @@ final class AppViewModel: ObservableObject {
         if let scannedIndex = scannedItems.firstIndex(where: { $0.id == item.id }) {
             scannedItems[scannedIndex] = item
         }
-        persist()
+        guard persist() else {
+            spaces = previousSpaces
+            scannedItems = previousScannedItems
+            return false
+        }
+        return true
     }
 
-    func makePlanFromScan(navigateToSpace: Bool = true) {
-        guard let selectedSpaceID, let index = spaces.firstIndex(where: { $0.id == selectedSpaceID }) else { return }
+    @discardableResult
+    func makePlanFromScan(navigateToSpace: Bool = true) -> Bool {
+        guard let selectedSpaceID, let index = spaces.firstIndex(where: { $0.id == selectedSpaceID }) else {
+            message = "请先选择一个有效空间。"
+            return false
+        }
         let currentSpace = spaces[index]
         let selectedItems = scannedItems.isEmpty ? currentSpace.detectedItems : scannedItems
         guard selectedItems.contains(where: \.isSelected) else {
             message = "请至少选择一件需要整理的物品。"
-            return
+            return false
         }
         let plan = dependencies.planningService.makePlan(
             for: currentSpace,
@@ -537,43 +721,45 @@ final class AppViewModel: ObservableObject {
             goal: enrichedPlanningGoal,
             focusZone: enrichedFocusZone
         )
+        guard !plan.steps.isEmpty else {
+            message = "未能生成有效整理步骤，请检查所选物品。"
+            return false
+        }
+        let previousZones = selectedExecutionZones
+        let previousTab = selectedTab
         spaces[index].activePlan = plan
         spaces[index].detectedItems = selectedItems
         selectedExecutionZones = Set(plan.steps.map(\.zone))
         if navigateToSpace {
             selectedTab = .space
         }
-        persist()
+        guard persist() else {
+            spaces[index] = currentSpace
+            selectedExecutionZones = previousZones
+            selectedTab = previousTab
+            return false
+        }
+        return true
     }
 
-    func makePlanFromScanUsingCloudIfAvailable(navigateToSpace: Bool = true) async {
-        guard let selectedSpaceID, let index = spaces.firstIndex(where: { $0.id == selectedSpaceID }) else { return }
+    @discardableResult
+    func makePlanFromScanUsingCloudIfAvailable(navigateToSpace: Bool = true) async -> Bool {
+        guard let selectedSpaceID, let index = spaces.firstIndex(where: { $0.id == selectedSpaceID }) else {
+            message = "请先选择一个有效空间。"
+            return false
+        }
         let currentSpace = spaces[index]
         let selectedItems = scannedItems.isEmpty ? currentSpace.detectedItems : scannedItems
-        guard selectedItems.contains(where: \.isSelected) else {
-            message = "请至少选择一件需要整理的物品。"
-            return
-        }
-        var plan = dependencies.planningService.makePlan(
-            for: currentSpace,
-            selectedItems: selectedItems,
-            style: selectedStyle,
-            timeBudget: selectedTimeBudget,
-            goal: enrichedPlanningGoal,
-            focusZone: enrichedFocusZone
-        )
+        guard makePlanFromScan(navigateToSpace: navigateToSpace),
+              var plan = spaces[index].activePlan else { return false }
 
-        spaces[index].activePlan = plan
-        spaces[index].detectedItems = selectedItems
-        selectedExecutionZones = Set(plan.steps.map(\.zone))
-        if navigateToSpace {
-            selectedTab = .space
-        }
-        persist()
-
-        guard llmSettings.canRequest else { return }
+        guard llmSettings.canRequest else { return true }
+        let localPlan = plan
+        let requestSettings = llmSettings
+        let planningID = UUID()
+        activePlanningID = planningID
         isPlanning = true
-        defer { isPlanning = false }
+        defer { if activePlanningID == planningID { isPlanning = false } }
 
         do {
             plan = try await dependencies.cloudPlanningService.refine(
@@ -587,66 +773,168 @@ final class AppViewModel: ObservableObject {
                     recommendationMode: recommendationMode,
                     referenceImageData: referenceImage?.jpegData(compressionQuality: 0.72)
                 ),
-                settings: llmSettings
+                settings: requestSettings
             )
-            if let latestIndex = spaces.firstIndex(where: { $0.id == selectedSpaceID }) {
-                spaces[latestIndex].activePlan = plan
-                message = "云端 AI 已优化收纳方案。"
-                persist()
+            // Keep newer plans and already completed steps when an older request finishes late.
+            guard activePlanningID == planningID,
+                  llmSettings == requestSettings,
+                  let latestIndex = spaces.firstIndex(where: { $0.id == selectedSpaceID }),
+                  spaces[latestIndex].activePlan == localPlan else { return false }
+            guard !plan.steps.isEmpty else {
+                message = "云端方案没有有效步骤，已保留本地方案。"
+                return false
             }
+            let previousSpace = spaces[latestIndex]
+            let previousZones = selectedExecutionZones
+            spaces[latestIndex].activePlan = plan
+            if self.selectedSpaceID == selectedSpaceID { selectedExecutionZones = Set(plan.steps.map(\.zone)) }
+            guard persist() else {
+                spaces[latestIndex] = previousSpace
+                selectedExecutionZones = previousZones
+                return false
+            }
+            message = "云端 AI 已优化收纳方案。"
+            return true
         } catch {
+            guard activePlanningID == planningID else { return false }
             message = "已生成本地方案；云端 AI 暂不可用：\(error.localizedDescription)"
+            return true
         }
     }
 
-    func completeStep(_ stepID: UUID) {
+    /// Restart the last completed plan without rewriting the archived result.
+    @discardableResult
+    func reusePlan(spaceID: UUID, planID: UUID) -> Bool {
+        guard selectedSpaceID == spaceID,
+              let index = spaces.firstIndex(where: { $0.id == spaceID }),
+              let source = spaces[index].activePlan ?? spaces[index].completedPlans.first,
+              source.id == planID, !source.steps.isEmpty else {
+            message = "原方案已更新或不存在，请返回空间页重试。"
+            return false
+        }
+        let previousSpace = spaces[index]
+        let previousZones = selectedExecutionZones
+        let steps = source.steps.enumerated().map { offset, step in
+            StorageStep(title: step.title, detail: step.detail, zone: step.zone, status: offset == 0 ? .active : .pending, arHint: step.arHint, arMask: step.arMask, itemIDs: step.itemIDs)
+        }
+        spaces[index].activePlan = StoragePlan(style: source.style, timeBudget: source.timeBudget, summary: source.summary, toolList: source.toolList, steps: steps)
+        selectedExecutionZones = Set(steps.map(\.zone))
+        guard persist() else {
+            spaces[index] = previousSpace
+            selectedExecutionZones = previousZones
+            return false
+        }
+        return true
+    }
+
+    @discardableResult
+    func setPlanPaused(spaceID: UUID, planID: UUID, isPaused: Bool) -> Bool {
+        guard let spaceIndex = spaces.firstIndex(where: { $0.id == spaceID }),
+              var plan = spaces[spaceIndex].activePlan,
+              plan.id == planID else {
+            message = "方案已更新或不存在，请刷新后重试。"
+            return false
+        }
+        guard plan.completedAt == nil,
+              !plan.steps.isEmpty,
+              !plan.steps.allSatisfy({ $0.status == .done }) else {
+            message = "已完成的方案不能暂停或继续。"
+            return false
+        }
+        guard plan.isPaused != isPaused else { return true }
+
+        let previousSpace = spaces[spaceIndex]
+        plan.isPaused = isPaused
+        spaces[spaceIndex].activePlan = plan
+        guard persist() else {
+            spaces[spaceIndex] = previousSpace
+            return false
+        }
+        return true
+    }
+
+    @discardableResult
+    func completeStep(_ stepID: UUID) -> Bool {
         guard let selectedSpaceID,
               let spaceIndex = spaces.firstIndex(where: { $0.id == selectedSpaceID }),
               var plan = spaces[spaceIndex].activePlan,
+              !plan.isPaused,
               let stepIndex = plan.steps.firstIndex(where: { $0.id == stepID }),
               plan.steps[stepIndex].status == .active
-        else { return }
+        else {
+            message = "当前步骤不可完成，请刷新方案后重试。"
+            return false
+        }
 
+        let previousSpace = spaces[spaceIndex]
         plan.steps[stepIndex].status = .done
         if let nextIndex = plan.steps.firstIndex(where: { $0.status == .pending }) {
             plan.steps[nextIndex].status = .active
         }
         spaces[spaceIndex].activePlan = plan
+        guard persist() else {
+            spaces[spaceIndex] = previousSpace
+            return false
+        }
         if plan.steps.allSatisfy({ $0.status == .done }) {
             message = "步骤已完成，请拍摄或导入整理后的照片生成对比成果。"
         }
-        persist()
+        return true
     }
 
-    func finishActivePlan(afterImage: UIImage) {
+    @discardableResult
+    func finishActivePlan(afterImage: UIImage) -> Bool {
         guard let selectedSpaceID,
               let spaceIndex = spaces.firstIndex(where: { $0.id == selectedSpaceID }),
               var plan = spaces[spaceIndex].activePlan,
+              !plan.steps.isEmpty,
               plan.steps.allSatisfy({ $0.status == .done })
-        else { return }
+        else {
+            message = "请先完成方案中的整理步骤，再保存完成照。"
+            return false
+        }
 
+        let previousSpace = spaces[spaceIndex]
+        let previousAchievements = achievements
+        let previousUnlockedAchievement = latestUnlockedAchievement
         do {
-            spaces[spaceIndex].afterImageName = try saveImage(afterImage, prefix: "after")
-            spaces[spaceIndex].hasVerifiedComparison = true
+            let imageName = try saveImage(afterImage, prefix: "after")
+            spaces[spaceIndex].afterImageName = imageName
+            spaces[spaceIndex].afterAssetName = nil
+            spaces[spaceIndex].hasVerifiedComparison = imageURL(for: previousSpace.beforeImageName) != nil
+                || previousSpace.beforeAssetName != nil
             plan.completedAt = Date()
             finishActivePlan(in: spaceIndex, plan: plan)
-            persist()
+            guard persist() else {
+                spaces[spaceIndex] = previousSpace
+                achievements = previousAchievements
+                latestUnlockedAchievement = previousUnlockedAchievement
+                do {
+                    try FileManager.default.removeItem(at: imageDirectory.appendingPathComponent(imageName))
+                } catch {
+                    message = (message ?? "完成记录保存失败。") + "；未归档的照片删除失败：\(error.localizedDescription)"
+                }
+                return false
+            }
+            return true
         } catch {
             message = "保存整理后照片失败：\(error.localizedDescription)"
+            return false
         }
     }
 
-    func shareLatestCompletion() {
+    @discardableResult
+    func shareLatestCompletion() -> Bool {
         guard let selectedSpaceID,
               let space = spaces.first(where: { $0.id == selectedSpaceID }),
               let plan = space.completedPlans.first
         else {
             message = "还没有可分享的完成记录。"
-            return
+            return false
         }
         guard space.hasVerifiedComparison else {
             message = "请先拍摄或导入完成照，再分享真实的前后对比。"
-            return
+            return false
         }
 
         if communityCases.contains(where: {
@@ -656,7 +944,7 @@ final class AppViewModel: ObservableObject {
                 && $0.afterImageName == space.afterImageName
         }) {
             message = "这次成果已经分享到社区。"
-            return
+            return true
         }
 
         let tags = Array(Set(space.detectedItems.map(\.category.rawValue))).prefix(4)
@@ -675,8 +963,12 @@ final class AppViewModel: ObservableObject {
             items: space.detectedItems
         )
         communityCases.insert(newCase, at: 0)
+        guard persist() else {
+            communityCases.removeAll { $0.id == newCase.id }
+            return false
+        }
         message = "已分享到社区，可被一键复刻。"
-        persist()
+        return true
     }
 
     func continueActivePlan() {
@@ -696,22 +988,34 @@ final class AppViewModel: ObservableObject {
         message = "已复刻「\(communityCase.title)」的整理风格。"
     }
 
-    func toggleCommunityLike(_ id: UUID) {
-        guard let index = communityCases.firstIndex(where: { $0.id == id }) else { return }
+    @discardableResult
+    func toggleCommunityLike(_ id: UUID) -> Bool {
+        guard let index = communityCases.firstIndex(where: { $0.id == id }) else { return false }
+        let previousCases = communityCases
+        let previousLiked = likedCommunityCaseIDs
         if likedCommunityCaseIDs.remove(id) != nil {
             communityCases[index].likes = max(0, communityCases[index].likes - 1)
         } else {
             likedCommunityCaseIDs.insert(id)
             communityCases[index].likes += 1
         }
-        persist()
+        guard persist() else {
+            communityCases = previousCases
+            likedCommunityCaseIDs = previousLiked
+            return false
+        }
+        return true
     }
 
-    func toggleCommunityFavorite(_ id: UUID) {
+    @discardableResult
+    func toggleCommunityFavorite(_ id: UUID) -> Bool {
+        guard communityCases.contains(where: { $0.id == id }) else { return false }
+        let previous = favoriteCommunityCaseIDs
         if favoriteCommunityCaseIDs.remove(id) == nil {
             favoriteCommunityCaseIDs.insert(id)
         }
-        persist()
+        guard persist() else { favoriteCommunityCaseIDs = previous; return false }
+        return true
     }
 
     func comments(for caseID: UUID) -> [CommunityComment] {
@@ -722,33 +1026,42 @@ final class AppViewModel: ObservableObject {
         communityComments[caseID]?.count ?? 0
     }
 
-    func addCommunityComment(to caseID: UUID, body: String) {
+    @discardableResult
+    func addCommunityComment(to caseID: UUID, body: String) -> Bool {
         let trimmedBody = body.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedBody.isEmpty,
               communityCases.contains(where: { $0.id == caseID })
-        else { return }
+        else { return false }
+        let previousComments = communityComments
         let comment = CommunityComment(caseID: caseID, body: trimmedBody)
         communityComments[caseID, default: []].append(comment)
-        persist()
+        guard persist() else { communityComments = previousComments; return false }
         message = "评论已发布。"
+        return true
     }
 
-    func toggleCommunityCommentLike(_ commentID: UUID, in caseID: UUID) {
+    @discardableResult
+    func toggleCommunityCommentLike(_ commentID: UUID, in caseID: UUID) -> Bool {
         guard var comments = communityComments[caseID],
               let index = comments.firstIndex(where: { $0.id == commentID })
-        else { return }
+        else { return false }
+        let previousComments = communityComments
         comments[index].likes = comments[index].likes == 0 ? 1 : 0
         communityComments[caseID] = comments
-        persist()
+        guard persist() else { communityComments = previousComments; return false }
+        return true
     }
 
-    func toggleCommunityFollow(author: String) {
+    @discardableResult
+    func toggleCommunityFollow(author: String) -> Bool {
         let trimmedAuthor = author.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedAuthor.isEmpty, trimmedAuthor != "我" else { return }
+        guard !trimmedAuthor.isEmpty, trimmedAuthor != "我" else { return false }
+        let previous = followedCommunityAuthors
         if followedCommunityAuthors.remove(trimmedAuthor) == nil {
             followedCommunityAuthors.insert(trimmedAuthor)
         }
-        persist()
+        guard persist() else { followedCommunityAuthors = previous; return false }
+        return true
     }
 
     /// 老版本把点赞/收藏/关注写在 UserDefaults 里，这里搬进快照后清掉旧键，只执行一次。
@@ -769,33 +1082,40 @@ final class AppViewModel: ObservableObject {
         UserDefaults.standard.removeObject(forKey: Self.communityFollowsKey)
     }
 
-    func resetDemo() {
-        if !dependencies.credentialStore.deleteAPIKey() {
-            #if DEBUG
-            if CommandLine.arguments.contains("-SmartPawShowCommunity")
-                || CommandLine.arguments.contains("-SmartPawShowCommunityDetail") {
-                // Screenshot routes do not require resetting the API credential.
-            } else {
-                message = "API Key 无法从系统钥匙串删除，未执行数据重置。"
-                return
-            }
-            #else
+    /// Deletes on-device user data and credentials. No community content is uploaded.
+    @discardableResult
+    func resetLocalData() -> Bool {
+        guard dependencies.credentialStore.deleteAPIKey() else {
             message = "API Key 无法从系统钥匙串删除，未执行数据重置。"
-            return
-            #endif
+            return false
         }
-        cleanupStoredImages()
+        // Credential deletion has already succeeded even if a later file operation fails.
+        llmSettingsGeneration += 1
+        llmSettings.apiKey = ""
+        llmSettings.isEnabled = false
+        llmSettings.hasCloudConsent = false
+        let snapshot = AppStateSnapshot.initial
+        do {
+            try dependencies.storageStore.resetState(snapshot)
+        } catch {
+            message = "本地数据重置失败：\(error.localizedDescription)"
+            return false
+        }
+        invalidateScanContext()
+        activePlanningID = nil
+        isPlanning = false
+        storageRecoveryMode = false
         let oldScheduleIDs = scheduleItems.map(\.id)
-        let snapshot = DemoData.snapshot
         spaces = snapshot.spaces
         achievements = snapshot.achievements
         communityCases = snapshot.communityCases
-        communityComments = snapshot.communityComments
+        communityComments = [:]
         likedCommunityCaseIDs = []
         favoriteCommunityCaseIDs = []
         followedCommunityAuthors = []
-        scheduleItems = snapshot.scheduleItems
-        llmSettings = snapshot.llmSettings
+        scheduleItems = []
+        llmSettings = .default
+        llmConnectionState = .idle
         selectedSpaceID = spaces.first?.id
         scannedItems = []
         capturedImage = nil
@@ -808,14 +1128,23 @@ final class AppViewModel: ObservableObject {
         referenceImage = nil
         selectedExecutionZones = []
         latestUnlockedAchievement = nil
-        persist()
-        Task {
-            for id in oldScheduleIDs {
-                await cancelNotification(for: id)
-            }
-            await reconcileScheduleNotifications()
+        for key in [Self.communityLikesKey, Self.communityFavoritesKey, Self.communityFollowsKey] {
+            UserDefaults.standard.removeObject(forKey: key)
+        }
+        let identifiers = oldScheduleIDs.map(notificationIdentifier(for:))
+        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: identifiers)
+        UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: identifiers)
+        do {
+            try cleanupStoredImages()
+            message = "本地数据与 API Key 已清除。"
+            return true
+        } catch {
+            message = "记录与 API Key 已清除，但照片文件删除失败：\(error.localizedDescription)"
+            return false
         }
     }
+
+    func resetDemo() { resetLocalData() }
 
     func imageURL(for imageName: String) -> URL? {
         guard !imageName.isEmpty else { return nil }
@@ -839,14 +1168,31 @@ final class AppViewModel: ObservableObject {
 
     @discardableResult
     func updateLLMSettings(_ settings: LLMSettings) -> Bool {
-        let normalized = normalizedLLMSettings(settings)
-        guard dependencies.credentialStore.saveAPIKey(normalized.apiKey) else {
-            llmConnectionState = .failure("API Key 无法写入系统钥匙串，请检查设备安全设置。")
+        if settings.isEnabled, let validationError = llmValidationError(for: settings) {
+            llmConnectionState = .failure(validationError)
+            message = validationError
             return false
         }
+        let normalized = normalizedLLMSettings(settings)
+        let previousSettings = llmSettings
+        let previousConnectionState = llmConnectionState
+        let previousAPIKey = dependencies.credentialStore.loadAPIKey()
+        guard dependencies.credentialStore.saveAPIKey(normalized.apiKey) else {
+            llmConnectionState = .failure("API Key 无法写入系统钥匙串，请检查设备安全设置。")
+            message = "API Key 无法写入系统钥匙串，请检查设备安全设置。"
+            return false
+        }
+        llmSettingsGeneration += 1
         llmSettings = normalized
         llmConnectionState = .idle
-        persist()
+        guard persist() else {
+            // Keep the keychain and the JSON snapshot in sync when the disk write fails.
+            _ = dependencies.credentialStore.saveAPIKey(previousAPIKey ?? "")
+            llmSettings = previousSettings
+            llmConnectionState = previousConnectionState
+            llmSettingsGeneration += 1
+            return false
+        }
         return true
     }
 
@@ -854,6 +1200,7 @@ final class AppViewModel: ObservableObject {
     func saveLLMSettings(_ settings: LLMSettings) -> Bool {
         if settings.isEnabled, let validationError = llmValidationError(for: settings) {
             llmConnectionState = .failure(validationError)
+            message = validationError
             return false
         }
         guard updateLLMSettings(settings) else { return false }
@@ -867,6 +1214,10 @@ final class AppViewModel: ObservableObject {
             return
         }
 
+        let previousSettings = llmSettings
+        let previousAPIKey = dependencies.credentialStore.loadAPIKey()
+        llmSettingsGeneration += 1
+        let generation = llmSettingsGeneration
         llmConnectionState = .testing
         do {
             let endpointString = settings.endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -902,14 +1253,22 @@ final class AppViewModel: ObservableObject {
                 throw LLMConnectionTestError.invalidPayload
             }
 
+            guard generation == llmSettingsGeneration else { return }
             let normalized = normalizedLLMSettings(settings)
             guard dependencies.credentialStore.saveAPIKey(normalized.apiKey) else {
                 throw LLMConnectionTestError.keychainWriteFailed
             }
             llmSettings = normalized
-            persist()
+            guard persist() else {
+                _ = dependencies.credentialStore.saveAPIKey(previousAPIKey ?? "")
+                llmSettings = previousSettings
+                llmSettingsGeneration += 1
+                llmConnectionState = .failure(message ?? "AI 设置无法保存到本地。")
+                return
+            }
             llmConnectionState = .success("连接成功，Endpoint、API Key 与模型均可用。")
         } catch {
+            guard generation == llmSettingsGeneration else { return }
             llmConnectionState = .failure(connectionErrorMessage(for: error))
         }
     }
@@ -1008,17 +1367,25 @@ final class AppViewModel: ObservableObject {
     }
 
     func llmValidationError(for settings: LLMSettings) -> String? {
+        guard settings.hasCloudConsent else { return "请先阅读数据说明并同意将照片和整理信息发送到你配置的 AI 服务。" }
         let endpoint = settings.endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let url = URL(string: endpoint),
               let scheme = url.scheme?.lowercased(),
               let host = url.host, !host.isEmpty,
               url.user == nil, url.password == nil,
               url.fragment == nil,
-              scheme == "https" || (scheme == "http" && ["localhost", "127.0.0.1", "::1"].contains(host.lowercased()))
+              scheme == "https"
         else {
-            return "Endpoint 必须是有效的 HTTPS URL；本机服务可使用 HTTP localhost。"
+            return "Endpoint 必须是有效的 HTTPS URL。"
         }
 
+        if !settings.visionEndpoint.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            let visionURL = URL(string: settings.resolvedVisionEndpoint.trimmingCharacters(in: .whitespacesAndNewlines))
+            guard let visionURL, visionURL.scheme?.lowercased() == "https", let host = visionURL.host, !host.isEmpty,
+                  visionURL.user == nil, visionURL.password == nil, visionURL.fragment == nil else {
+                return "视觉 Endpoint 必须是有效的 HTTPS URL。"
+            }
+        }
         let key = settings.apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         guard key.count >= 8, key.rangeOfCharacter(from: .whitespacesAndNewlines) == nil else {
             return "API Key 不能为空、不能包含空格，且长度至少为 8 个字符。"
@@ -1028,14 +1395,23 @@ final class AppViewModel: ObservableObject {
         guard !model.isEmpty, model.rangeOfCharacter(from: .whitespacesAndNewlines) == nil else {
             return "Model 不能为空，也不能包含空格。"
         }
+        let visionModel = settings.visionModel.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard visionModel.rangeOfCharacter(from: .whitespacesAndNewlines) == nil else {
+            return "视觉 Model 不能包含空格。"
+        }
         return nil
     }
 
-    func toggleScheduleItem(_ id: UUID) {
-        guard let index = scheduleItems.firstIndex(where: { $0.id == id }) else { return }
+    @discardableResult
+    func toggleScheduleItem(_ id: UUID) -> Bool {
+        guard let index = scheduleItems.firstIndex(where: { $0.id == id }) else { return false }
+        let previous = scheduleItems
         scheduleItems[index].isDone.toggle()
         let item = scheduleItems[index]
-        persist()
+        guard persist() else {
+            scheduleItems = previous
+            return false
+        }
         Task {
             if item.isDone {
                 await cancelNotification(for: item.id)
@@ -1043,16 +1419,19 @@ final class AppViewModel: ObservableObject {
                 await scheduleNotification(for: item)
             }
         }
+        return true
     }
 
-    func addScheduleItem(title: String, dueText: String, note: String) {
+    @discardableResult
+    func addScheduleItem(title: String, dueText: String, note: String) -> Bool {
         let migrated = ScheduleItem(title: title, spaceName: selectedSpace.name, dueText: dueText, note: note)
-        addScheduleItem(title: title, dueDate: migrated.dueDate, note: note)
+        return addScheduleItem(title: title, dueDate: migrated.dueDate, note: note)
     }
 
-    func addScheduleItem(title: String, dueDate: Date, note: String) {
+    @discardableResult
+    func addScheduleItem(title: String, dueDate: Date, note: String) -> Bool {
         let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedTitle.isEmpty else { return }
+        guard !trimmedTitle.isEmpty else { return false }
         let item = ScheduleItem(
             title: trimmedTitle,
             spaceName: selectedSpace.name,
@@ -1060,28 +1439,45 @@ final class AppViewModel: ObservableObject {
             note: note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "复盘本次整理状态" : note
         )
         scheduleItems.insert(item, at: 0)
-        persist()
+        guard persist() else {
+            scheduleItems.removeAll { $0.id == item.id }
+            return false
+        }
         Task { await scheduleNotification(for: item) }
+        return true
     }
 
-    func updateScheduleItem(_ item: ScheduleItem) {
-        guard let index = scheduleItems.firstIndex(where: { $0.id == item.id }) else { return }
+    @discardableResult
+    func updateScheduleItem(_ item: ScheduleItem) -> Bool {
+        guard let index = scheduleItems.firstIndex(where: { $0.id == item.id }) else { return false }
         var updated = item
         updated.title = item.title.trimmingCharacters(in: .whitespacesAndNewlines)
         updated.note = item.note.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !updated.title.isEmpty else { return }
+        guard !updated.title.isEmpty else { return false }
+        let previous = scheduleItems[index]
         scheduleItems[index] = updated
-        persist()
+        guard persist() else {
+            scheduleItems[index] = previous
+            return false
+        }
         Task {
             await cancelNotification(for: updated.id)
             if !updated.isDone { await scheduleNotification(for: updated) }
         }
+        return true
     }
 
-    func deleteScheduleItem(_ id: UUID) {
+    @discardableResult
+    func deleteScheduleItem(_ id: UUID) -> Bool {
+        let previous = scheduleItems
+        guard previous.contains(where: { $0.id == id }) else { return false }
         scheduleItems.removeAll { $0.id == id }
-        persist()
+        guard persist() else {
+            scheduleItems = previous
+            return false
+        }
         Task { await cancelNotification(for: id) }
+        return true
     }
 
     func requestNotificationAuthorization() async {
@@ -1133,7 +1529,10 @@ final class AppViewModel: ObservableObject {
             isEnabled: settings.isEnabled,
             endpoint: settings.endpoint.trimmingCharacters(in: .whitespacesAndNewlines),
             apiKey: settings.apiKey.trimmingCharacters(in: .whitespacesAndNewlines),
-            model: settings.model.trimmingCharacters(in: .whitespacesAndNewlines)
+            model: settings.model.trimmingCharacters(in: .whitespacesAndNewlines),
+            visionEndpoint: settings.visionEndpoint.trimmingCharacters(in: .whitespacesAndNewlines),
+            visionModel: settings.visionModel.trimmingCharacters(in: .whitespacesAndNewlines),
+            hasCloudConsent: settings.hasCloudConsent
         )
     }
 
@@ -1277,75 +1676,15 @@ final class AppViewModel: ObservableObject {
         return fileName
     }
 
-    private func cleanupStoredImages() {
-        guard FileManager.default.fileExists(atPath: imageDirectory.path) else { return }
-        try? FileManager.default.removeItem(at: imageDirectory)
-    }
-
-    /// 把识别家底写进 App 的 Documents 目录，方便排查"为什么没识别出来"。
-    /// 只写接口地址与模型名，绝不落盘密钥。
-    /// 从沙箱里的 `smartpaw-llm.json` 一次性导入 AI 设置（endpoint / apiKey / model，
-    /// 可选 visionEndpoint / visionModel）。用途是不用在手机小键盘上粘贴几十位密钥；
-    /// 导入成功后文件即删除，之后仍然可以在 App 内的「AI 设置」里改。
-    private func importExternalLLMConfiguration() {
-        let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        let file = documents.appendingPathComponent("smartpaw-llm.json")
-        guard let data = try? Data(contentsOf: file),
-              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let apiKey = (object["apiKey"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !apiKey.isEmpty
-        else { return }
-        var updated = llmSettings
-        if let endpoint = (object["endpoint"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !endpoint.isEmpty { updated.endpoint = endpoint }
-        if let model = (object["model"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !model.isEmpty { updated.model = model }
-        if let visionEndpoint = (object["visionEndpoint"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !visionEndpoint.isEmpty { updated.visionEndpoint = visionEndpoint }
-        if let visionModel = (object["visionModel"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !visionModel.isEmpty { updated.visionModel = visionModel }
-        updated.apiKey = apiKey
-        updated.isEnabled = true
-        llmSettings = updated
-        _ = dependencies.credentialStore.saveAPIKey(apiKey)
-        try? FileManager.default.removeItem(at: file)
-        persist()
-        print("SMARTPAW_BOOT 已导入 AI 配置 endpoint=\(updated.endpoint) model=\(updated.model) canRequestVision=\(updated.canRequestVision)")
-    }
-
-    /// App 包里内置一份 AI 配置（`llm-defaults.json`，本地文件、不进仓库）。
-    /// 只要当前配置是"出厂默认"（没有密钥 / 接口还是示例地址 / 云端没开），
-    /// 就用内置的那套补上并写进钥匙串 —— 重装 App、清数据之后再也不用手动灌配置。
-    /// 用户之后在「AI 设置」里改过的值不会被覆盖。
-    private func restoreBundledLLMDefaultsIfNeeded() {
-        guard let url = Bundle.main.url(forResource: "llm-defaults", withExtension: "json"),
-              let data = try? Data(contentsOf: url),
-              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-        else { return }
-        let bundledKey = (object["apiKey"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        guard !bundledKey.isEmpty else { return }
-        // 只在"确实没配过"的时候补：没有密钥、或接口还是出厂示例地址。
-        // 用户自己改过的接口 / 自己关掉的开关都不会被强行改回来。
-        let looksDefault = llmSettings.apiKey.isEmpty
-            || llmSettings.endpoint == LLMSettings.default.endpoint
-            || llmSettings.endpoint.isEmpty
-            || llmSettings.model.isEmpty
-        guard looksDefault else { return }
-        var updated = llmSettings
-        if let endpoint = (object["endpoint"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !endpoint.isEmpty { updated.endpoint = endpoint }
-        if let model = (object["model"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !model.isEmpty { updated.model = model }
-        if let visionEndpoint = (object["visionEndpoint"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !visionEndpoint.isEmpty { updated.visionEndpoint = visionEndpoint }
-        if let visionModel = (object["visionModel"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !visionModel.isEmpty { updated.visionModel = visionModel }
-        updated.apiKey = bundledKey
-        updated.isEnabled = true
-        llmSettings = updated
-        _ = dependencies.credentialStore.saveAPIKey(bundledKey)
-        persist()
-        print("SMARTPAW_BOOT 已从内置配置恢复 AI 设置 endpoint=\(updated.endpoint) model=\(updated.model)")
+    private func cleanupStoredImages() throws {
+        if FileManager.default.fileExists(atPath: imageDirectory.path) {
+            try FileManager.default.removeItem(at: imageDirectory)
+        }
+        let documents = imageDirectory.deletingLastPathComponent()
+        for name in ["smartpaw-llm.json", "smartpaw-diagnostics.txt", "smartpaw-selftest.txt"] {
+            let url = documents.appendingPathComponent(name)
+            if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }
+        }
     }
 
     private func writeDiagnostics(note: String, items: [DetectedItem]) {
@@ -1358,8 +1697,8 @@ final class AppViewModel: ObservableObject {
             "云端开关: \(llmSettings.isEnabled)",
             "云端接口: \(llmSettings.endpoint)",
             "云端模型: \(llmSettings.model)",
-            "视觉接口: \(llmSettings.visionEndpoint ?? "(复用主接口)")",
-            "视觉模型: \(llmSettings.visionModel ?? "(复用主模型)")",
+            "视觉接口: \(llmSettings.visionEndpoint.isEmpty ? "(复用主接口)" : llmSettings.visionEndpoint)",
+            "视觉模型: \(llmSettings.visionModel.isEmpty ? "(复用主模型)" : llmSettings.visionModel)",
             "有密钥: \(!llmSettings.apiKey.isEmpty)",
             "可请求视觉: \(llmSettings.canRequestVision)",
             "本次结果数: \(items.count)",
@@ -1372,7 +1711,12 @@ final class AppViewModel: ObservableObject {
         try? (lines.joined(separator: "\n") + "\n").write(to: url, atomically: true, encoding: .utf8)
     }
 
-    private func persist() {
+    @discardableResult
+    private func persist() -> Bool {
+        guard !storageRecoveryMode else {
+            message = "本地数据处于恢复模式，原文件已保留；请先恢复备份或清除本地数据。"
+            return false
+        }
         do {
             try dependencies.storageStore.saveState(
                 AppStateSnapshot(
@@ -1387,8 +1731,10 @@ final class AppViewModel: ObservableObject {
                     followedCommunityAuthors: followedCommunityAuthors
                 )
             )
+            return true
         } catch {
             message = "保存失败：\(error.localizedDescription)"
+            return false
         }
     }
 

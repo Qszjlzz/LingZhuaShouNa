@@ -1,0 +1,39 @@
+{
+  "date": "2026-10-20",
+  "scope": "Release 脚本及提交文档复核；不是业务功能、模型精度、签名或 App Review 验收",
+  "actual_environment": {
+    "xcode": "16.4 (16F6)",
+    "iphoneos_sdk": "18.5",
+    "upload_toolchain_requirement_met": false
+  },
+  "checks": {
+    "release_scripts_executable": true,
+    "shell_syntax": "Passed",
+    "xcodeproj_generator_ruby_syntax": "Passed",
+    "privacy_plist_lint": "Passed",
+    "privacy_required_reason_and_data_purpose_structure": "Passed",
+    "app_resource_phase_contains_privacy_manifest": true,
+    "app_resource_phase_contains_bundled_web": true,
+    "git_diff_check": "Passed"
+  },
+  "isolated_preflight_fixture_checks": [
+    { "case": "Xcode 26 with iOS 26 SDK", "expected": "Accepted", "result": "Passed" },
+    { "case": "Xcode 27 with iOS 27 SDK", "expected": "Accepted", "result": "Passed" },
+    { "case": "Xcode 26 with iOS 18.5 SDK", "expected": "Rejected", "result": "Passed" },
+    { "case": "CA92.1 detached from the UserDefaults API declaration", "expected": "Rejected", "result": "Passed" },
+    { "case": "Bundled HTML references a missing JavaScript asset", "expected": "Rejected", "result": "Passed" }
+  ],
+  "fixture_note": "Fixture uses mock xcodebuild output and temporary resources solely to check gate behavior; it is not a real Xcode 26/27 build or model-license clearance.",
+  "apple_requirement_source": {
+    "url": "https://developer.apple.com/news/upcoming-requirements/",
+    "fetched_with_system_curl": true,
+    "minimum_upload_xcode": "26 (effective 2026-04-28)",
+    "minimum_upload_ios_sdk": "26 (effective 2026-04-28)",
+    "minimum_deployment_ios": "13 (effective 2026-09-09)"
+  },
+  "limitations": [
+    "Privacy manifest structure does not verify actual third-party retention, identity linkage or App Store Connect privacy answers.",
+    "Preflight is a source/resource gate; it does not sign, archive, upload, check account agreements or replace real-device QA.",
+    "Original final archive and two /tmp build logs were absent at recheck; final-package-check.json remains historical evidence."
+  ]
+}

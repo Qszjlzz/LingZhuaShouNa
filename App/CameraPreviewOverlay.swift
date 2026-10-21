@@ -24,6 +24,9 @@ final class CameraPreviewOverlay {
     private var warmTask: Task<Void, Never>?
     /// 用户希望相机保持待命（进后台会临时解除，回前台再恢复）。
     private var wantsArmed = false
+    private var wantsVisible = false
+    private var previewFrame: CGRect?
+    private var lifecycleGeneration = 0
 
     var isReady: Bool { CameraEngine.shared.isReady }
 
@@ -38,7 +41,11 @@ final class CameraPreviewOverlay {
                            object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in
                 guard let self, self.wantsArmed, let host = self.host else { return }
-                await self.arm(in: host)
+                if self.wantsVisible {
+                    _ = await self.start(in: host, frame: self.previewFrame ?? host.bounds)
+                } else {
+                    await self.arm(in: host)
+                }
             }
         }
     }
@@ -47,8 +54,12 @@ final class CameraPreviewOverlay {
     @MainActor
     private func suspendForBackground() {
         let wasArmed = wantsArmed || surface != nil
+        let wasVisible = wantsVisible
+        let frame = previewFrame
         disarm()
         wantsArmed = wasArmed
+        wantsVisible = wasVisible
+        previewFrame = frame
     }
 
     /// 点击拍摄按钮的瞬间调用：只把摄像头加电跑起来，不显示画面、不改透明。
@@ -66,7 +77,7 @@ final class CameraPreviewOverlay {
         // 暖机后如果没人来接管（比如误触、或网页没起来），别让相机一直空转。
         warmTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 6_000_000_000)
-            guard let self else { return }
+            guard !Task.isCancelled, let self else { return }
             if self.surface == nil { self.stop() }
         }
     }
@@ -92,19 +103,24 @@ final class CameraPreviewOverlay {
     @MainActor
     func arm(in webView: WKWebView) async {
         let engine = CameraEngine.shared
+        lifecycleGeneration += 1
+        let generation = lifecycleGeneration
         wantsArmed = true
         host = webView
 
         if !engine.isRunning { startedByOverlay = true }
         await engine.start()
+        guard wantsArmed, generation == lifecycleGeneration else { return }
+        guard !engine.permissionDenied else { disarm(); return }
         var ready = await engine.waitUntilReady(timeout: 1.5)
-        if !ready {
+        guard wantsArmed, generation == lifecycleGeneration else { return }
+        if !ready, !engine.permissionDenied {
             // 可能刚被别的应用占着：整条链路重启一次再试。
             engine.stop()
             await engine.start()
             ready = await engine.waitUntilReady()
         }
-        guard ready else { return }
+        guard ready, wantsArmed, generation == lifecycleGeneration else { return }
         warmTask?.cancel()
         warmTask = nil
 
@@ -122,7 +138,8 @@ final class CameraPreviewOverlay {
     @MainActor
     @discardableResult
     func reveal() -> Bool {
-        guard let view = surface, let webView = host else { return false }
+        guard let view = surface, let webView = host, CameraEngine.shared.isReady, CameraEngine.shared.isRunning else { return false }
+        wantsVisible = true
         warmTask?.cancel()
         warmTask = nil
         view.alpha = 1
@@ -135,6 +152,7 @@ final class CameraPreviewOverlay {
     /// 收起画面但保持相机待命，下次点开还是立刻出画面。
     @MainActor
     func conceal() {
+        wantsVisible = false
         warmTask?.cancel()
         warmTask = nil
         surface?.alpha = 0
@@ -144,7 +162,10 @@ final class CameraPreviewOverlay {
     /// 真正停掉相机（App 进后台时用，避免后台空跑）。
     @MainActor
     func disarm() {
+        lifecycleGeneration += 1
         wantsArmed = false
+        wantsVisible = false
+        previewFrame = nil
         warmTask?.cancel()
         warmTask = nil
         surface?.removeFromSuperview()
@@ -158,51 +179,12 @@ final class CameraPreviewOverlay {
 
     @MainActor
     func start(in webView: WKWebView, frame: CGRect) async -> Bool {
-        let engine = CameraEngine.shared
-
-        // 待命中的相机直接显示，不走建层流程 —— 这是"点下去就是画面"的快路径。
-        if let view = surface, engine.isRunning {
-            host = webView
-            attach(view, to: webView, frame: frame)
-            view.alpha = 1
-            webView.backgroundColor = .clear
-            webView.scrollView.backgroundColor = .clear
-            webView.isOpaque = false
-            return true
-        }
-
-        let alreadyRunning = engine.isRunning
-        await engine.start()
-        // start() 里 isReady 是异步回主线程更新的，直接读会读到 false，
-        // 那样网页就误以为"没有相机"退回去弹原生页了，所以这里要等它就绪。
-        // 第一次别等太久：真起不来就赶紧重启重试，别让页面干等 3 秒。
-        var ready = await engine.waitUntilReady(timeout: 1.5)
-        if !ready {
-            // 相机可能刚被别的应用占着（微信视频、系统相机没关干净）：
-            // 整个链路重启一次再试，总比让网页跳去开系统相机好。
-            engine.stop()
-            await engine.start()
-            ready = await engine.waitUntilReady()
-        }
-        guard ready else { return false }
-
-        // 可能是点击时先暖过机，那次已经把相机跑起来了，这里不要把它改回 false，
-        // 否则关闭拍摄页时会漏掉收尾、相机一直开着。
-        if !alreadyRunning { startedByOverlay = true }
-        warmTask?.cancel()
-        warmTask = nil
-
-        // 重复 start（比如页面重新挂载）时先清掉上一块画面，避免叠层。
-        surface?.removeFromSuperview()
-
-        host = webView
-        let view = PreviewSurfaceView(session: engine.session)
-        surface = view
-        webView.backgroundColor = .clear
-        webView.scrollView.backgroundColor = .clear
-        webView.isOpaque = false
+        wantsVisible = true
+        previewFrame = frame
+        await arm(in: webView)
+        guard wantsArmed, wantsVisible, let view = surface else { return false }
         attach(view, to: webView, frame: frame)
-        return true
+        return reveal()
     }
 
     private func attach(_ view: UIView, to webView: WKWebView, frame: CGRect) {
@@ -226,19 +208,14 @@ final class CameraPreviewOverlay {
 
     @MainActor
     func updateFrame(_ frame: CGRect) {
+        previewFrame = frame
         guard let view = surface, let webView = host else { return }
         view.frame = webView.superview.map { webView.convert(frame, to: $0) } ?? frame
     }
 
-    /// 离开拍摄页：只把画面收起来，**相机继续待命**。
-    /// 这样下次点开还是立刻有画面，不用再等硬件加电。
+    /// Stop using the camera when the user leaves the capture screen.
     @MainActor
-    func stop() {
-        warmTask?.cancel()
-        warmTask = nil
-        surface?.alpha = 0
-        restore(webView: host)
-    }
+    func stop() { disarm() }
 
     /// 原地抓一帧。相机不可用时返回 nil，网页会回退到选图。
     ///
@@ -247,7 +224,7 @@ final class CameraPreviewOverlay {
     @MainActor
     func capture() async -> UIImage? {
         let engine = CameraEngine.shared
-        guard engine.isReady else { return nil }
+        guard engine.isReady, engine.isRunning else { return nil }
         return await engine.capturePhoto()
     }
 }

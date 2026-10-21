@@ -2,6 +2,7 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { ArrowLeft, Lock, Sparkles, Share2, X } from "lucide-react";
 import { COFFEE, ORANGE, LINEN, BLUE, WHITE, SOFT } from "./theme";
+import type { NativeState } from "../nativeBridge";
 
 type Badge = {
   id: string;
@@ -14,7 +15,7 @@ type Badge = {
   locked?: boolean;
 };
 
-const badges: Badge[] = [
+const demoBadges: Badge[] = [
   { id: "b1", name: "整洁小浣熊", emoji: "🦝", desc: "完成第一个整理分区", rarity: "common", earnedAt: "2026年4月12日" },
   { id: "b2", name: "闪亮魔法师", emoji: "✨", desc: "整理 5 个空间", rarity: "common", earnedAt: "4月18日" },
   { id: "b3", name: "整理冠军", emoji: "🏆", desc: "连续整理 10 天", rarity: "rare", earnedAt: "4月25日" },
@@ -29,6 +30,21 @@ const badges: Badge[] = [
   { id: "b12", name: "分享浪潮", emoji: "🌊", desc: "分享 10 个方案", rarity: "rare", locked: true, progress: 40 },
 ];
 
+export function badgesFromState(nativeState?: NativeState | null): Badge[] {
+  if (!nativeState && !window.webkit?.messageHandlers?.smartpaw) return demoBadges;
+  const completedCount = nativeState?.spaces.reduce((count, space) => count + space.completedPlans.length, 0) ?? 0;
+  const organizedSpaceCount = nativeState?.profileStats?.organizedSpaceCount
+    ?? nativeState?.spaces.filter((space) => space.completedPlans.length > 0).length
+    ?? 0;
+
+  return demoBadges.map(({ earnedAt, progress, ...badge }) => {
+    if (badge.id === "b1") return { ...badge, locked: completedCount === 0 };
+    if (badge.id === "b2") return { ...badge, locked: organizedSpaceCount < 5, progress: Math.min(100, organizedSpaceCount / 5 * 100) };
+    // Other Figma criteria need event history that the current state does not store.
+    return { ...badge, locked: true };
+  });
+}
+
 const rarityColor: Record<Badge["rarity"], { bg: string; ring: string; label: string }> = {
   common: { bg: "#B4C7DC", ring: "#B4C7DC", label: "普通" },
   rare: { bg: "#A8B8CC", ring: "#7FA8C9", label: "稀有" },
@@ -36,23 +52,35 @@ const rarityColor: Record<Badge["rarity"], { bg: string; ring: string; label: st
   legendary: { bg: "#FFD58A", ring: "#FFB347", label: "传说" },
 };
 
-const filters = ["全部", "已解锁", "未解锁"] as const;
+const filters = ["全部", "已获得", "已锁定"] as const;
 
-export function BadgesScreen({ onBack }: { onBack: () => void }) {
-  const [filter, setFilter] = useState<(typeof filters)[number]>("All");
-  const [active, setActive] = useState<Badge | null>(null);
+export function BadgesScreen({ onBack, nativeState, initialBadgeId }: { onBack: () => void; nativeState?: NativeState | null; initialBadgeId?: string | null }) {
+  const badges = badgesFromState(nativeState);
+  const [filter, setFilter] = useState<(typeof filters)[number]>("全部");
+  const [activeId, setActiveId] = useState<string | null>(initialBadgeId ?? null);
+  const [shareMessage, setShareMessage] = useState("");
+  const active = badges.find((badge) => badge.id === activeId) ?? null;
+  const setActive = (badge: Badge | null) => setActiveId(badge?.id ?? null);
 
   const earnedCount = badges.filter((b) => !b.locked).length;
 
   const filtered = badges.filter((b) => {
-    if (filter === "Earned") return !b.locked;
-    if (filter === "Locked") return b.locked;
+    if (filter === "已获得") return !b.locked;
+    if (filter === "已锁定") return b.locked;
     return true;
   });
 
+  const shareBadge = async () => {
+    if (!active) return;
+    const payload = { title: `${active.name} · 灵爪收纳`, text: `${active.desc}，来灵爪收纳一起整理空间。` };
+    if (!navigator.share) { setShareMessage("当前设备暂不支持系统分享。"); return; }
+    try { await navigator.share(payload); setShareMessage("分享面板已打开"); }
+    catch (error) { if (error instanceof Error && error.name !== "AbortError") setShareMessage("暂时无法分享，请重试。"); }
+  };
+
   return (
     <div className="relative h-full w-full overflow-hidden" style={{ backgroundColor: LINEN }}>
-      <div className="h-full w-full overflow-y-auto pb-10">
+      <div className="h-full w-full overflow-y-auto pb-32">
         {/* Top bar */}
         <div className="px-6 pt-14 pb-2 flex items-center justify-between">
           <button
@@ -64,6 +92,10 @@ export function BadgesScreen({ onBack }: { onBack: () => void }) {
           </button>
           <p style={{ color: COFFEE, fontSize: 17, fontWeight: 600 }}>徽章</p>
           <button
+            type="button"
+            aria-label="分享徽章"
+            onClick={() => { setActive(badges.find((badge) => !badge.locked) ?? badges[0] ?? null); setShareMessage(""); }}
+            disabled={badges.length === 0}
             className="h-11 w-11 rounded-full flex items-center justify-center"
             style={{ backgroundColor: WHITE }}
           >
@@ -148,7 +180,7 @@ export function BadgesScreen({ onBack }: { onBack: () => void }) {
               >
                 <motion.div
                   initial={{ width: 0 }}
-                  animate={{ width: `${(earnedCount / badges.length) * 100}%` }}
+                  animate={{ width: `${badges.length ? (earnedCount / badges.length) * 100 : 0}%` }}
                   transition={{ duration: 1.2, ease: "easeOut", delay: 0.2 }}
                   className="h-full rounded-full"
                   style={{
@@ -163,22 +195,23 @@ export function BadgesScreen({ onBack }: { onBack: () => void }) {
         {/* Filter pills */}
         <div className="px-6 mt-5 flex gap-2">
           {filters.map((f) => {
-            const active = filter === f;
+            const selected = filter === f;
             return (
               <motion.button
+                type="button"
                 key={f}
                 onClick={() => setFilter(f)}
                 whileTap={{ scale: 0.94 }}
                 className="px-4 py-2"
                 style={{
-                  backgroundColor: active ? ORANGE : WHITE,
-                  color: active ? WHITE : COFFEE,
+                  backgroundColor: selected ? ORANGE : WHITE,
+                  color: selected ? WHITE : COFFEE,
                   borderRadius: 999,
                   fontSize: 12,
-                  fontWeight: active ? 600 : 500,
+                  fontWeight: selected ? 600 : 500,
                 }}
                 animate={
-                  active
+                  selected
                     ? { boxShadow: "0 6px 16px rgba(250,136,58,0.3)" }
                     : { boxShadow: "0 2px 8px rgba(123,92,72,0.04)" }
                 }
@@ -197,6 +230,7 @@ export function BadgesScreen({ onBack }: { onBack: () => void }) {
           <AnimatePresence>
             {filtered.map((b, i) => (
               <motion.button
+                type="button"
                 key={b.id}
                 layout
                 initial={{ opacity: 0, scale: 0.85, y: 12 }}
@@ -205,7 +239,7 @@ export function BadgesScreen({ onBack }: { onBack: () => void }) {
                 transition={{ duration: 0.35, delay: i * 0.04, ease: "easeOut" }}
                 whileTap={{ scale: 0.94 }}
                 whileHover={{ y: -3 }}
-                onClick={() => setActive(b)}
+                onClick={() => { setActive(b); setShareMessage(""); }}
                 className="relative flex flex-col items-center p-3"
                 style={{
                   backgroundColor: WHITE,
@@ -236,7 +270,7 @@ export function BadgesScreen({ onBack }: { onBack: () => void }) {
                     <motion.div
                       initial={{ width: 0 }}
                       animate={{ width: `${b.progress}%` }}
-                      transition={{ duration: 1, ease: "easeOut", delay: i * 0.04 + 0.4 }}
+                    transition={{ duration: 1, ease: "easeOut", delay: i * 0.04 + 0.4 }}
                       className="h-full"
                       style={{ backgroundColor: ORANGE }}
                     />
@@ -249,8 +283,8 @@ export function BadgesScreen({ onBack }: { onBack: () => void }) {
 
         {/* Rarity legend */}
         <div className="px-6 mt-7">
-          <p style={{ color: COFFEE, fontSize: 13, fontWeight: 600, marginBottom: 10 }}>
-            Rarity
+            <p style={{ color: COFFEE, fontSize: 13, fontWeight: 600, marginBottom: 10 }}>
+            稀有度
           </p>
           <div className="flex flex-wrap gap-2">
             {Object.entries(rarityColor).map(([k, v]) => (
@@ -278,7 +312,7 @@ export function BadgesScreen({ onBack }: { onBack: () => void }) {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
-            className="absolute inset-0 z-50 flex items-center justify-center px-7"
+            className="absolute inset-0 z-[60] flex items-center justify-center px-7"
             style={{ backgroundColor: "rgba(45,32,26,0.55)" }}
             onClick={() => setActive(null)}
           >
@@ -359,7 +393,7 @@ export function BadgesScreen({ onBack }: { onBack: () => void }) {
                     fontWeight: 600,
                   }}
                 >
-                  {rarityColor[active.rarity].label.toUpperCase()}
+                  {rarityColor[active.rarity].label}
                 </span>
 
                 <p style={{ color: COFFEE, fontSize: 22, fontWeight: 600 }}>{active.name}</p>
@@ -375,7 +409,7 @@ export function BadgesScreen({ onBack }: { onBack: () => void }) {
                   {active.desc}
                 </p>
 
-                {active.locked ? (
+                {active.locked && active.progress !== undefined ? (
                   <div className="w-full mt-5">
                     <div className="flex items-center justify-between mb-2">
                       <span style={{ color: COFFEE, opacity: 0.55, fontSize: 11 }}>解锁进度</span>
@@ -403,15 +437,16 @@ export function BadgesScreen({ onBack }: { onBack: () => void }) {
                     className="mt-4 px-4 py-2 flex items-center gap-2"
                     style={{ backgroundColor: LINEN, borderRadius: 999 }}
                   >
-                    <Sparkles size={12} color={ORANGE} />
+                    {active.locked ? <Lock size={12} color={COFFEE} /> : <Sparkles size={12} color={ORANGE} />}
                     <span style={{ color: COFFEE, fontSize: 11 }}>
-                      Earned {active.earnedAt}
+                      {active.locked ? "尚未解锁" : active.earnedAt ? `${active.earnedAt} 获得` : "已获得"}
                     </span>
                   </div>
                 )}
 
+                {shareMessage && <p role="status" className="mt-3" style={{ color: COFFEE, opacity: 0.7, fontSize: 11 }}>{shareMessage}</p>}
                 <button
-                  onClick={() => setActive(null)}
+                  onClick={() => active.locked ? setActive(null) : void shareBadge()}
                   className="w-full mt-5 py-3"
                   style={{
                     backgroundColor: active.locked ? LINEN : ORANGE,

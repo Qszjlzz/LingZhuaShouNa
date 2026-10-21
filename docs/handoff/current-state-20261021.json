@@ -1,0 +1,56 @@
+{
+  "updated": "2026-10-21",
+  "timezone": "Asia/Shanghai",
+  "repository": "https://github.com/Qszjlzz/LingZhuaShouNa",
+  "handoff_branch": "codex/figma-ui-handoff-20261021",
+  "base_local_commit": "09c5191",
+  "base_remote_main": "18fa9eb561f11b304bdd66b4ffd7c6ec8e7d4601",
+  "base_remote_previous_work": "3196dd6d9e5b48a4a6ec9dc205f736e7efeb0fcc",
+  "status": "incomplete",
+  "objective": "将全部正式 Figma 手机 UI 与实际 iOS App 逐屏对齐，保留原动效及真实业务",
+  "figma": "https://www.figma.com/design/cHyKGPXFlSnNcjBWw9MNxE/ui%E7%95%8C%E9%9D%A2",
+  "decisions": {
+    "profile": "Sarah Chen，原浣熊头像，加徽章",
+    "third_tab": "项目，使用个人分组我的计划卡片设计",
+    "calendar": "移除独立日历及入口",
+    "community": "原社区入口由项目替换",
+    "animations": "保留原动效",
+    "architecture": "React + WKWebView"
+  },
+  "entrypoint": [
+    "App/SmartPawApp.swift",
+    "App/RootView.swift",
+    "App/CurrentFigmaMakeWebView.swift",
+    "Resources/FigmaMakeLatestWeb/index.html",
+    "FigmaMakeLatest-v3/src/app/App.tsx"
+  ],
+  "web_asset": "index-Bm7H3tNW.js",
+  "historical_native_tests": {
+    "total": 76,
+    "passed": 70,
+    "failed_cases": 6,
+    "failed_assertions": 15,
+    "rerun_for_handoff": false,
+    "report": "docs/design/native-test-results-20261021.md",
+    "raw_xcresult_in_repository": false
+  },
+  "handoff_validation": {
+    "fresh_web_build": "passed",
+    "bundle_identity": "passed",
+    "native_rebuild": "not_rerun",
+    "release_preflight": {
+      "failures": 2,
+      "warnings": 2
+    }
+  },
+  "phone_install": "not_completed",
+  "figma_full_parity": "not_completed",
+  "first_next_actions": [
+    "核实详细整理组2261:6479全部frame的画布顺序、尺寸和版本",
+    "补全剩余根节点、Frame 7及Page 2版本关系",
+    "逐屏映射真实App状态",
+    "修复已确认的分类/执行/多区域差异并保留真实进度和动效",
+    "构建安装、逐屏截图和主要交互验收"
+  ],
+  "handoff": "HANDOFF.md"
+}

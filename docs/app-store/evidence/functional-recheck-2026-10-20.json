@@ -1,0 +1,10 @@
+{
+  "environment": "iPhone 16 Simulator / iOS 18.5 / Xcode 16.4",
+  "result": "Passed",
+  "totalTestCount": 53,
+  "passedTests": 53,
+  "failedTests": 0,
+  "skippedTests": 0,
+  "xcresult": "/tmp/SmartPawFunctionalLatest/Logs/Test/Test-SmartPaw-2026.10.20_13-23-25-+0800.xcresult",
+  "scope": "功能回归；显式排除14项模型资源和真实图片精度门槛测试；包含扫描确认后取消回滚回归"
+}

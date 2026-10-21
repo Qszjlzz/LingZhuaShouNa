@@ -1,0 +1,11 @@
+[
+  {
+    "name": "我的空间",
+    "items": 4,
+    "completedPlans": 2,
+    "activePlan": null,
+    "allCompletedStepsDone": true,
+    "beforeImageExists": true,
+    "afterImageExists": true
+  }
+]

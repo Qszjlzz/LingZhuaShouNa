@@ -2,6 +2,7 @@ import SwiftUI
 import WebKit
 import UIKit
 import PhotosUI
+import UniformTypeIdentifiers
 
 struct CurrentFigmaMakeWebView: UIViewRepresentable {
     @EnvironmentObject private var viewModel: AppViewModel
@@ -18,14 +19,7 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
         webView.scrollView.bounces = false
         webView.navigationDelegate = context.coordinator
         context.coordinator.webView = webView
-        loadBundle(in: webView)
-        // 相机常驻待命：已授权就把画面层铺好并让相机跑起来（透明不可见），
-        // 点拍摄按钮时只剩"显示"这一步，一帧内出画面，没有加载过程。
-        // 只在已授权时做 —— 免得一打开 App 就弹权限框。
-        Task {
-            await CameraEngine.shared.prepareIfAuthorized()
-            await CameraPreviewOverlay.shared.armIfAuthorized(in: webView)
-        }
+        Self.loadBundle(in: webView)
         // 识别模型放后台提前加载：第一次拍照时不必等编译，诊断信息也能立刻给出。
         Task.detached(priority: .utility) {
             let names = YOLOSegmentationScanService.loadedModelNames
@@ -37,7 +31,13 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
     func updateUIView(_ webView: WKWebView, context: Context) {
         context.coordinator.viewModel = viewModel
         guard webView.url == nil else { return }
-        loadBundle(in: webView)
+        Self.loadBundle(in: webView)
+    }
+
+    static func dismantleUIView(_ webView: WKWebView, coordinator: Coordinator) {
+        coordinator.stopCaptureWork()
+        webView.configuration.userContentController.removeScriptMessageHandler(forName: "smartpaw")
+        webView.navigationDelegate = nil
     }
 
     @MainActor
@@ -47,14 +47,19 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
         var viewModel: AppViewModel
         private var pendingRequestID = ""
         private var capturePurpose = "scan"
+        private var pendingCaptureID: String?
+        private var pendingProofImage: (image: UIImage, spaceID: UUID, planID: UUID)?
         /// 拍完照后的识别任务链。快门不等识别，识别在后台串行跑完再通知网页。
         private var scanQueueTask: Task<Void, Never>?
         private var photoScanResults: [String: [DetectedItem]] = [:]
+        private var photoScanErrors: [String: String] = [:]
+        private var scanSessionGeneration = 0
 
         init(viewModel: AppViewModel) { self.viewModel = viewModel }
 
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-            guard let request = message.body as? [String: Any],
+            guard message.frameInfo.isMainFrame,
+                  let request = message.body as? [String: Any],
                   let requestID = request["requestId"] as? String,
                   let command = request["command"] as? String else { return }
             let payload = request["payload"] as? [String: Any] ?? [:]
@@ -64,12 +69,19 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
         private func handle(requestID: String, command: String, payload: [String: Any]) async {
             switch command {
             case "state.get": respond(requestID, data: stateObject())
-            case "llm.settings.get": respond(requestID, data: ["isEnabled": viewModel.llmSettings.isEnabled, "endpoint": viewModel.llmSettings.endpoint, "model": viewModel.llmSettings.model, "visionEndpoint": viewModel.llmSettings.visionEndpoint, "visionModel": viewModel.llmSettings.visionModel, "hasAPIKey": !viewModel.llmSettings.apiKey.isEmpty])
+            case "external.open":
+                guard let rawURL = payload["url"] as? String, let url = URL(string: rawURL),
+                      url.scheme?.lowercased() == "https", url.host != nil,
+                      url.user == nil, url.password == nil else { return fail(requestID, "链接无效") }
+                let opened = await UIApplication.shared.open(url)
+                if opened { respond(requestID, data: ["opened": true]) }
+                else { fail(requestID, "无法打开链接，请稍后重试") }
+            case "llm.settings.get": respond(requestID, data: ["isEnabled": viewModel.llmSettings.isEnabled, "hasCloudConsent": viewModel.llmSettings.hasCloudConsent, "endpoint": viewModel.llmSettings.endpoint, "model": viewModel.llmSettings.model, "visionEndpoint": viewModel.llmSettings.visionEndpoint, "visionModel": viewModel.llmSettings.visionModel, "hasAPIKey": !viewModel.llmSettings.apiKey.isEmpty])
             case "llm.settings.save":
                 // 设置页不回显已保存的密钥，输入框通常是空的；空值一律表示"不改动"，
                 // 否则用户只改个开关就会把密钥清空。
                 let incomingKey = (payload["apiKey"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                let resolvedKey = incomingKey.isEmpty ? viewModel.llmSettings.apiKey : incomingKey
+                let resolvedKey = payload["clearAPIKey"] as? Bool == true ? "" : (incomingKey.isEmpty ? viewModel.llmSettings.apiKey : incomingKey)
                 let incomingEndpoint = (payload["endpoint"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
                 let incomingModel = (payload["model"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
                 let settings = LLMSettings(
@@ -78,15 +90,36 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
                     apiKey: resolvedKey,
                     model: incomingModel.isEmpty ? viewModel.llmSettings.model : incomingModel,
                     visionEndpoint: payload["visionEndpoint"] as? String ?? "",
-                    visionModel: payload["visionModel"] as? String ?? ""
+                    visionModel: payload["visionModel"] as? String ?? "",
+                    hasCloudConsent: payload["hasCloudConsent"] as? Bool ?? false
                 )
                 guard viewModel.saveLLMSettings(settings) else { return fail(requestID, viewModel.message ?? "AI 设置保存失败") }
                 respond(requestID, data: ["saved": true])
             case "llm.test":
-                let settings = LLMSettings(isEnabled: true, endpoint: payload["endpoint"] as? String ?? viewModel.llmSettings.endpoint, apiKey: payload["apiKey"] as? String ?? viewModel.llmSettings.apiKey, model: payload["model"] as? String ?? viewModel.llmSettings.model)
+                let incomingKey = (payload["apiKey"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                let settings = LLMSettings(isEnabled: true, endpoint: payload["endpoint"] as? String ?? viewModel.llmSettings.endpoint, apiKey: incomingKey.isEmpty ? viewModel.llmSettings.apiKey : incomingKey, model: payload["model"] as? String ?? viewModel.llmSettings.model, visionEndpoint: payload["visionEndpoint"] as? String ?? viewModel.llmSettings.visionEndpoint, visionModel: payload["visionModel"] as? String ?? viewModel.llmSettings.visionModel, hasCloudConsent: payload["hasCloudConsent"] as? Bool ?? false)
                 await viewModel.testLLMConnection(settings)
-                respond(requestID, data: ["state": String(describing: viewModel.llmConnectionState)])
+                switch viewModel.llmConnectionState {
+                case .success(let message): respond(requestID, data: ["state": "success", "message": message])
+                case .failure(let message): fail(requestID, message)
+                default: fail(requestID, "连接测试未完成，请重试。")
+                }
+            case "data.reset":
+                stopCaptureWork()
+                guard viewModel.resetLocalData() else { return fail(requestID, viewModel.message ?? "数据删除失败") }
+                await WKWebsiteDataStore.default().removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast)
+                respondWithState(requestID)
             case "capture.open": openCapture(requestID: requestID, payload: payload)
+            case "capture.after.cancel":
+                pendingProofImage = nil
+                respond(requestID, data: ["cancelled": true])
+            case "capture.after.commit":
+                guard let proof = pendingProofImage,
+                      let space = viewModel.spaces.first(where: { $0.id == viewModel.selectedSpaceID }),
+                      space.id == proof.spaceID, space.activePlan?.id == proof.planID else { return fail(requestID, "方案已改变，请重新拍摄完成照") }
+                guard finishPlan(with: proof.image) else { return fail(requestID, viewModel.message ?? "完成照保存失败") }
+                pendingProofImage = nil
+                respondWithState(requestID)
             case "scan.open": openScanStudio(requestID: requestID, payload: payload)
             case "camera.preview.warm":
                 await CameraPreviewOverlay.shared.warmUp()
@@ -101,10 +134,15 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
             case "ar.scan.stop": stopARScan(); respond(requestID, data: ["ok": true])
             case "camera.capture": await captureInline(requestID: requestID, payload: payload)
             case "scan.begin":
-                await scanQueueTask?.value
+                scanSessionGeneration += 1
+                scanQueueTask?.cancel()
+                scanQueueTask = nil
                 photoScanResults = [:]
                 viewModel.beginPhotoScanSession()
                 respond(requestID, data: ["ready": true])
+            case "scan.cancel":
+                stopCaptureWork()
+                respond(requestID, data: ["cancelled": true])
             case "scan.results":
                 guard let captureID = payload["captureID"] as? String else { return fail(requestID, "缺少照片编号") }
                 if let items = photoScanResults[captureID] {
@@ -113,10 +151,16 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
                     respond(requestID, data: ["ready": false, "items": []])
                 }
             case "scan.await":
+                let generation = scanSessionGeneration
                 await scanQueueTask?.value
+                guard generation == scanSessionGeneration else { return fail(requestID, "本次扫描已结束，请重试") }
                 if let captureIDs = payload["captureIDs"] as? [String] {
+                    if let error = captureIDs.compactMap({ photoScanErrors[$0] }).first {
+                        return fail(requestID, error)
+                    }
                     let items = mergePhotoScanResults(captureIDs)
-                    viewModel.replaceScannedItems(items)
+                    guard viewModel.replaceScannedItems(items) else { return fail(requestID, viewModel.message ?? "扫描结果保存失败") }
+                    viewModel.commitPhotoScanSession()
                     let sourceItems = captureIDs.flatMap { captureID in
                         (photoScanResults[captureID] ?? []).map { item in
                             nativeItemObject(item, captureID: captureID)
@@ -125,6 +169,8 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
                     respond(requestID, data: ["state": stateObject(), "items": sourceItems])
                     return
                 }
+                guard viewModel.lastScanPersisted else { return fail(requestID, viewModel.message ?? "扫描结果保存失败，请重试") }
+                viewModel.commitPhotoScanSession()
                 respondWithState(requestID)
             case "scan.diagnose":
                 respond(requestID, data: [
@@ -135,58 +181,108 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
                     "detail": RecognitionRouter.shared.diagnostics,
                 ] as [String: Any])
             case "space.select":
-                guard let id = uuid(payload["id"]) else { return fail(requestID, "空间 ID 无效") }
+                guard let id = uuid(payload["id"]), viewModel.spaces.contains(where: { $0.id == id }) else { return fail(requestID, "空间不存在") }
                 viewModel.selectSpace(id); respondWithState(requestID)
+            case "space.photos":
+                guard let id = uuid(payload["id"]), let space = viewModel.spaces.first(where: { $0.id == id }) else { return fail(requestID, "空间不存在") }
+                var photos: [String: String] = [:]
+                for (key, name) in [("before", space.beforeImageName), ("after", space.afterImageName)] {
+                    if let url = viewModel.imageURL(for: name), let data = try? Data(contentsOf: url),
+                       let image = UIImage.downsampled(data: data, maxPixelSize: 640), let preview = Self.thumbnailDataURL(for: image) { photos[key] = preview }
+                }
+                respond(requestID, data: photos)
             case "space.add":
                 guard let id = viewModel.addSpace(name: payload["name"] as? String ?? "新空间") else { return fail(requestID, "空间名称不能为空") }
                 respond(requestID, data: ["id": id.uuidString, "state": stateObject()])
             case "space.rename":
                 guard let id = uuid(payload["id"]) else { return fail(requestID, "空间 ID 无效") }
-                viewModel.renameSpace(id, name: payload["name"] as? String ?? ""); respondWithState(requestID)
+                guard let name = payload["name"] as? String, !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return fail(requestID, "空间名称不能为空") }
+                guard viewModel.renameSpace(id, name: name) else { return fail(requestID, viewModel.message ?? "空间保存失败，请重试") }
+                respondWithState(requestID)
             case "space.delete":
                 guard let id = uuid(payload["id"]) else { return fail(requestID, "空间 ID 无效") }
-                viewModel.deleteSpace(id); respondWithState(requestID)
+                guard viewModel.spaces.count > 1 else { return fail(requestID, "至少保留一个空间") }
+                guard viewModel.deleteSpace(id) else { return fail(requestID, viewModel.message ?? "空间删除失败，请重试") }
+                respondWithState(requestID)
             case "items.save": saveItems(payload, requestID: requestID)
             case "item.add":
-                let category = ItemCategory(rawValue: payload["category"] as? String ?? "") ?? .tools
-                viewModel.addManualItem(name: payload["name"] as? String ?? "", category: category, forScan: true)
+                guard let rawCategory = payload["category"] as? String,
+                      let category = ItemCategory(webValue: rawCategory) else { return fail(requestID, "物品类别无效") }
+                guard viewModel.addManualItem(name: payload["name"] as? String ?? "", category: category, suggestedZone: payload["suggestedZone"] as? String, forScan: true) else { return fail(requestID, viewModel.message ?? "物品保存失败") }
+                respondWithState(requestID)
+            case "item.zone.update":
+                guard let id = uuid(payload["id"]),
+                      let zone = (payload["suggestedZone"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                      !zone.isEmpty else { return fail(requestID, "分组名称不能为空") }
+                guard var item = viewModel.catalogItems.first(where: { $0.id == id }) ?? viewModel.scannedItems.first(where: { $0.id == id }) else {
+                    return fail(requestID, "物品不存在")
+                }
+                item.suggestedZone = zone
+                guard viewModel.updateCatalogItem(item) else { return fail(requestID, viewModel.message ?? "分组保存失败，请重试") }
                 respondWithState(requestID)
             case "item.delete":
                 guard let id = uuid(payload["id"]) else { return fail(requestID, "物品 ID 无效") }
-                viewModel.removeCatalogItem(id); respondWithState(requestID)
+                guard viewModel.removeCatalogItem(id) else { return fail(requestID, viewModel.message ?? "物品删除失败，请重试") }
+                respondWithState(requestID)
             case "plan.generate": await generatePlan(payload, requestID: requestID)
+            case "plan.reuse":
+                guard let spaceID = uuid(payload["spaceID"]), let planID = uuid(payload["planID"]) else { return fail(requestID, "原方案参数无效") }
+                guard viewModel.reusePlan(spaceID: spaceID, planID: planID) else { return fail(requestID, viewModel.message ?? "原方案恢复失败") }
+                respondWithState(requestID)
+            case "plan.pause.set":
+                guard let spaceID = uuid(payload["spaceID"]),
+                      let planID = uuid(payload["planID"]),
+                      let isPaused = payload["isPaused"] as? Bool else {
+                    return fail(requestID, "方案暂停参数无效")
+                }
+                guard viewModel.setPlanPaused(spaceID: spaceID, planID: planID, isPaused: isPaused) else {
+                    return fail(requestID, viewModel.message ?? "方案状态保存失败，请重试")
+                }
+                respondWithState(requestID)
             case "chat.send": await sendChat(payload, requestID: requestID)
             case "plan.step.complete":
                 guard let id = uuid(payload["id"]) else { return fail(requestID, "步骤 ID 无效") }
-                viewModel.completeStep(id); respondWithState(requestID)
+                guard viewModel.completeStep(id) else { return fail(requestID, viewModel.message ?? "步骤保存失败，请重试") }
+                respondWithState(requestID)
             case "community.like": mutateCommunity(payload, requestID: requestID, action: viewModel.toggleCommunityLike)
             case "community.favorite": mutateCommunity(payload, requestID: requestID, action: viewModel.toggleCommunityFavorite)
-            case "community.follow": viewModel.toggleCommunityFollow(author: payload["author"] as? String ?? ""); respondWithState(requestID)
+            case "community.follow":
+                guard viewModel.toggleCommunityFollow(author: payload["author"] as? String ?? "") else { return fail(requestID, viewModel.message ?? "关注保存失败，请重试") }
+                respondWithState(requestID)
             case "community.comment":
                 guard let id = uuid(payload["id"]) else { return fail(requestID, "案例 ID 无效") }
-                viewModel.addCommunityComment(to: id, body: payload["body"] as? String ?? ""); respondWithState(requestID)
-            case "community.shareCompletion": viewModel.shareLatestCompletion(); respondWithState(requestID)
+                let body = payload["body"] as? String ?? payload["text"] as? String ?? ""
+                guard !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return fail(requestID, "笔记不能为空") }
+                guard viewModel.addCommunityComment(to: id, body: body) else { return fail(requestID, viewModel.message ?? "评论保存失败，请重试") }
+                respondWithState(requestID)
+            case "community.shareCompletion":
+                guard viewModel.shareLatestCompletion() else { return fail(requestID, viewModel.message ?? "分享保存失败，请重试") }
+                respondWithState(requestID)
             case "schedule.add":
-                viewModel.addScheduleItem(title: payload["title"] as? String ?? "整理复盘", dueText: payload["dueText"] as? String ?? "明天", note: payload["note"] as? String ?? "")
+                guard viewModel.addScheduleItem(title: payload["title"] as? String ?? "整理复盘", dueText: payload["dueText"] as? String ?? "明天", note: payload["note"] as? String ?? "") else { return fail(requestID, viewModel.message ?? "日程保存失败，请重试") }
                 respondWithState(requestID)
             case "schedule.toggle":
                 guard let id = uuid(payload["id"]) else { return fail(requestID, "日程 ID 无效") }
-                viewModel.toggleScheduleItem(id); respondWithState(requestID)
+                guard viewModel.toggleScheduleItem(id) else { return fail(requestID, viewModel.message ?? "日程保存失败，请重试") }
+                respondWithState(requestID)
             case "schedule.delete":
                 guard let id = uuid(payload["id"]) else { return fail(requestID, "日程 ID 无效") }
-                viewModel.deleteScheduleItem(id); respondWithState(requestID)
+                guard viewModel.deleteScheduleItem(id) else { return fail(requestID, viewModel.message ?? "日程删除失败，请重试") }
+                respondWithState(requestID)
             default: fail(requestID, "暂不支持命令：\(command)")
             }
         }
 
         private func openCapture(requestID: String, payload: [String: Any]) {
+            guard pendingRequestID.isEmpty else { return fail(requestID, "请先完成当前照片选择") }
             pendingRequestID = requestID
             capturePurpose = payload["purpose"] as? String ?? "scan"
+            pendingCaptureID = payload["captureID"] as? String
             if payload["source"] as? String == "camera", UIImagePickerController.isSourceTypeAvailable(.camera) {
                 presentCameraCapture()
             } else {
                 var config = PHPickerConfiguration(photoLibrary: .shared())
-                config.filter = .images; config.selectionLimit = capturePurpose == "scan" ? 6 : 1
+                config.filter = .images; config.selectionLimit = capturePurpose == "scan" && pendingCaptureID == nil ? 6 : 1
                 let picker = PHPickerViewController(configuration: config); picker.delegate = self
                 topViewController()?.present(picker, animated: true)
             }
@@ -195,6 +291,7 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
         /// 拍摄统一走原生页：画面是原生的，照片留在原生侧，
         /// 只把 240px 缩略图回给网页做展示，避免大图 base64 撑爆 WebView。
         private func openScanStudio(requestID: String, payload: [String: Any]) {
+            guard pendingRequestID.isEmpty else { return fail(requestID, "请先完成当前拍摄") }
             pendingRequestID = requestID
             capturePurpose = "scan"
             let wantsAR = payload["mode"] as? String == "ar"
@@ -205,6 +302,7 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
                 onCommit: { [weak self] result in
                     guard let self else { return }
                     self.topViewController()?.dismiss(animated: true)
+                    self.pendingRequestID = ""
                     self.consumeStudioResult(result, requestID: requestID)
                 },
                 onCancel: { [weak self] in
@@ -220,8 +318,11 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
         }
 
         private func consumeStudioResult(_ result: ScanStudioResult, requestID: String) {
+            let generation = scanSessionGeneration
             Task {
                 await viewModel.scanImages(result.images)
+                guard generation == scanSessionGeneration else { return fail(requestID, "本次扫描已结束，请重新拍摄") }
+                guard viewModel.lastScanPersisted else { return fail(requestID, viewModel.message ?? "识别结果保存失败，请重试") }
                 emit(["requestId": requestID, "status": "success",
                       "data": ["previews": result.thumbnails, "state": stateObject()] as [String: Any]])
             }
@@ -236,7 +337,6 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
                 frame = CGRect(x: x, y: y, width: w, height: h)
             }
             let ok = await CameraPreviewOverlay.shared.start(in: webView, frame: frame)
-            if ok { await MainActor.run { viewModel.scannedItems = [] } }
             // 起不来时把原因告诉网页：没授权和"被别的 App 占着"要给不同提示。
             let reason = ok ? "" : (CameraEngine.shared.permissionDenied ? "denied" : "unavailable")
             respond(requestID, data: ["ok": ok, "reason": reason])
@@ -269,24 +369,42 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
                 return fail(requestID, reason)
             }
             // purpose=after 是「整理后打卡照」，只回缩略图；其余一律按扫描用途处理。
-            let isAfter = payload["purpose"] as? String == "after"
+            let purpose = payload["purpose"] as? String
+            if purpose == "after-preview" {
+                guard let space = viewModel.spaces.first(where: { $0.id == viewModel.selectedSpaceID }),
+                      let plan = space.activePlan, !plan.steps.isEmpty, plan.steps.allSatisfy({ $0.status == .done }) else { return fail(requestID, "请先完成方案中的整理步骤") }
+                pendingProofImage = (image, space.id, plan.id)
+                respond(requestID, data: ["preview": Self.thumbnailDataURL(for: image) as Any])
+                return
+            }
+            let isAfter = purpose == "after"
             capturePurpose = isAfter ? "after" : "scan"
-            pendingRequestID = requestID
-            // 先把图送回页面：识别（10 个模型）要几秒，不能让快门等它。
+            // 整理后照片必须先保存成功，再通知界面显示完成。
             let preview = Self.thumbnailDataURL(for: image)
+            if isAfter {
+                guard finishPlan(with: image) else { return fail(requestID, viewModel.message ?? "请先完成整理步骤") }
+                respond(requestID, data: ["preview": preview as Any, "state": stateObject()])
+                return
+            }
             let captureID = payload["captureID"] as? String
             var captureResponse: [String: Any] = ["preview": preview as Any, "state": stateObject()]
             if let captureID { captureResponse["captureID"] = captureID }
             respond(requestID, data: captureResponse)
             // 整理后的照片不参与识别，避免把成果照里的物品重复计入本次扫描。
-            if isAfter { return }
-
+            let generation = scanSessionGeneration
             let previous = scanQueueTask
             scanQueueTask = Task { [weak self] in
                 // 连拍时识别必须串行，否则两次扫描会同时读写 scannedItems。
                 await previous?.value
-                guard let self else { return }
+                guard let self, !Task.isCancelled, generation == self.scanSessionGeneration else { return }
                 let items = await self.viewModel.scanImages([image], accumulate: true)
+                guard !Task.isCancelled, generation == self.scanSessionGeneration else { return }
+                guard self.viewModel.lastScanPersisted else {
+                    let error = self.viewModel.message ?? "识别结果保存失败，请重试"
+                    if let captureID { self.photoScanErrors[captureID] = error }
+                    self.emit(["event": "scan.error", "message": error])
+                    return
+                }
                 if let captureID { self.photoScanResults[captureID] = items }
                 self.emit(["event": "scan.updated", "state": self.stateObject()])
             }
@@ -339,7 +457,7 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
 
         func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
             picker.dismiss(animated: true)
-            guard let image = info[.originalImage] as? UIImage else { return fail(pendingRequestID, "没有取得照片") }
+            guard let image = info[.originalImage] as? UIImage else { return failCapture("没有取得照片") }
             consume(images: [image])
         }
 
@@ -348,12 +466,15 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
         func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
             picker.dismiss(animated: true)
             guard !results.isEmpty else { return cancelCapture() }
+            let requestID = pendingRequestID
+            let generation = scanSessionGeneration
             Task {
                 var images: [UIImage] = []
                 for result in results where result.itemProvider.canLoadObject(ofClass: UIImage.self) {
                     if let image = await loadImage(from: result.itemProvider) { images.append(image) }
                 }
-                guard !images.isEmpty else { return fail(pendingRequestID, "所选照片无法读取") }
+                guard generation == scanSessionGeneration, requestID == pendingRequestID else { return }
+                guard !images.isEmpty else { return failCapture("所选照片无法读取") }
                 consume(images: images)
             }
         }
@@ -372,46 +493,85 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
 
         private func loadImage(from provider: NSItemProvider) async -> UIImage? {
             await withCheckedContinuation { continuation in
-                provider.loadObject(ofClass: UIImage.self) { object, _ in
-                    continuation.resume(returning: object as? UIImage)
+                provider.loadFileRepresentation(forTypeIdentifier: UTType.image.identifier) { url, _ in
+                    guard let url, let data = try? Data(contentsOf: url, options: .mappedIfSafe) else {
+                        continuation.resume(returning: nil)
+                        return
+                    }
+                    continuation.resume(returning: UIImage.downsampled(data: data))
                 }
             }
         }
 
         private func consume(images: [UIImage], accumulate: Bool = false) {
             let requestID = pendingRequestID
+            let captureID = pendingCaptureID
+            pendingRequestID = ""
+            pendingCaptureID = nil
             // 只回传小图：网页只做展示，识别用的是原生侧的原图。
             // 之前这里回传全分辨率 JPEG 的 base64，几张连拍就能把 WebView 撑到被系统杀掉。
             let preview = images.first.flatMap { Self.thumbnailDataURL(for: $0) }
             if capturePurpose == "after", let image = images.first {
-                viewModel.finishActivePlan(afterImage: image)
+                guard finishPlan(with: image) else { return fail(requestID, viewModel.message ?? "请先完成整理步骤") }
                 respond(requestID, data: ["preview": preview as Any, "state": stateObject()]); return
             }
+            let generation = scanSessionGeneration
             Task {
-                await viewModel.scanImages(images, accumulate: accumulate)
-                respond(requestID, data: ["preview": preview as Any, "state": stateObject()])
+                let items = await viewModel.scanImages(images, accumulate: accumulate)
+                guard generation == scanSessionGeneration else { return fail(requestID, "本次扫描已结束，请重新拍摄") }
+                guard viewModel.lastScanPersisted else { return fail(requestID, viewModel.message ?? "识别结果保存失败，请重试") }
+                if let captureID { photoScanResults[captureID] = items }
+                respond(requestID, data: ["preview": preview as Any, "state": stateObject(), "items": nativeItemObjects(items, captureID: captureID)])
             }
+        }
+
+        private func finishPlan(with image: UIImage) -> Bool {
+            guard let space = viewModel.spaces.first(where: { $0.id == viewModel.selectedSpaceID }),
+                  let plan = space.activePlan, plan.steps.allSatisfy({ $0.status == .done }) else {
+                viewModel.showMessage("请先完成方案中的整理步骤，再保存完成照。")
+                return false
+            }
+            return viewModel.finishActivePlan(afterImage: image)
+        }
+
+        func stopCaptureWork() {
+            pendingProofImage = nil
+            scanSessionGeneration += 1
+            viewModel.cancelScanWork()
+            if !pendingRequestID.isEmpty { cancelCapture() }
+            scanQueueTask?.cancel()
+            scanQueueTask = nil
+            photoScanResults = [:]
+            photoScanErrors = [:]
+            stopARScan()
+            CameraPreviewOverlay.shared.disarm()
+            CameraEngine.shared.stop()
         }
 
         private func saveItems(_ payload: [String: Any], requestID: String) {
             guard let rawItems = payload["items"] as? [[String: Any]] else { return fail(requestID, "缺少物品数据") }
             let existing = Dictionary(uniqueKeysWithValues: viewModel.scannedItems.map { ($0.id, $0) })
-            let items = rawItems.compactMap { raw -> DetectedItem? in
-                let id = uuid(raw["id"]) ?? UUID(); let category = ItemCategory(rawValue: raw["category"] as? String ?? "") ?? .tools
+            var items: [DetectedItem] = []
+            for raw in rawItems {
+                guard let rawCategory = raw["category"] as? String,
+                      let category = ItemCategory(webValue: rawCategory) else { return fail(requestID, "物品类别无效") }
+                let id = uuid(raw["id"]) ?? UUID()
                 var item = existing[id] ?? DetectedItem(name: raw["name"] as? String ?? "未命名物品", category: category, confidence: raw["confidence"] as? Double ?? 1)
                 item.name = raw["name"] as? String ?? item.name; item.category = category
                 item.suggestedZone = raw["suggestedZone"] as? String ?? category.suggestedZone
                 item.isSelected = raw["isSelected"] as? Bool ?? true
-                return item
+                items.append(item)
             }
-            viewModel.replaceScannedItems(items); respondWithState(requestID)
+            guard viewModel.replaceScannedItems(items) else { return fail(requestID, viewModel.message ?? "物品保存失败") }
+            respondWithState(requestID)
         }
 
         private func generatePlan(_ payload: [String: Any], requestID: String) async {
             viewModel.planningGoal = payload["goal"] as? String ?? ""; viewModel.focusZone = payload["focusZone"] as? String ?? ""
             if let style = StorageStyle(rawValue: payload["style"] as? String ?? "") { viewModel.selectedStyle = style }
             if let minutes = payload["minutes"] as? Int, let budget = TimeBudget(rawValue: minutes) { viewModel.selectedTimeBudget = budget }
-            await viewModel.makePlanFromScanUsingCloudIfAvailable(navigateToSpace: false); respondWithState(requestID)
+            guard await viewModel.makePlanFromScanUsingCloudIfAvailable(navigateToSpace: false) else { return fail(requestID, viewModel.message ?? "方案生成失败") }
+            respondWithState(requestID)
         }
 
         private func sendChat(_ payload: [String: Any], requestID: String) async {
@@ -431,9 +591,10 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
             }
         }
 
-        private func mutateCommunity(_ payload: [String: Any], requestID: String, action: (UUID) -> Void) {
+        private func mutateCommunity(_ payload: [String: Any], requestID: String, action: (UUID) -> Bool) {
             guard let id = uuid(payload["id"]) else { return fail(requestID, "案例 ID 无效") }
-            action(id); respondWithState(requestID)
+            guard action(id) else { return fail(requestID, viewModel.message ?? "社区操作保存失败，请重试") }
+            respondWithState(requestID)
         }
 
         // MARK: - AR 实时扫描（网页用）
@@ -557,21 +718,34 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
         }
 
         private func stateObject() -> Any {
+            struct ProfileStats: Encodable {
+                let trackedItemCount: Int
+                let organizedSpaceCount: Int
+            }
+            struct WebAchievement: Encodable {
+                let id: UUID
+                let title: String
+                let subtitle: String
+                let iconName: String
+                let isUnlocked: Bool
+            }
             struct State: Encodable {
                 let spaces: [StorageSpace]; let selectedSpaceID: UUID?; let scannedItems: [DetectedItem]
-                let achievements: [Achievement]; let communityCases: [CommunityCase]; let comments: [UUID: [CommunityComment]]
+                let achievements: [WebAchievement]; let communityCases: [CommunityCase]; let comments: [UUID: [CommunityComment]]
                 let liked: [UUID]; let favorites: [UUID]; let followedAuthors: [String]; let schedules: [ScheduleItem]; let message: String?
                 let scanDiagnostics: [String: String]
+                let profileStats: ProfileStats
             }
             var diagnostics = RecognitionRouter.shared.diagnostics
             diagnostics["modelCount"] = "\(YOLOSegmentationScanService.loadedModelCount)"
             diagnostics["models"] = YOLOSegmentationScanService.loadedModelNames.joined(separator: "、")
             diagnostics["cloudReady"] = viewModel.llmSettings.canRequestVision ? "yes" : "no"
             let value = State(spaces: viewModel.spaces, selectedSpaceID: viewModel.selectedSpaceID, scannedItems: viewModel.scannedItems,
-                achievements: viewModel.achievements, communityCases: viewModel.communityCases, comments: viewModel.communityComments,
+                achievements: viewModel.achievements.map { WebAchievement(id: $0.id, title: $0.title, subtitle: $0.subtitle, iconName: $0.iconName, isUnlocked: viewModel.isAchievementUnlocked($0)) }, communityCases: viewModel.communityCases, comments: viewModel.communityComments,
                 liked: Array(viewModel.likedCommunityCaseIDs), favorites: Array(viewModel.favoriteCommunityCaseIDs),
                 followedAuthors: Array(viewModel.followedCommunityAuthors), schedules: viewModel.scheduleItems, message: viewModel.message,
-                scanDiagnostics: diagnostics)
+                scanDiagnostics: diagnostics,
+                profileStats: ProfileStats(trackedItemCount: viewModel.catalogItems.count, organizedSpaceCount: viewModel.spaces.filter { !$0.completedPlans.isEmpty }.count))
             let encoder = JSONEncoder(); encoder.dateEncodingStrategy = .iso8601
             guard let data = try? encoder.encode(value), let object = try? JSONSerialization.jsonObject(with: data) else { return [:] }
             return object
@@ -580,7 +754,13 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
         private func respondWithState(_ id: String) { respond(id, data: stateObject()) }
         private func respond(_ id: String, data: Any) { emit(["requestId": id, "status": "success", "data": data]) }
         private func fail(_ id: String, _ error: String) { emit(["requestId": id, "status": "error", "error": error]) }
-        private func cancelCapture() { emit(["requestId": pendingRequestID, "status": "cancelled"]); pendingRequestID = "" }
+        private func cancelCapture() { emit(["requestId": pendingRequestID, "status": "cancelled"]); pendingRequestID = ""; pendingCaptureID = nil }
+        private func failCapture(_ error: String) {
+            let requestID = pendingRequestID
+            pendingRequestID = ""
+            pendingCaptureID = nil
+            fail(requestID, error)
+        }
         private func uuid(_ value: Any?) -> UUID? { (value as? String).flatMap(UUID.init(uuidString:)) }
         private func emit(_ response: [String: Any]) {
             guard JSONSerialization.isValidJSONObject(response), let data = try? JSONSerialization.data(withJSONObject: response),
@@ -594,7 +774,7 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
         }
     }
 
-    private func loadBundle(in webView: WKWebView) {
+    fileprivate static func loadBundle(in webView: WKWebView) {
         // 注意：CSS 可能是可选的 —— 打包一旦把样式并进 JS（现在的构建就是这样），
         // assets 里就不会再有 .css 文件。以前这里把 css 写成必需条件，缺.css 就直接 return，
         // 结果整页不加载、只剩白屏。现在允许为空，样式由 JS 自己注入。
@@ -627,6 +807,26 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
 }
 
 extension CurrentFigmaMakeWebView.Coordinator: WKNavigationDelegate {
+    func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
+                 decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+        guard let url = navigationAction.request.url else { decisionHandler(.cancel); return }
+        if url.isFileURL || url.absoluteString == "about:blank" {
+            decisionHandler(.allow)
+        } else {
+            // 外部网页交给系统浏览器，避免将原生桥接暴露给远程页面。
+            decisionHandler(.cancel)
+            if navigationAction.navigationType == .linkActivated,
+               ["https", "mailto"].contains(url.scheme?.lowercased() ?? "") {
+                UIApplication.shared.open(url)
+            }
+        }
+    }
+
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        stopCaptureWork()
+        CurrentFigmaMakeWebView.loadBundle(in: webView)
+    }
+
     // 网页加载完成 → 通知 RootView 把启动封面淡出。
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         NotificationCenter.default.post(name: .smartPawWebReady, object: nil)

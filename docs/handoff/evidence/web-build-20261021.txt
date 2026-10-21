@@ -1,0 +1,17 @@
+vite v6.3.5 building for production...
+
+(!) outDir /tmp/smartpaw-handoff-build-20261021 is not inside project root and will not be emptied.
+Use --emptyOutDir to override.
+
+transforming...
+✓ 2033 modules transformed.
+rendering chunks...
+computing gzip size...
+../../../../../../tmp/smartpaw-handoff-build-20261021/index.html                  0.34 kB │ gzip:   0.25 kB
+../../../../../../tmp/smartpaw-handoff-build-20261021/assets/index-Bm7H3tNW.js  960.37 kB │ gzip: 433.26 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 2.70s

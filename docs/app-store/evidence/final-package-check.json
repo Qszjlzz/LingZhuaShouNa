@@ -1,0 +1,24 @@
+{
+  "CFBundleDisplayName": "灵爪收纳",
+  "CFBundleIdentifier": "com.qszjlzz.smartpaw",
+  "CFBundleShortVersionString": "1.0.0",
+  "CFBundleVersion": "1",
+  "DTXcode": "1640",
+  "DTSDKName": "iphoneos18.5",
+  "MinimumOSVersion": "18.0",
+  "excluded_resources_absent": [
+    "llm-defaults.json",
+    "eval-editthispic-01-before.jpg",
+    "eval-editthispic-02-before.jpg",
+    "eval-editthispic-03-before.jpg",
+    "external-cluttered-study-pexels.jpg",
+    "external-messy-desk-note.png",
+    "external-trash-room-imweb.jpg"
+  ],
+  "web_sha256": {
+    "index-Dty6IeOa.js": "45c84da2d71882685ed40ad6aba38d6b2754d7684b7854c2200e026c4d805bee"
+  },
+  "archive_succeeded": true,
+  "simulator_build_succeeded": true,
+  "unsigned": true
+}

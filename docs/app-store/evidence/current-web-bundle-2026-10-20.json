@@ -1,0 +1,8 @@
+{
+  "source": "FigmaMakeLatest-v3/dist",
+  "bundled": "Resources/FigmaMakeLatestWeb",
+  "sha256": {
+    "index.html": "db317dacd0ab76e4c7e0dea9ae98b41e5f3a3828f229367e1e94826d1cde06c5",
+    "assets/index-CoT3YTJd.js": "ada2c423574b5251a516b858ee497356f08fa5e2df8c7ae1149f16b56f037c78"
+  }
+}

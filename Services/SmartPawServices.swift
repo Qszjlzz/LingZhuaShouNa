@@ -18,9 +18,22 @@ protocol CloudPlanningService {
 protocol StorageStore {
     func loadState() throws -> AppStateSnapshot?
     func saveState(_ snapshot: AppStateSnapshot) throws
+    func resetState(_ snapshot: AppStateSnapshot) throws
+}
+
+extension StorageStore {
+    func resetState(_ snapshot: AppStateSnapshot) throws { try saveState(snapshot) }
 }
 
 struct AppStateSnapshot: Codable, Equatable {
+    /// A real installation starts without invented possessions, completed work, or reminders.
+    static var initial: AppStateSnapshot {
+        AppStateSnapshot(
+            spaces: [StorageSpace(name: "我的空间", subtitle: "拍照或手动添加物品，开始第一次整理", beforeImageName: "", afterImageName: "", detectedItems: [])],
+            achievements: [], communityCases: [], scheduleItems: []
+        )
+    }
+
     var spaces: [StorageSpace]
     var achievements: [Achievement]
     var communityCases: [CommunityCase]
@@ -62,7 +75,7 @@ struct AppStateSnapshot: Codable, Equatable {
         achievements = try container.decode([Achievement].self, forKey: .achievements)
         communityCases = try container.decode([CommunityCase].self, forKey: .communityCases)
         communityComments = try container.decodeIfPresent([UUID: [CommunityComment]].self, forKey: .communityComments) ?? [:]
-        scheduleItems = try container.decodeIfPresent([ScheduleItem].self, forKey: .scheduleItems) ?? DemoData.scheduleItems
+        scheduleItems = try container.decodeIfPresent([ScheduleItem].self, forKey: .scheduleItems) ?? []
         llmSettings = try container.decodeIfPresent(LLMSettings.self, forKey: .llmSettings) ?? .default
         likedCommunityCaseIDs = try container.decodeIfPresent(Set<UUID>.self, forKey: .likedCommunityCaseIDs) ?? []
         favoriteCommunityCaseIDs = try container.decodeIfPresent(Set<UUID>.self, forKey: .favoriteCommunityCaseIDs) ?? []
@@ -72,6 +85,7 @@ struct AppStateSnapshot: Codable, Equatable {
 
 struct LLMSettings: Codable, Equatable {
     var isEnabled: Bool
+    var hasCloudConsent: Bool
     var endpoint: String
     var apiKey: String
     var model: String
@@ -87,7 +101,7 @@ struct LLMSettings: Codable, Equatable {
     )
 
     private enum CodingKeys: String, CodingKey {
-        case isEnabled, endpoint, apiKey, model, visionEndpoint, visionModel
+        case isEnabled, hasCloudConsent, endpoint, apiKey, model, visionEndpoint, visionModel
     }
 
     init(
@@ -96,9 +110,11 @@ struct LLMSettings: Codable, Equatable {
         apiKey: String,
         model: String,
         visionEndpoint: String = "",
-        visionModel: String = ""
+        visionModel: String = "",
+        hasCloudConsent: Bool = false
     ) {
         self.isEnabled = isEnabled
+        self.hasCloudConsent = hasCloudConsent
         self.endpoint = endpoint
         self.apiKey = apiKey
         self.model = model
@@ -109,6 +125,7 @@ struct LLMSettings: Codable, Equatable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         isEnabled = try container.decodeIfPresent(Bool.self, forKey: .isEnabled) ?? false
+        hasCloudConsent = try container.decodeIfPresent(Bool.self, forKey: .hasCloudConsent) ?? false
         endpoint = try container.decodeIfPresent(String.self, forKey: .endpoint) ?? Self.default.endpoint
         apiKey = try container.decodeIfPresent(String.self, forKey: .apiKey) ?? ""
         model = try container.decodeIfPresent(String.self, forKey: .model) ?? Self.default.model
@@ -119,6 +136,7 @@ struct LLMSettings: Codable, Equatable {
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(isEnabled, forKey: .isEnabled)
+        try container.encode(hasCloudConsent, forKey: .hasCloudConsent)
         try container.encode(endpoint, forKey: .endpoint)
         try container.encode(model, forKey: .model)
         try container.encode(visionEndpoint, forKey: .visionEndpoint)
@@ -143,20 +161,20 @@ struct LLMSettings: Codable, Equatable {
               let scheme = url.scheme?.lowercased(),
               let host = url.host, !host.isEmpty,
               url.user == nil, url.password == nil, url.fragment == nil,
-              scheme == "https" || (scheme == "http" && ["localhost", "127.0.0.1", "::1"].contains(host.lowercased()))
+              scheme == "https"
         else { return false }
         return true
     }
 
     var canRequest: Bool {
-        guard isEnabled, isReachable(endpoint) else { return false }
+        guard isEnabled, hasCloudConsent, isReachable(endpoint) else { return false }
         return !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     /// 拍照识别走的是多模态接口，与主规划接口可以是两套配置。
     var canRequestVision: Bool {
-        guard isEnabled, isReachable(resolvedVisionEndpoint) else { return false }
+        guard isEnabled, hasCloudConsent, isReachable(resolvedVisionEndpoint) else { return false }
         return !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !resolvedVisionModel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
@@ -192,6 +210,21 @@ enum ScanError: LocalizedError {
     }
 }
 
+private func configureVisionForCurrentRuntime(_ request: VNRequest) {
+    #if targetEnvironment(simulator)
+    // iOS Simulator may not have the Espresso/ANE backend used by the system defaults.
+    if #available(iOS 17.0, *), let stages = try? request.supportedComputeStageDevices {
+        for (stage, devices) in stages {
+            if let cpu = devices.first(where: { if case .cpu = $0 { return true }; return false }) {
+                request.setComputeDevice(cpu, for: stage)
+            }
+        }
+    } else {
+        request.usesCPUOnly = true
+    }
+    #endif
+}
+
 struct VisionScanService: ScanService {
     func scanImage(_ image: UIImage) async throws -> [DetectedItem] {
         guard let cgImage = image.normalizedCGImage else {
@@ -208,23 +241,6 @@ struct VisionScanService: ScanService {
             )
             if !deduplicated.isEmpty {
                 return deduplicated
-            }
-
-            if let topObservation = try? Self.topClassificationObservation(in: cgImage) {
-                let label = topObservation.identifier
-                    .split(separator: ",")
-                    .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
-                    .first ?? "未知物品"
-                return [
-                    DetectedItem(
-                        name: label,
-                        category: .tools,
-                        confidence: Double(topObservation.confidence),
-                        suggestedZone: "待确认收纳区",
-                        arHint: visualRegions.first?.hint,
-                        arMask: visualRegions.first?.mask
-                    )
-                ]
             }
 
             // 没有可核对的分类或视觉区域时返回空结果；“待确认区域”没有
@@ -252,12 +268,9 @@ struct VisionScanService: ScanService {
         }
     }
 
-    private static func topClassificationObservation(in cgImage: CGImage) throws -> VNClassificationObservation? {
-        try classificationObservations(in: cgImage).first
-    }
-
     private static func classificationObservations(in cgImage: CGImage) throws -> ArraySlice<VNClassificationObservation> {
         let request = VNClassifyImageRequest()
+        configureVisionForCurrentRuntime(request)
         let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
         try handler.perform([request])
 
@@ -268,6 +281,7 @@ struct VisionScanService: ScanService {
 
     private static func recognizeTextItems(in cgImage: CGImage) throws -> [DetectedItem] {
         let request = VNRecognizeTextRequest()
+        configureVisionForCurrentRuntime(request)
         request.recognitionLevel = .accurate
         request.usesLanguageCorrection = true
         request.recognitionLanguages = ["zh-Hans", "en-US"]
@@ -374,7 +388,9 @@ struct VisionScanService: ScanService {
         var regions = foregroundMaskRegions(in: cgImage)
 
         let saliencyRequest = VNGenerateObjectnessBasedSaliencyImageRequest()
+        configureVisionForCurrentRuntime(saliencyRequest)
         let rectangleRequest = VNDetectRectanglesRequest()
+        configureVisionForCurrentRuntime(rectangleRequest)
         rectangleRequest.maximumObservations = 6
         rectangleRequest.minimumConfidence = 0.35
         rectangleRequest.minimumAspectRatio = 0.15
@@ -402,6 +418,7 @@ struct VisionScanService: ScanService {
 
     private static func foregroundMaskRegions(in cgImage: CGImage) -> [VisualRegion] {
         let request = VNGenerateForegroundInstanceMaskRequest()
+        configureVisionForCurrentRuntime(request)
         let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
         do {
             try handler.perform([request])
@@ -545,11 +562,18 @@ struct CoreMLSegmentationScanService: ScanService {
         guard let cgImage = image.normalizedCGImage else { return nil }
         return await Task.detached(priority: .userInitiated) {
             guard let modelURL = bundledModelURL(),
-                  let model = try? MLModel(contentsOf: modelURL),
+                  let model = try? MLModel(contentsOf: modelURL, configuration: {
+                      let configuration = MLModelConfiguration()
+                      #if targetEnvironment(simulator)
+                      configuration.computeUnits = .cpuOnly
+                      #endif
+                      return configuration
+                  }()),
                   let visionModel = try? VNCoreMLModel(for: model)
             else { return nil }
 
             let request = VNCoreMLRequest(model: visionModel)
+            configureVisionForCurrentRuntime(request)
             request.imageCropAndScaleOption = .scaleFill
             let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
             do {
@@ -644,6 +668,7 @@ private enum OCRToolRecovery {
     static func items(in image: CGImage) async -> [DetectedItem] {
         await Task.detached(priority: .utility) {
             let request = VNRecognizeTextRequest()
+            configureVisionForCurrentRuntime(request)
             request.recognitionLevel = .accurate
             request.usesLanguageCorrection = false
             let handler = VNImageRequestHandler(cgImage: image, options: [:])
@@ -1918,10 +1943,9 @@ struct RuleBasedPlanningService: PlanningService {
     func makePlan(for space: StorageSpace, selectedItems: [DetectedItem], style: StorageStyle, timeBudget: TimeBudget, goal: String = "", focusZone: String = "") -> StoragePlan {
         let items = selectedItems.filter(\.isSelected)
         let grouped = Dictionary(grouping: items, by: \.category)
-        // 没有模型提供的真实框时，名称不能被放到固定中心点上冒充 AR 位置。
-        let orderedCategories = ItemCategory.allCases.filter {
-            grouped[$0]?.contains(where: { $0.arHint != nil }) == true
-        }
+        // Manual and semantic-only items still need usable text instructions.
+        // Only the optional AR anchor depends on a real detected location.
+        let orderedCategories = ItemCategory.allCases.filter { !(grouped[$0] ?? []).isEmpty }
         let normalizedGoal = goal.trimmingCharacters(in: .whitespacesAndNewlines)
         let normalizedFocusZone = focusZone.trimmingCharacters(in: .whitespacesAndNewlines)
         let maxSteps: Int
@@ -1932,17 +1956,16 @@ struct RuleBasedPlanningService: PlanningService {
         }
 
         let categories = Array(orderedCategories.prefix(maxSteps))
-        let steps = categories.enumerated().compactMap { index, category -> StorageStep? in
+        let steps = categories.enumerated().map { index, category -> StorageStep in
             let categoryItems = grouped[category] ?? []
             let names = categoryItems.map(\.name).joined(separator: "、")
             let anchor = anchorItem(for: categoryItems)
-            guard let anchorHint = anchor?.arHint else { return nil }
             return StorageStep(
                 title: title(for: category, items: categoryItems, index: index),
                 detail: detail(for: category, items: categoryItems, itemNames: names, style: style, goal: normalizedGoal),
                 zone: normalizedFocusZone.isEmpty ? category.suggestedZone : "\(normalizedFocusZone) · \(category.suggestedZone)",
                 status: index == 0 ? .active : .pending,
-                arHint: anchorHint,
+                arHint: anchor?.arHint,
                 arMask: anchor?.arMask,
                 itemIDs: categoryItems.map(\.id)
             )
@@ -1975,6 +1998,10 @@ struct RuleBasedPlanningService: PlanningService {
         case .clothes: "衣物折叠暂存"
         case .toys: "玩偶与装饰分层展示"
         case .tools: "收纳工具放到手边"
+        case .kitchen: "厨具分类归位"
+        case .drinks: "饮品与杯具集中归位"
+        case .health: "健康用品分类收纳"
+        case .decor: "装饰物整理展示"
         }
     }
 
@@ -2285,6 +2312,13 @@ struct JSONStorageStore: StorageStore {
             let safeBackup = try JSONEncoder().encode(currentSnapshot)
             try safeBackup.write(to: backupURL, options: [.atomic])
         }
+        try data.write(to: url, options: [.atomic])
+    }
+
+    /// Reset both copies so a later recovery cannot resurrect deleted user data.
+    func resetState(_ snapshot: AppStateSnapshot) throws {
+        let data = try JSONEncoder().encode(snapshot)
+        try data.write(to: backupURL, options: [.atomic])
         try data.write(to: url, options: [.atomic])
     }
 

@@ -10,6 +10,7 @@ struct CameraCaptureView: View {
     @StateObject private var camera = CameraController()
     @State private var captured: UIImage?
     @State private var unavailable = false
+    @State private var isCapturing = false
 
     var body: some View {
         ZStack {
@@ -64,7 +65,10 @@ struct CameraCaptureView: View {
                         .padding(.bottom, 44)
                     } else {
                         Button {
+                            guard !isCapturing else { return }
+                            isCapturing = true
                             camera.capture { image in
+                                isCapturing = false
                                 if let image { captured = image } else { unavailable = true }
                             }
                         } label: {
@@ -73,6 +77,8 @@ struct CameraCaptureView: View {
                                 Circle().fill(Color.white).frame(width: 62, height: 62)
                             }
                         }
+                        .disabled(isCapturing)
+                        .accessibilityLabel("拍照")
                         .padding(.bottom, 20)
 
                         Text("对准要整理的空间，点击拍摄")
@@ -83,7 +89,10 @@ struct CameraCaptureView: View {
                 }
             }
         }
-        .task { await camera.start() }
+        .task {
+            await camera.start()
+            unavailable = !camera.isReady
+        }
         .onDisappear { camera.stop() }
     }
 }
@@ -151,72 +160,20 @@ private final class PreviewUIView: UIView {
     }
 }
 
-final class CameraController: NSObject, ObservableObject, AVCapturePhotoCaptureDelegate {
-    let session = AVCaptureSession()
-    private let output = AVCapturePhotoOutput()
-    private var completion: ((UIImage?) -> Void)?
-    private var configured = false
-
-    /// 相机是否可用（模拟器 / 无权限时为 false，网页会据此降级）。
-    var isReady: Bool { configured }
+@MainActor
+final class CameraController: NSObject, ObservableObject {
+    private let engine = CameraEngine.shared
+    var session: AVCaptureSession { engine.session }
+    var isReady: Bool { engine.isReady && engine.isRunning }
 
     func start() async {
-        switch AVCaptureDevice.authorizationStatus(for: .video) {
-        case .authorized:
-            configureIfNeeded()
-        case .notDetermined:
-            let granted = await AVCaptureDevice.requestAccess(for: .video)
-            if granted { configureIfNeeded() }
-        default:
-            break
-        }
-        startRunningIfNeeded()
+        await engine.start()
+        _ = await engine.waitUntilReady()
     }
 
-    func stop() {
-        guard session.isRunning else { return }
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            self?.session.stopRunning()
-        }
-    }
+    func stop() { engine.stop() }
 
     func capture(completion: @escaping (UIImage?) -> Void) {
-        self.completion = completion
-        let settings = AVCapturePhotoSettings()
-        output.capturePhoto(with: settings, delegate: self)
-    }
-
-    func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
-        let image = photo.fileDataRepresentation().flatMap(UIImage.init(data:))
-        DispatchQueue.main.async { [weak self] in
-            self?.completion?(image)
-            self?.completion = nil
-        }
-    }
-
-    private func configureIfNeeded() {
-        guard !configured else { return }
-        session.beginConfiguration()
-        session.sessionPreset = .photo
-        let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back)
-            ?? AVCaptureDevice.default(for: .video)
-        guard let device,
-              let input = try? AVCaptureDeviceInput(device: device),
-              session.canAddInput(input),
-              session.canAddOutput(output) else {
-            session.commitConfiguration()
-            return
-        }
-        session.addInput(input)
-        session.addOutput(output)
-        session.commitConfiguration()
-        configured = true
-    }
-
-    private func startRunningIfNeeded() {
-        guard configured, !session.isRunning else { return }
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            self?.session.startRunning()
-        }
+        Task { completion(await engine.capturePhoto()) }
     }
 }

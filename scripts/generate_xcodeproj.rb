@@ -21,17 +21,34 @@ require "fileutils"
 PROJECT_NAME = "SmartPaw"
 PROJECT_PATH = File.join(ROOT, "#{PROJECT_NAME}.xcodeproj")
 DEPLOYMENT_TARGET = "18.0"
+# This file is deliberately ignored and may contain a developer's private key.
+# It must never become a PBX resource merely because it exists in a local checkout.
+SKIP_APP_RESOURCE_FILES = ["llm-defaults.json"].freeze
+
+# These six images are fixtures for local recognition evaluation. Keep them in
+# the Debug bundle for the existing Bundle.main tests, but exclude them from
+# Release products so test material is not shipped with the App Store build.
+EVALUATION_FIXTURE_FILES = [
+  "eval-editthispic-01-before.jpg",
+  "eval-editthispic-02-before.jpg",
+  "eval-editthispic-03-before.jpg",
+  "external-cluttered-study-pexels.jpg",
+  "external-messy-desk-note.png",
+  "external-trash-room-imweb.jpg",
+].freeze
 
 def ensure_group(parent, name)
   parent.children.find { |child| child.is_a?(Xcodeproj::Project::Object::PBXGroup) && child.display_name == name } ||
     parent.new_group(name, name)
 end
 
-def add_directory(group, absolute_path, target)
+def add_directory(group, absolute_path, target, skip_files: [], allow_files: nil)
   return unless Dir.exist?(absolute_path)
 
   Dir.children(absolute_path).sort.each do |entry|
     next if entry.start_with?(".")
+    next if skip_files.include?(entry)
+    next if allow_files && !allow_files.include?(entry)
 
     child_absolute = File.join(absolute_path, entry)
     if File.directory?(child_absolute)
@@ -42,7 +59,10 @@ def add_directory(group, absolute_path, target)
       end
 
       child_group = ensure_group(group, entry)
-      add_directory(child_group, child_absolute, target)
+      child_allow_files = if ["EvaluationScanTests", "ExternalScanTests"].include?(entry)
+                            EVALUATION_FIXTURE_FILES
+                          end
+      add_directory(child_group, child_absolute, target, skip_files: skip_files, allow_files: child_allow_files)
       next
     end
 
@@ -87,13 +107,16 @@ app_target.build_configurations.each do |config|
   settings["INFOPLIST_KEY_CFBundleName"] = "SmartPaw"
   settings["INFOPLIST_KEY_LSApplicationCategoryType"] = "public.app-category.productivity"
   settings["INFOPLIST_KEY_NSCameraUsageDescription"] = "用于扫描杂乱空间并生成收纳规划。"
-  settings["INFOPLIST_KEY_NSPhotoLibraryUsageDescription"] = "用于保存或选择收纳前后对比图片。"
+  settings["INFOPLIST_KEY_NSPhotoLibraryUsageDescription"] = "用于选择收纳前后对比图片。"
   settings["INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents"] = "YES"
   settings["INFOPLIST_KEY_UILaunchScreen_Generation"] = "YES"
   settings["INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone"] = "UIInterfaceOrientationPortrait"
   settings["CURRENT_PROJECT_VERSION"] = "1"
-  settings["MARKETING_VERSION"] = "1.0"
+  settings["MARKETING_VERSION"] = "1.0.0"
   settings["CODE_SIGN_STYLE"] = "Automatic"
+  if config.name == "Release"
+    settings["EXCLUDED_SOURCE_FILE_NAMES"] = EVALUATION_FIXTURE_FILES
+  end
 end
 
 test_target.build_configurations.each do |config|
@@ -111,7 +134,7 @@ test_target.add_dependency(app_target)
 main_group = project.main_group
 %w[App Models Services Features Resources].each do |group_name|
   group = ensure_group(main_group, group_name)
-  add_directory(group, File.join(ROOT, group_name), app_target)
+  add_directory(group, File.join(ROOT, group_name), app_target, skip_files: SKIP_APP_RESOURCE_FILES)
 end
 
 test_group = ensure_group(main_group, "SmartPawTests")

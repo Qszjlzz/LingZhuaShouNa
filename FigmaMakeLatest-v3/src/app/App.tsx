@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { SpatialScreen } from "./components/SpatialScreen";
 import { ClassificationScreen } from "./components/ClassificationScreen";
-import { CommunityScreen } from "./components/CommunityScreen";
 import { MineScreen } from "./components/MineScreen";
+import { MyPlansScreen } from "./components/MyPlansScreen";
 import { ShootFlow, RelightFlow } from "./components/ShootFlow";
 import { BottomNav, type Tab } from "./components/BottomNav";
 import { getNativeState, nativeRequest, type NativeState } from "./nativeBridge";
@@ -10,6 +10,7 @@ import { getNativeState, nativeRequest, type NativeState } from "./nativeBridge"
 export default function App() {
   const [tab, setTab] = useState<Tab>("spatial");
   const [shooting, setShooting] = useState(false);
+  const [reusePlan, setReusePlan] = useState(false);
   const [scanDone, setScanDone] = useState(false);
   const [relightSpace, setRelightSpace] = useState<{ id: string; name: string; vivid: string } | null>(null);
   // dev/演示：?flow=plandeck|zones|arguide|reward 直接挂载拍摄主线到指定屏（浏览器无相机也能看）
@@ -29,6 +30,7 @@ export default function App() {
   // 相机在 App 前台期间一直跑着（画面层已铺好、只是透明不可见），
   // 这里只剩"把画面显示出来"一步，不等硬件、不建图层 —— 点下去就是相机。
   const openShoot = () => {
+    setReusePlan(false);
     void nativeRequest("camera.preview.show", {}).catch(() => undefined);
     setShooting(true);
   };
@@ -63,7 +65,14 @@ export default function App() {
                 nativeSpaces={nativeState?.spaces}
                 selectedSpaceID={nativeState?.selectedSpaceID}
                 onNativeChange={refresh}
-                onReshoot={openShoot}
+                onReshoot={(mode, space) => {
+                  if (mode === "compare" && space) {
+                    openRelight(space.id, space.name, space.vivid);
+                  } else {
+                    openShoot();
+                    setReusePlan(mode === "same");
+                  }
+                }}
                 scanDone={scanDone}
                 onScanAck={() => setScanDone(false)}
                 onRelightRequest={(id, name, vivid) => {
@@ -74,9 +83,9 @@ export default function App() {
                 onRelitAck={() => setRelitSpaceId(null)}
               />
             )}
-            {tab === "classification" && <ClassificationScreen nativeState={nativeState} onNativeChange={refresh} />}
-            {tab === "community" && <CommunityScreen nativeState={nativeState} onNativeChange={refresh} />}
-            {tab === "mine" && <MineScreen nativeState={nativeState} onNativeChange={refresh} />}
+            {tab === "classification" && <ClassificationScreen nativeState={nativeState} onNativeChange={refresh} onCamera={openShoot} />}
+            {tab === "project" && <MyPlansScreen nativeState={nativeState} onNativeChange={refresh} onBack={() => setTab("mine")} isTabRoot onAddPlan={openShoot} />}
+            {tab === "mine" && <MineScreen nativeState={nativeState} onNativeChange={refresh} onOpenProjects={() => setTab("project")} />}
 
             <BottomNav active={tab} onChange={setTab} onCamera={openShoot} />
           </>
@@ -84,6 +93,7 @@ export default function App() {
 
         {shooting && (
           <ShootFlow
+            reusePlan={reusePlan}
             onClose={() => setShooting(false)}
             onFinish={() => {
               setShooting(false);
@@ -111,6 +121,7 @@ export default function App() {
               setRelightSpace(null);
               setTab("spatial");
               setRelitSpaceId(id);
+              void refresh();
             }}
           />
         )}

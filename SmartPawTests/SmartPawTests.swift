@@ -104,6 +104,47 @@ final class SmartPawTests: XCTestCase {
         XCTAssertEqual(ItemCategory.trash.suggestedZone, "垃圾袋 / 回收袋")
     }
 
+    func testFigmaCategoriesMapWithoutFallingBackToTools() {
+        XCTAssertEqual(ItemCategory(webValue: "服饰"), .clothes)
+        XCTAssertEqual(ItemCategory(webValue: "玩具"), .toys)
+        XCTAssertEqual(ItemCategory(webValue: "工具"), .tools)
+        for category in [ItemCategory.kitchen, .drinks, .health, .decor] {
+            XCTAssertEqual(ItemCategory(webValue: category.rawValue), category)
+            XCTAssertNoThrow(try JSONDecoder().decode(ItemCategory.self, from: JSONEncoder().encode(category)))
+        }
+        XCTAssertNil(ItemCategory(webValue: "未知类别"))
+        XCTAssertNil(ItemCategory(webValue: "手动补录"))
+    }
+
+    @MainActor
+    func testManualItemGroupPersistsAndFailedGroupUpdateRollsBack() throws {
+        let storage = FailingWriteStorageStore()
+        let dependencies = AppDependencies(
+            scanService: EmptyScanService(),
+            planningService: RuleBasedPlanningService(),
+            cloudPlanningService: PassthroughCloudPlanningService(),
+            storageStore: storage,
+            credentialStore: InMemoryCredentialStore()
+        )
+        let viewModel = AppViewModel(dependencies: dependencies)
+        XCTAssertTrue(viewModel.addManualItem(name: "陶瓷杯", category: .drinks, suggestedZone: "杯架", forScan: true))
+        var item = try XCTUnwrap(viewModel.catalogItems.first(where: { $0.name == "陶瓷杯" }))
+        XCTAssertEqual(item.suggestedZone, "杯架")
+        XCTAssertEqual(viewModel.scannedItems.first(where: { $0.id == item.id })?.suggestedZone, "杯架")
+
+        item.suggestedZone = "饮品柜"
+        storage.failsWrites = true
+        XCTAssertFalse(viewModel.updateCatalogItem(item))
+        XCTAssertEqual(viewModel.catalogItems.first(where: { $0.id == item.id })?.suggestedZone, "杯架")
+        XCTAssertEqual(viewModel.scannedItems.first(where: { $0.id == item.id })?.suggestedZone, "杯架")
+
+        storage.failsWrites = false
+        XCTAssertTrue(viewModel.updateCatalogItem(item))
+        let relaunched = AppViewModel(dependencies: dependencies)
+        XCTAssertEqual(relaunched.catalogItems.first(where: { $0.id == item.id })?.category, .drinks)
+        XCTAssertEqual(relaunched.catalogItems.first(where: { $0.id == item.id })?.suggestedZone, "饮品柜")
+    }
+
     func testYOLOClassLabelsMapTelevisionAndClothesToUsefulCategories() {
         XCTAssertEqual(YOLOSegmentationScanService.category(forClassName: "tv"), .electronics)
         XCTAssertEqual(YOLOSegmentationScanService.displayName(forClassName: "tv"), "电视设备")
@@ -439,7 +480,7 @@ final class SmartPawTests: XCTestCase {
 
         assertHint(plan.steps.first?.arHint, approximatelyEquals: items[0].arHint)
         XCTAssertEqual(plan.steps.first?.arMask, mask)
-        assertHint(plan.steps.last?.arHint, approximatelyEquals: ARHint(x: 0.28, y: 0.68, width: 0.20, height: 0.16))
+        assertHint(plan.steps.last?.arHint, approximatelyEquals: items[1].arHint)
     }
 
     func testPlanningStepKeepsMaskAndHintFromTheSameAnchorItem() {
@@ -492,6 +533,157 @@ final class SmartPawTests: XCTestCase {
         XCTAssertEqual(plan.progress, 0.5)
         plan.steps[1].status = .done
         XCTAssertEqual(plan.progress, 1)
+    }
+
+    func testStoragePlanDecodesLegacyDataWithoutPauseState() throws {
+        let plan = StoragePlan(
+            style: .warmVisible,
+            timeBudget: .ten,
+            summary: "旧版计划",
+            toolList: [],
+            steps: [StorageStep(title: "第一步", detail: "处理书本", zone: "书架", status: .active, itemIDs: [])]
+        )
+        let encoded = try JSONEncoder().encode(plan)
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        object.removeValue(forKey: "isPaused")
+        let legacyData = try JSONSerialization.data(withJSONObject: object)
+
+        let restored = try JSONDecoder().decode(StoragePlan.self, from: legacyData)
+
+        XCTAssertFalse(restored.isPaused)
+        XCTAssertEqual(restored.id, plan.id)
+        XCTAssertEqual(restored.steps, plan.steps)
+    }
+
+    @MainActor
+    func testPlanPausePersistsAcrossViewModelRestartAndResumeKeepsProgress() throws {
+        let plan = StoragePlan(
+            style: .quickReset,
+            timeBudget: .ten,
+            summary: "跨重启测试",
+            toolList: [],
+            steps: [
+                StorageStep(title: "已完成", detail: "处理书本", zone: "书架", status: .done, itemIDs: []),
+                StorageStep(title: "当前步骤", detail: "处理文具", zone: "抽屉", status: .active, itemIDs: []),
+                StorageStep(title: "下一步", detail: "整理线材", zone: "桌面", status: .pending, itemIDs: [])
+            ]
+        )
+        var snapshot = AppStateSnapshot.initial
+        snapshot.spaces[0].activePlan = plan
+        let storage = FailingWriteStorageStore(snapshot: snapshot)
+        let dependencies = AppDependencies(
+            scanService: FailingScanService(),
+            planningService: RuleBasedPlanningService(),
+            cloudPlanningService: PassthroughCloudPlanningService(),
+            storageStore: storage,
+            credentialStore: InMemoryCredentialStore()
+        )
+        let firstLaunch = AppViewModel(dependencies: dependencies)
+        let originalSteps = try XCTUnwrap(firstLaunch.activePlan?.steps)
+
+        XCTAssertTrue(firstLaunch.setPlanPaused(spaceID: snapshot.spaces[0].id, planID: plan.id, isPaused: true))
+        XCTAssertTrue(firstLaunch.activePlan?.isPaused == true)
+        XCTAssertFalse(firstLaunch.completeStep(try XCTUnwrap(originalSteps.first(where: { $0.status == .active })).id))
+        XCTAssertEqual(firstLaunch.activePlan?.steps, originalSteps)
+
+        let relaunched = AppViewModel(dependencies: dependencies)
+        XCTAssertTrue(relaunched.activePlan?.isPaused == true)
+        XCTAssertEqual(relaunched.activePlan?.steps, originalSteps)
+        XCTAssertTrue(relaunched.setPlanPaused(spaceID: snapshot.spaces[0].id, planID: plan.id, isPaused: false))
+        XCTAssertFalse(relaunched.activePlan?.isPaused ?? true)
+        XCTAssertEqual(relaunched.activePlan?.steps, originalSteps)
+    }
+
+    @MainActor
+    func testReusingArchivedPlanCreatesIndependentExecutionAndPersistsIt() throws {
+        var snapshot = AppStateSnapshot.initial
+        snapshot.spaces[0].activePlan = nil
+        snapshot.spaces[0].completedPlans = [DemoData.completedPlan]
+        let storage = FailingWriteStorageStore(snapshot: snapshot)
+        let dependencies = AppDependencies(scanService: FailingScanService(), planningService: RuleBasedPlanningService(), cloudPlanningService: PassthroughCloudPlanningService(), storageStore: storage, credentialStore: InMemoryCredentialStore())
+        let viewModel = AppViewModel(dependencies: dependencies)
+        let original = DemoData.completedPlan
+        let spaceID = snapshot.spaces[0].id
+
+        XCTAssertFalse(viewModel.reusePlan(spaceID: UUID(), planID: original.id))
+        XCTAssertFalse(viewModel.reusePlan(spaceID: spaceID, planID: UUID()))
+        XCTAssertTrue(viewModel.reusePlan(spaceID: spaceID, planID: original.id))
+        let restarted = try XCTUnwrap(viewModel.activePlan)
+        XCTAssertNotEqual(restarted.id, original.id)
+        XCTAssertNil(restarted.completedAt)
+        XCTAssertFalse(restarted.isPaused)
+        XCTAssertEqual(restarted.steps.first?.status, .active)
+        XCTAssertTrue(restarted.steps.dropFirst().allSatisfy { $0.status == .pending })
+        XCTAssertEqual(restarted.steps.map(\.title), original.steps.map(\.title))
+        XCTAssertTrue(Set(restarted.steps.map(\.id)).isDisjoint(with: original.steps.map(\.id)))
+        XCTAssertEqual(viewModel.selectedSpace.completedPlans, [original])
+        XCTAssertEqual(AppViewModel(dependencies: dependencies).activePlan, restarted)
+    }
+
+    @MainActor
+    func testReusingPlanWriteFailureRestoresSpaceAndExecutionZones() throws {
+        var snapshot = AppStateSnapshot.initial
+        snapshot.spaces[0].activePlan = nil
+        snapshot.spaces[0].completedPlans = [DemoData.completedPlan]
+        let storage = FailingWriteStorageStore(snapshot: snapshot)
+        let dependencies = AppDependencies(scanService: FailingScanService(), planningService: RuleBasedPlanningService(), cloudPlanningService: PassthroughCloudPlanningService(), storageStore: storage, credentialStore: InMemoryCredentialStore())
+        let viewModel = AppViewModel(dependencies: dependencies)
+        let previousSpace = viewModel.selectedSpace
+        let previousZones = viewModel.selectedExecutionZones
+        storage.failsWrites = true
+
+        XCTAssertFalse(viewModel.reusePlan(spaceID: previousSpace.id, planID: DemoData.completedPlan.id))
+        XCTAssertEqual(viewModel.selectedSpace, previousSpace)
+        XCTAssertEqual(viewModel.selectedExecutionZones, previousZones)
+        XCTAssertEqual(try storage.loadState()?.spaces[0], previousSpace)
+    }
+
+    @MainActor
+    func testPlanPauseRejectsStaleIdentifiersAndCompletedPlans() throws {
+        let plan = StoragePlan(
+            style: .quickReset,
+            timeBudget: .ten,
+            summary: "有效计划",
+            toolList: [],
+            steps: [StorageStep(title: "当前步骤", detail: "处理书本", zone: "书架", status: .active, itemIDs: [])]
+        )
+        var snapshot = AppStateSnapshot.initial
+        snapshot.spaces[0].activePlan = plan
+        let storage = FailingWriteStorageStore(snapshot: snapshot)
+        let dependencies = AppDependencies(scanService: FailingScanService(), planningService: RuleBasedPlanningService(), cloudPlanningService: PassthroughCloudPlanningService(), storageStore: storage, credentialStore: InMemoryCredentialStore())
+        let viewModel = AppViewModel(dependencies: dependencies)
+
+        XCTAssertFalse(viewModel.setPlanPaused(spaceID: UUID(), planID: plan.id, isPaused: true))
+        XCTAssertFalse(viewModel.setPlanPaused(spaceID: snapshot.spaces[0].id, planID: UUID(), isPaused: true))
+        XCTAssertFalse(viewModel.activePlan?.isPaused ?? true)
+
+        var completedSnapshot = AppStateSnapshot.initial
+        completedSnapshot.spaces[0].activePlan = DemoData.completedPlan
+        let completedDependencies = AppDependencies(scanService: FailingScanService(), planningService: RuleBasedPlanningService(), cloudPlanningService: PassthroughCloudPlanningService(), storageStore: FailingWriteStorageStore(snapshot: completedSnapshot), credentialStore: InMemoryCredentialStore())
+        let completedViewModel = AppViewModel(dependencies: completedDependencies)
+        XCTAssertFalse(completedViewModel.setPlanPaused(spaceID: completedSnapshot.spaces[0].id, planID: DemoData.completedPlan.id, isPaused: true))
+    }
+
+    @MainActor
+    func testPlanPauseWriteFailureRollsBackMemoryAndPersistedState() throws {
+        let plan = StoragePlan(
+            style: .quickReset,
+            timeBudget: .ten,
+            summary: "写入回滚测试",
+            toolList: [],
+            steps: [StorageStep(title: "当前步骤", detail: "处理书本", zone: "书架", status: .active, itemIDs: [])]
+        )
+        var snapshot = AppStateSnapshot.initial
+        snapshot.spaces[0].activePlan = plan
+        let storage = FailingWriteStorageStore(snapshot: snapshot)
+        let dependencies = AppDependencies(scanService: FailingScanService(), planningService: RuleBasedPlanningService(), cloudPlanningService: PassthroughCloudPlanningService(), storageStore: storage, credentialStore: InMemoryCredentialStore())
+        let viewModel = AppViewModel(dependencies: dependencies)
+        storage.failsWrites = true
+
+        XCTAssertFalse(viewModel.setPlanPaused(spaceID: snapshot.spaces[0].id, planID: plan.id, isPaused: true))
+
+        XCTAssertFalse(viewModel.activePlan?.isPaused ?? true)
+        XCTAssertEqual(try storage.loadState()?.spaces[0].activePlan, plan)
     }
 
     @MainActor
@@ -720,13 +912,14 @@ final class SmartPawTests: XCTestCase {
         let viewModel = AppViewModel(dependencies: .emptySpaces)
 
         XCTAssertFalse(viewModel.spaces.isEmpty)
-        XCTAssertEqual(viewModel.selectedSpace.id, DemoData.spaces[0].id)
+        XCTAssertEqual(viewModel.selectedSpace.name, "我的空间")
+        XCTAssertTrue(viewModel.catalogItems.isEmpty)
     }
 
     func testLLMSettingsRejectUnsafeOrIncompleteEndpoints() {
-        XCTAssertFalse(LLMSettings(isEnabled: true, endpoint: "http://example.com/v1/responses", apiKey: "test-key", model: "model").canRequest)
-        XCTAssertFalse(LLMSettings(isEnabled: true, endpoint: "https://", apiKey: "test-key", model: "model").canRequest)
-        XCTAssertTrue(LLMSettings(isEnabled: true, endpoint: "https://example.com/v1/responses", apiKey: "test-key", model: "model").canRequest)
+        XCTAssertFalse(LLMSettings(isEnabled: true, endpoint: "http://example.com/v1/responses", apiKey: "test-key", model: "model", hasCloudConsent: true).canRequest)
+        XCTAssertFalse(LLMSettings(isEnabled: true, endpoint: "https://", apiKey: "test-key", model: "model", hasCloudConsent: true).canRequest)
+        XCTAssertTrue(LLMSettings(isEnabled: true, endpoint: "https://example.com/v1/responses", apiKey: "test-key", model: "model", hasCloudConsent: true).canRequest)
     }
 
     func testLLMAPIKeyIsExcludedFromPersistedJSON() throws {
@@ -855,6 +1048,408 @@ final class SmartPawTests: XCTestCase {
         XCTAssertTrue(DemoData.spaces.allSatisfy { !$0.hasVerifiedComparison })
     }
 
+    func testManuallyEnteredItemsHaveTextInstructionsWithoutInventedARLocations() {
+        let item = DetectedItem(name: "课本", category: .books, confidence: 1)
+        let plan = RuleBasedPlanningService().makePlan(for: AppStateSnapshot.initial.spaces[0], selectedItems: [item], style: .quickReset, timeBudget: .ten)
+        XCTAssertEqual(plan.steps.count, 1)
+        XCTAssertEqual(plan.steps.first?.itemIDs, [item.id])
+        XCTAssertNil(plan.steps.first?.arHint)
+        XCTAssertNil(plan.steps.first?.arMask)
+    }
+
+    @MainActor
+    func testCompletionSaveFailureKeepsActivePlanAndAvoidsFalseAchievement() throws {
+        let storage = FailingWriteStorageStore()
+        let dependencies = AppDependencies(scanService: FailingScanService(), planningService: RuleBasedPlanningService(), cloudPlanningService: PassthroughCloudPlanningService(), storageStore: storage, credentialStore: InMemoryCredentialStore())
+        let viewModel = AppViewModel(dependencies: dependencies)
+        viewModel.scannedItems = DemoData.detectedItems
+        viewModel.makePlanFromScan()
+        let plan = try XCTUnwrap(viewModel.activePlan)
+        plan.steps.forEach { viewModel.completeStep($0.id) }
+        let previousSpace = viewModel.selectedSpace
+        let previousAchievements = viewModel.achievements
+        storage.failsWrites = true
+        XCTAssertFalse(viewModel.finishActivePlan(afterImage: .smartPawTestImage()))
+        XCTAssertEqual(viewModel.selectedSpace, previousSpace)
+        XCTAssertEqual(viewModel.achievements, previousAchievements)
+        XCTAssertNil(viewModel.latestUnlockedAchievement)
+        XCTAssertTrue(viewModel.message?.contains("保存失败") == true)
+    }
+
+    @MainActor
+    func testAISettingsWriteFailureRestoresMemoryAndKeychainState() {
+        let storage = FailingWriteStorageStore()
+        let credentials = InMemoryCredentialStore(apiKey: "old-key")
+        let dependencies = AppDependencies(
+            scanService: EmptyScanService(),
+            planningService: RuleBasedPlanningService(),
+            cloudPlanningService: PassthroughCloudPlanningService(),
+            storageStore: storage,
+            credentialStore: credentials
+        )
+        let viewModel = AppViewModel(dependencies: dependencies)
+        let previousSettings = viewModel.llmSettings
+        let nextSettings = LLMSettings(isEnabled: false, endpoint: previousSettings.endpoint, apiKey: "new-key", model: previousSettings.model)
+
+        storage.failsWrites = true
+        XCTAssertFalse(viewModel.saveLLMSettings(nextSettings))
+        XCTAssertEqual(viewModel.llmSettings, previousSettings)
+        XCTAssertEqual(credentials.loadAPIKey(), "old-key")
+    }
+
+    @MainActor
+    func testFailedWritesKeepManualItemsAndStepProgressRetryable() async throws {
+        let storage = FailingWriteStorageStore()
+        let cloud = CountingCloudPlanningService()
+        let dependencies = AppDependencies(scanService: EmptyScanService(), planningService: RuleBasedPlanningService(), cloudPlanningService: cloud, storageStore: storage, credentialStore: InMemoryCredentialStore())
+        let viewModel = AppViewModel(dependencies: dependencies)
+        XCTAssertTrue(viewModel.replaceScannedItems([DetectedItem(name: "电脑", category: .electronics, confidence: 1)]))
+        XCTAssertTrue(viewModel.addManualItem(name: "已保存课本", category: .books, forScan: true))
+        XCTAssertTrue(viewModel.makePlanFromScan())
+        XCTAssertTrue(viewModel.saveLLMSettings(LLMSettings(isEnabled: true, endpoint: "https://example.com/v1/responses", apiKey: "test-key", model: "test-model", hasCloudConsent: true)))
+        let savedSpace = viewModel.selectedSpace
+        let savedScan = viewModel.scannedItems
+        let activeStep = try XCTUnwrap(viewModel.activePlan?.steps.first(where: { $0.status == .active }))
+        viewModel.selectedTab = .capture
+        viewModel.selectedExecutionZones = [activeStep.zone]
+        let savedZones = viewModel.selectedExecutionZones
+
+        storage.failsWrites = true
+        XCTAssertFalse(viewModel.completeStep(activeStep.id))
+        XCTAssertFalse(viewModel.addManualItem(name: "待重试笔记", category: .books, forScan: true))
+        XCTAssertFalse(viewModel.replaceScannedItems([]))
+        XCTAssertFalse(viewModel.makePlanFromScan())
+        let cloudPlanSaved = await viewModel.makePlanFromScanUsingCloudIfAvailable()
+        XCTAssertFalse(cloudPlanSaved)
+        let requests = await cloud.requestCount
+        XCTAssertEqual(requests, 0, "A plan that could not be saved locally must not be sent to the cloud.")
+        XCTAssertEqual(viewModel.selectedSpace, savedSpace)
+        XCTAssertEqual(viewModel.scannedItems, savedScan)
+        XCTAssertEqual(viewModel.selectedExecutionZones, savedZones)
+        XCTAssertEqual(viewModel.selectedTab, .capture)
+        XCTAssertTrue(viewModel.message?.contains("保存失败") == true)
+        XCTAssertEqual(AppViewModel(dependencies: dependencies).selectedSpace, savedSpace)
+
+        storage.failsWrites = false
+        XCTAssertTrue(viewModel.completeStep(activeStep.id))
+        XCTAssertTrue(viewModel.addManualItem(name: "待重试笔记", category: .books, forScan: true))
+        let relaunched = AppViewModel(dependencies: dependencies)
+        XCTAssertEqual(relaunched.activePlan?.steps.first(where: { $0.id == activeStep.id })?.status, .done)
+        XCTAssertEqual(relaunched.catalogItems.filter { $0.name == "待重试笔记" }.count, 1)
+        XCTAssertTrue(relaunched.catalogItems.contains { $0.name == "已保存课本" })
+
+        let deferredCloud = DeferredCloudPlanningService()
+        let cloudDependencies = AppDependencies(scanService: EmptyScanService(), planningService: RuleBasedPlanningService(), cloudPlanningService: deferredCloud, storageStore: storage, credentialStore: dependencies.credentialStore)
+        let cloudViewModel = AppViewModel(dependencies: cloudDependencies)
+        let planning = Task { await cloudViewModel.makePlanFromScanUsingCloudIfAvailable() }
+        await deferredCloud.waitForRequest()
+        let savedLocalPlan = try XCTUnwrap(cloudViewModel.activePlan)
+        let localZones = cloudViewModel.selectedExecutionZones
+        storage.failsWrites = true
+        await deferredCloud.complete()
+        let refinedPlanSaved = await planning.value
+        XCTAssertFalse(refinedPlanSaved)
+        XCTAssertEqual(cloudViewModel.activePlan, savedLocalPlan)
+        XCTAssertEqual(cloudViewModel.selectedExecutionZones, localZones)
+        XCTAssertEqual(AppViewModel(dependencies: cloudDependencies).activePlan, savedLocalPlan)
+        XCTAssertTrue(cloudViewModel.message?.contains("保存失败") == true)
+    }
+
+    @MainActor
+    func testFailedWritesRollbackSpaceCatalogCommunityAndScheduleMutations() async throws {
+        let storage = FailingWriteStorageStore()
+        try storage.saveState(DemoData.snapshot)
+        let dependencies = AppDependencies(
+            scanService: EmptyScanService(),
+            planningService: RuleBasedPlanningService(),
+            cloudPlanningService: PassthroughCloudPlanningService(),
+            storageStore: storage,
+            credentialStore: InMemoryCredentialStore()
+        )
+        let viewModel = AppViewModel(dependencies: dependencies)
+        let originalSpaces = viewModel.spaces
+        let originalSelectedSpaceID = viewModel.selectedSpaceID
+        let originalItems = viewModel.catalogItems
+        let originalCases = viewModel.communityCases
+        let originalLikes = viewModel.likedCommunityCaseIDs
+        let originalFavorites = viewModel.favoriteCommunityCaseIDs
+        let originalSchedules = viewModel.scheduleItems
+
+        storage.failsWrites = true
+        let scanResult = await viewModel.scanImages([.smartPawTestImage()])
+        XCTAssertTrue(scanResult.isEmpty)
+        XCTAssertFalse(viewModel.lastScanPersisted)
+        XCTAssertEqual(viewModel.spaces, originalSpaces)
+        XCTAssertEqual(viewModel.catalogItems, originalItems)
+
+        XCTAssertNil(viewModel.addSpace(name: "不应出现的空间"))
+        XCTAssertEqual(viewModel.spaces, originalSpaces)
+        XCTAssertEqual(viewModel.selectedSpaceID, originalSelectedSpaceID)
+
+        XCTAssertFalse(viewModel.renameSpace(viewModel.spaces[0].id, name: "不应保存的重命名"))
+        XCTAssertEqual(viewModel.spaces, originalSpaces)
+        XCTAssertFalse(viewModel.deleteSpace(viewModel.spaces[0].id))
+        XCTAssertEqual(viewModel.spaces, originalSpaces)
+
+        let item = try XCTUnwrap(originalItems.first)
+        XCTAssertFalse(viewModel.removeCatalogItem(item.id))
+        XCTAssertEqual(viewModel.catalogItems, originalItems)
+        var editedItem = item
+        editedItem.name = "不应保存的修改"
+        XCTAssertFalse(viewModel.updateCatalogItem(editedItem))
+        XCTAssertEqual(viewModel.catalogItems, originalItems)
+
+        let communityCase = try XCTUnwrap(originalCases.first)
+        XCTAssertFalse(viewModel.toggleCommunityLike(communityCase.id))
+        XCTAssertEqual(viewModel.communityCases, originalCases)
+        XCTAssertEqual(viewModel.likedCommunityCaseIDs, originalLikes)
+        XCTAssertFalse(viewModel.toggleCommunityFavorite(communityCase.id))
+        XCTAssertEqual(viewModel.favoriteCommunityCaseIDs, originalFavorites)
+        XCTAssertFalse(viewModel.addCommunityComment(to: communityCase.id, body: "不应发布"))
+        XCTAssertTrue(viewModel.comments(for: communityCase.id).isEmpty)
+
+        let schedule = try XCTUnwrap(originalSchedules.first)
+        XCTAssertFalse(viewModel.toggleScheduleItem(schedule.id))
+        XCTAssertEqual(viewModel.scheduleItems, originalSchedules)
+        XCTAssertFalse(viewModel.addScheduleItem(title: "不应创建", dueDate: Date(), note: ""))
+        XCTAssertEqual(viewModel.scheduleItems, originalSchedules)
+        XCTAssertFalse(viewModel.deleteScheduleItem(schedule.id))
+        XCTAssertEqual(viewModel.scheduleItems, originalSchedules)
+    }
+
+    @MainActor
+    func testManualPlanCanCompleteWithoutClaimingANonexistentBeforePhoto() throws {
+        let viewModel = AppViewModel(dependencies: .failingScan)
+        viewModel.addManualItem(name: "书本", category: .books)
+        viewModel.makePlanFromScan()
+        let plan = try XCTUnwrap(viewModel.activePlan)
+        plan.steps.forEach { viewModel.completeStep($0.id) }
+        viewModel.finishActivePlan(afterImage: .smartPawTestImage())
+        XCTAssertEqual(viewModel.completedCount, 1)
+        XCTAssertFalse(viewModel.selectedSpace.hasVerifiedComparison)
+        viewModel.shareLatestCompletion()
+        XCTAssertTrue(viewModel.communityCases.isEmpty)
+    }
+
+    @MainActor
+    func testRecoveryModePreservesUnreadableStorageUntilExplicitReset() {
+        let storage = UnreadableStorageStore()
+        let dependencies = AppDependencies(scanService: FailingScanService(), planningService: RuleBasedPlanningService(), cloudPlanningService: PassthroughCloudPlanningService(), storageStore: storage, credentialStore: InMemoryCredentialStore())
+        let viewModel = AppViewModel(dependencies: dependencies)
+        viewModel.addManualItem(name: "待恢复记录", category: .books)
+        XCTAssertEqual(storage.saveCount, 0)
+        XCTAssertTrue(viewModel.message?.contains("恢复模式") == true)
+    }
+
+    @MainActor
+    func testNewInstallationStartsWithRealEmptyDataAndCloudDisabled() {
+        let viewModel = AppViewModel(dependencies: .failingScan)
+        XCTAssertEqual(viewModel.spaces.count, 1)
+        XCTAssertTrue(viewModel.catalogItems.isEmpty)
+        XCTAssertTrue(viewModel.completedPlans.isEmpty)
+        XCTAssertTrue(viewModel.communityCases.isEmpty)
+        XCTAssertTrue(viewModel.scheduleItems.isEmpty)
+        XCTAssertFalse(viewModel.llmSettings.isEnabled)
+        XCTAssertFalse(viewModel.llmSettings.hasCloudConsent)
+        XCTAssertFalse(viewModel.llmSettings.canRequestVision)
+    }
+
+    func testCloudConsentIsRequiredForBothTextAndPhotoRequests() throws {
+        var settings = LLMSettings(isEnabled: true, endpoint: "https://example.com/v1/responses", apiKey: "test-key", model: "test-model")
+        XCTAssertFalse(settings.canRequest)
+        XCTAssertFalse(settings.canRequestVision)
+        settings.hasCloudConsent = true
+        XCTAssertTrue(settings.canRequest)
+        XCTAssertTrue(settings.canRequestVision)
+        settings.visionEndpoint = "http://example.com/vision"
+        XCTAssertFalse(settings.canRequestVision)
+        settings.endpoint = "http://localhost:8080/v1/responses"
+        XCTAssertFalse(settings.canRequest)
+
+        let legacyJSON = Data(#"{"isEnabled":true,"endpoint":"https://example.com/v1/responses","model":"test-model"}"#.utf8)
+        let legacy = try JSONDecoder().decode(LLMSettings.self, from: legacyJSON)
+        XCTAssertFalse(legacy.hasCloudConsent)
+    }
+
+    @MainActor
+    func testSavingAISettingsPreservesVisionConfigurationAndRejectsMissingConsent() {
+        let viewModel = AppViewModel(dependencies: .failingScan)
+        var settings = LLMSettings(isEnabled: true, endpoint: "https://example.com/v1/responses", apiKey: "test-key", model: "test-model", visionEndpoint: "https://example.com/vision", visionModel: "vision-model")
+        XCTAssertFalse(viewModel.saveLLMSettings(settings))
+        XCTAssertFalse(viewModel.llmSettings.isEnabled)
+        settings.hasCloudConsent = true
+        XCTAssertTrue(viewModel.saveLLMSettings(settings))
+        XCTAssertEqual(viewModel.llmSettings.visionEndpoint, "https://example.com/vision")
+        XCTAssertEqual(viewModel.llmSettings.visionModel, "vision-model")
+        XCTAssertTrue(viewModel.llmSettings.hasCloudConsent)
+    }
+
+    @MainActor
+    func testDeletingEveryScheduleDoesNotRecreateDemoRemindersAfterRelaunch() {
+        let dependencies = AppDependencies.test
+        let viewModel = AppViewModel(dependencies: dependencies)
+        viewModel.scheduleItems.map(\.id).forEach { viewModel.deleteScheduleItem($0) }
+        XCTAssertTrue(AppViewModel(dependencies: dependencies).scheduleItems.isEmpty)
+    }
+
+    func testResetReplacesBackupSoDeletedDataCannotReturnDuringRecovery() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let stateURL = directory.appendingPathComponent("state.json")
+        let store = JSONStorageStore(stateURL: stateURL, credentialStore: InMemoryCredentialStore())
+        try store.saveState(DemoData.snapshot)
+        try store.saveState(DemoData.snapshot)
+        try store.resetState(.initial)
+        try FileManager.default.removeItem(at: stateURL)
+        let restored = try XCTUnwrap(store.loadState())
+        XCTAssertTrue(restored.spaces.flatMap(\.detectedItems).isEmpty)
+        XCTAssertTrue(restored.communityCases.isEmpty)
+        XCTAssertTrue(restored.scheduleItems.isEmpty)
+    }
+
+    func testVisionFallbackDoesNotPresentSceneLabelsAsPossessions() async throws {
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 128, height: 128)).image { context in
+            UIColor.gray.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 128, height: 128))
+        }
+        let items = try await VisionScanService().scanImage(image)
+        let sceneLabels: Set<String> = ["outdoor", "indoor", "room", "interior", "unknown"]
+        XCTAssertFalse(items.contains { sceneLabels.contains($0.name.lowercased()) }, "Global scene classifications cannot be stored as possessions.")
+    }
+
+    @MainActor
+    func testUnrecognizedPhotoSupportsManualEntryAndACompleteLocalPlan() async throws {
+        let dependencies = AppDependencies(scanService: EmptyScanService(), planningService: RuleBasedPlanningService(), cloudPlanningService: PassthroughCloudPlanningService(), storageStore: InMemoryStorageStore(), credentialStore: InMemoryCredentialStore())
+        let viewModel = AppViewModel(dependencies: dependencies)
+        await viewModel.scanImages([.smartPawTestImage()])
+        XCTAssertTrue(viewModel.scannedItems.isEmpty)
+        XCTAssertFalse(viewModel.isScanning)
+        viewModel.addManualItem(name: "待整理课本", category: .books, forScan: true)
+        viewModel.makePlanFromScan()
+        let plan = try XCTUnwrap(viewModel.activePlan)
+        XCTAssertFalse(plan.steps.isEmpty)
+        XCTAssertNil(plan.steps.first?.arHint)
+        plan.steps.forEach { viewModel.completeStep($0.id) }
+        XCTAssertTrue(viewModel.finishActivePlan(afterImage: .smartPawTestImage()))
+        let relaunched = AppViewModel(dependencies: dependencies)
+        XCTAssertEqual(relaunched.completedCount, 1)
+        XCTAssertEqual(relaunched.catalogItems.first?.name, "待整理课本")
+        XCTAssertFalse(relaunched.llmSettings.canRequest)
+    }
+
+    @MainActor
+    func testCancelledPhotoWorkCannotWriteLateRecognitionResults() async {
+        for usesBatch in [false, true] {
+            for cancelsTask in [false, true] {
+                let scanner = DeferredScanService()
+                let storage = InMemoryStorageStore()
+                try? storage.saveState(.initial)
+                let dependencies = AppDependencies(scanService: scanner, planningService: RuleBasedPlanningService(), cloudPlanningService: PassthroughCloudPlanningService(), storageStore: storage, credentialStore: InMemoryCredentialStore())
+                let viewModel = AppViewModel(dependencies: dependencies)
+                let originalSpace = viewModel.selectedSpace
+                let scan = Task {
+                    if usesBatch {
+                        await viewModel.scanImages([.smartPawTestImage()])
+                    } else {
+                        await viewModel.scanImage(.smartPawTestImage())
+                    }
+                }
+                await scanner.waitForRequest()
+                if cancelsTask {
+                    scan.cancel()
+                } else {
+                    viewModel.cancelScanWork()
+                }
+                await scanner.complete()
+                await scan.value
+                XCTAssertEqual(viewModel.selectedSpace, originalSpace)
+                XCTAssertTrue(viewModel.scannedItems.isEmpty)
+                XCTAssertFalse(viewModel.isScanning)
+                XCTAssertEqual(AppViewModel(dependencies: dependencies).selectedSpace, originalSpace)
+            }
+        }
+    }
+
+    @MainActor
+    func testCancellingAfterCompletedPhotoRestoresPreScanSpaceAndPersistsIt() async throws {
+        let storage = seededStorageStore()
+        let dependencies = AppDependencies(
+            scanService: SingleItemScanService(),
+            planningService: RuleBasedPlanningService(),
+            cloudPlanningService: PassthroughCloudPlanningService(),
+            storageStore: storage,
+            credentialStore: InMemoryCredentialStore()
+        )
+        let viewModel = AppViewModel(dependencies: dependencies)
+        let originalSpace = viewModel.selectedSpace
+        let originalScannedItems = viewModel.scannedItems
+
+        viewModel.beginPhotoScanSession()
+        let results = await viewModel.scanImages([.smartPawTestImage()])
+        XCTAssertEqual(results.map(\.name), ["扫描中的新物品"])
+        XCTAssertNotEqual(viewModel.selectedSpace, originalSpace)
+
+        viewModel.cancelScanWork()
+
+        XCTAssertEqual(viewModel.selectedSpace, originalSpace)
+        XCTAssertEqual(viewModel.scannedItems, originalScannedItems)
+        let relaunched = AppViewModel(dependencies: dependencies)
+        XCTAssertEqual(relaunched.selectedSpace, originalSpace)
+    }
+
+    @MainActor
+    func testLatePhotoResultsCannotWriteIntoAnotherSpace() async {
+        let scanner = DeferredScanService()
+        let dependencies = AppDependencies(scanService: scanner, planningService: RuleBasedPlanningService(), cloudPlanningService: PassthroughCloudPlanningService(), storageStore: seededStorageStore(), credentialStore: InMemoryCredentialStore())
+        let viewModel = AppViewModel(dependencies: dependencies)
+        let secondSpace = viewModel.spaces[1]
+        let scan = Task { await viewModel.scanImages([.smartPawTestImage()]) }
+        await scanner.waitForRequest()
+        viewModel.selectSpace(secondSpace.id)
+        await scanner.complete()
+        _ = await scan.value
+        XCTAssertTrue(viewModel.scannedItems.isEmpty)
+        XCTAssertEqual(viewModel.selectedSpace.detectedItems, secondSpace.detectedItems)
+        XCTAssertEqual(viewModel.selectedSpace.beforeImageName, secondSpace.beforeImageName)
+    }
+
+    @MainActor
+    func testResetDiscardsInFlightRecognitionAndCredentials() async {
+        let scanner = DeferredScanService()
+        let credentials = InMemoryCredentialStore(apiKey: "test-key")
+        let dependencies = AppDependencies(scanService: scanner, planningService: RuleBasedPlanningService(), cloudPlanningService: PassthroughCloudPlanningService(), storageStore: seededStorageStore(), credentialStore: credentials)
+        let viewModel = AppViewModel(dependencies: dependencies)
+        let scan = Task { await viewModel.scanImages([.smartPawTestImage()]) }
+        await scanner.waitForRequest()
+        XCTAssertTrue(viewModel.resetLocalData())
+        await scanner.complete()
+        _ = await scan.value
+        XCTAssertTrue(viewModel.catalogItems.isEmpty)
+        XCTAssertTrue(viewModel.scannedItems.isEmpty)
+        XCTAssertTrue(viewModel.scheduleItems.isEmpty)
+        XCTAssertTrue(viewModel.communityCases.isEmpty)
+        XCTAssertNil(credentials.loadAPIKey())
+        XCTAssertFalse(viewModel.llmSettings.canRequestVision)
+    }
+
+    @MainActor
+    func testLateCloudRefinementCannotUndoCompletedStep() async throws {
+        let cloud = DeferredCloudPlanningService()
+        let dependencies = AppDependencies(scanService: FailingScanService(), planningService: RuleBasedPlanningService(), cloudPlanningService: cloud, storageStore: InMemoryStorageStore(), credentialStore: InMemoryCredentialStore())
+        let viewModel = AppViewModel(dependencies: dependencies)
+        viewModel.scannedItems = DemoData.detectedItems
+        XCTAssertTrue(viewModel.saveLLMSettings(LLMSettings(isEnabled: true, endpoint: "https://example.com/v1/responses", apiKey: "test-key", model: "test-model", hasCloudConsent: true)))
+        let planning = Task { await viewModel.makePlanFromScanUsingCloudIfAvailable() }
+        await cloud.waitForRequest()
+        let step = try XCTUnwrap(viewModel.activePlan?.steps.first)
+        viewModel.completeStep(step.id)
+        await cloud.complete()
+        await planning.value
+        XCTAssertEqual(viewModel.activePlan?.steps.first?.status, .done)
+        XCTAssertNotEqual(viewModel.activePlan?.summary, "late cloud result")
+    }
+
     @MainActor
     func testCloudPlanningCanRefineGeneratedPlan() async {
         let viewModel = AppViewModel(dependencies: .cloudRefining)
@@ -863,7 +1458,8 @@ final class SmartPawTests: XCTestCase {
             isEnabled: true,
             endpoint: "https://example.com/v1/responses",
             apiKey: "test-key",
-            model: "test-model"
+            model: "test-model",
+            hasCloudConsent: true
         ))
 
         await viewModel.makePlanFromScanUsingCloudIfAvailable()
@@ -883,7 +1479,8 @@ final class SmartPawTests: XCTestCase {
             isEnabled: true,
             endpoint: "https://example.com/v1/responses",
             apiKey: "test-key",
-            model: "test-model"
+            model: "test-model",
+            hasCloudConsent: true
         ))
 
         await viewModel.makePlanFromScanUsingCloudIfAvailable()
@@ -937,7 +1534,7 @@ private extension AppDependencies {
             scanService: YOLOSegmentationScanService(),
             planningService: RuleBasedPlanningService(),
             cloudPlanningService: PassthroughCloudPlanningService(),
-            storageStore: InMemoryStorageStore(),
+            storageStore: seededStorageStore(),
             credentialStore: InMemoryCredentialStore()
         )
     }
@@ -993,6 +1590,69 @@ private extension AppDependencies {
     }
 }
 
+private func seededStorageStore() -> InMemoryStorageStore {
+    let store = InMemoryStorageStore()
+    try? store.saveState(DemoData.snapshot)
+    return store
+}
+
+private final class FailingWriteStorageStore: StorageStore {
+    var failsWrites = false
+    private var snapshot: AppStateSnapshot?
+    init(snapshot: AppStateSnapshot? = nil) { self.snapshot = snapshot }
+    func loadState() throws -> AppStateSnapshot? { snapshot }
+    func saveState(_ snapshot: AppStateSnapshot) throws {
+        if failsWrites { throw CocoaError(.fileWriteOutOfSpace) }
+        self.snapshot = snapshot
+    }
+}
+
+private final class UnreadableStorageStore: StorageStore {
+    var saveCount = 0
+    func loadState() throws -> AppStateSnapshot? { throw CocoaError(.fileReadCorruptFile) }
+    func saveState(_ snapshot: AppStateSnapshot) throws { saveCount += 1 }
+}
+
+private actor DeferredScanService: ScanService {
+    private var continuation: CheckedContinuation<[DetectedItem], Never>?
+    func scanImage(_ image: UIImage) async throws -> [DetectedItem] {
+        await withCheckedContinuation { continuation = $0 }
+    }
+    func waitForRequest() async {
+        while continuation == nil { await Task.yield() }
+    }
+    func complete() {
+        continuation?.resume(returning: [DetectedItem(name: "late result", category: .tools, confidence: 1)])
+        continuation = nil
+    }
+}
+
+private actor DeferredCloudPlanningService: CloudPlanningService {
+    private var continuation: CheckedContinuation<StoragePlan, Never>?
+    private var plan: StoragePlan?
+    func refine(plan: StoragePlan, context: PlanningContext, settings: LLMSettings) async throws -> StoragePlan {
+        self.plan = plan
+        return await withCheckedContinuation { continuation = $0 }
+    }
+    func waitForRequest() async {
+        while continuation == nil { await Task.yield() }
+    }
+    func complete() {
+        guard var plan else { return }
+        plan.summary = "late cloud result"
+        continuation?.resume(returning: plan)
+        continuation = nil
+    }
+}
+
+private actor CountingCloudPlanningService: CloudPlanningService {
+    private(set) var requestCount = 0
+    func refine(plan: StoragePlan, context: PlanningContext, settings: LLMSettings) async throws -> StoragePlan {
+        requestCount += 1
+        return plan
+    }
+}
+
 private final class InMemoryCredentialStore: CredentialStore {
     private var apiKey: String?
     private let allowsDeletion: Bool
@@ -1014,6 +1674,16 @@ private final class InMemoryCredentialStore: CredentialStore {
         guard allowsDeletion else { return false }
         apiKey = nil
         return true
+    }
+}
+
+private struct EmptyScanService: ScanService {
+    func scanImage(_ image: UIImage) async throws -> [DetectedItem] { [] }
+}
+
+private struct SingleItemScanService: ScanService {
+    func scanImage(_ image: UIImage) async throws -> [DetectedItem] {
+        [DetectedItem(name: "扫描中的新物品", category: .tools, confidence: 1)]
     }
 }
 

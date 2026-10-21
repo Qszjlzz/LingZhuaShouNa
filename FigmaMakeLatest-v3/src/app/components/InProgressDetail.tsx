@@ -1,6 +1,9 @@
+import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, Play, Pause, CheckCircle2, Circle, Clock, Flame } from "lucide-react";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { COFFEE, ORANGE, LINEN, BLUE, WHITE, SOFT } from "./theme";
+import { nativeRequest, type NativeSpace, type NativeState } from "../nativeBridge";
+import defaultCover from "../../../../Resources/Assets.xcassets/FigmaProfilePlanCloset.imageset/closet.png";
 
 export type ProgressSpace = {
   id: string;
@@ -11,28 +14,6 @@ export type ProgressSpace = {
   streak: number;
   zones: { id: string; name: string; done: boolean; current?: boolean; tasks: number }[];
   recentActivity: { time: string; text: string }[];
-};
-
-const sample: ProgressSpace = {
-  id: "p1",
-  title: "浴室",
-  progress: 35,
-  cover:
-    "https://images.unsplash.com/photo-1758239873506-82d0e76244f6?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
-  estimate: "还剩 12 分钟",
-  streak: 4,
-  zones: [
-    { id: "z1", name: "台面", done: true, tasks: 3 },
-    { id: "z2", name: "镜柜", done: true, tasks: 5 },
-    { id: "z3", name: "淋浴置物架", done: false, current: true, tasks: 4 },
-    { id: "z4", name: "水槽下收纳", done: false, tasks: 6 },
-    { id: "z5", name: "毛巾架", done: false, tasks: 2 },
-  ],
-  recentActivity: [
-    { time: "刚刚", text: "擦净台面并把化妆品归位" },
-    { time: "5 分钟前", text: "护肤品归类进上层抽屉" },
-    { time: "12 分钟前", text: "丢掉 3 件过期物品" },
-  ],
 };
 
 function Ring({ value, size = 160 }: { value: number; size?: number }) {
@@ -79,15 +60,89 @@ function Ring({ value, size = 160 }: { value: number; size?: number }) {
 
 export function InProgressDetail({
   onBack,
-  space = sample,
+  space: nativeSpace,
+  onNativeChange,
 }: {
   onBack: () => void;
-  space?: ProgressSpace;
+  space: NativeSpace;
+  onNativeChange?: (state: NativeState) => void;
 }) {
+  const [localSpace, setLocalSpace] = useState(nativeSpace);
+  const [cover, setCover] = useState(defaultCover);
+  const [executing, setExecuting] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const submitting = useRef(false);
+  const activeStepRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { setLocalSpace(nativeSpace); }, [nativeSpace]);
+  useEffect(() => {
+    let cancelled = false;
+    setCover(defaultCover);
+    void nativeRequest<{ before?: string; after?: string }>("space.photos", { id: nativeSpace.id })
+      .then((photos) => { if (!cancelled) setCover(photos.before || photos.after || defaultCover); })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [nativeSpace.id]);
+  useEffect(() => {
+    if (executing) activeStepRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [executing]);
+  const plan = localSpace.activePlan;
+  const steps = plan?.steps ?? [];
+  const done = steps.filter((step) => step.status === "done");
+  const currentStep = steps.find((step) => step.status === "active");
+  const allDone = steps.length > 0 && done.length === steps.length;
+  const zoneNames = [...new Set(steps.map((step) => step.zone || "整理区域"))];
+  const space: ProgressSpace = {
+    id: localSpace.id, title: localSpace.name, cover,
+    progress: steps.length ? Math.round(done.length / steps.length * 100) : 0,
+    estimate: `预计 ${plan?.timeBudget ?? 0} 分钟`,
+    streak: localSpace.completedPlans.length,
+    zones: zoneNames.map((name) => {
+      const zoneSteps = steps.filter((step) => (step.zone || "整理区域") === name);
+      return { id: name, name, tasks: zoneSteps.length, done: zoneSteps.every((step) => step.status === "done"), current: zoneSteps.some((step) => step.status === "active") };
+    }),
+    recentActivity: done.slice(-3).reverse().map((step) => ({ time: "已完成", text: step.title })),
+  };
+  const update = (state: NativeState) => {
+    const updated = state.spaces.find((space) => space.id === localSpace.id);
+    if (updated) setLocalSpace(updated);
+    onNativeChange?.(state);
+  };
+  const perform = async (action: () => Promise<void>) => {
+    if (submitting.current) return;
+    submitting.current = true; setBusy(true); setError("");
+    try { await action(); }
+    catch (cause) {
+      const message = cause instanceof Error ? cause.message : "操作保存失败，请重试。";
+      if (message !== "已取消") setError(message);
+    } finally { submitting.current = false; setBusy(false); }
+  };
+  const togglePause = () => perform(async () => {
+    if (!plan || allDone) return;
+    update(await nativeRequest<NativeState>("plan.pause.set", { spaceID: localSpace.id, planID: plan.id, isPaused: !plan.isPaused }));
+    setExecuting(false);
+  });
+  const continuePlan = () => perform(async () => {
+    if (!plan) return;
+    const state = await nativeRequest<NativeState>("space.select", { id: localSpace.id });
+    const selectedPlan = state.spaces.find((space) => space.id === localSpace.id)?.activePlan;
+    if (selectedPlan?.id !== plan.id) throw new Error("方案已更新，请返回空间页重新打开。");
+    if (allDone) {
+      const result = await nativeRequest<{ state?: NativeState }>("capture.open", { purpose: "after", source: "photo" });
+      if (result.state) update(result.state);
+      else update(await nativeRequest<NativeState>("state.get"));
+      onBack();
+    } else if (plan.isPaused) {
+      update(await nativeRequest<NativeState>("plan.pause.set", { spaceID: localSpace.id, planID: plan.id, isPaused: false }));
+      setExecuting(true);
+    } else if (executing && currentStep) {
+      update(await nativeRequest<NativeState>("plan.step.complete", { id: currentStep.id }));
+    } else { update(state); setExecuting(true); }
+  });
   const completedZones = space.zones.filter((z) => z.done).length;
 
   return (
-    <div className="relative h-full w-full overflow-hidden" style={{ backgroundColor: LINEN }}>
+    <div className="fixed inset-0 z-[60] overflow-hidden" style={{ backgroundColor: LINEN }}>
       <div className="h-full w-full overflow-y-auto pb-32">
         {/* Hero */}
         <div className="relative w-full" style={{ height: 220 }}>
@@ -117,7 +172,7 @@ export function InProgressDetail({
             >
               <Flame size={12} color={ORANGE} />
               <span style={{ color: COFFEE, fontSize: 11, fontWeight: 600 }}>
-                {space.streak}-day streak
+                已完成 {space.streak} 次整理
               </span>
             </div>
           </div>
@@ -126,7 +181,7 @@ export function InProgressDetail({
               className="inline-block px-3 py-1 mb-2"
               style={{ backgroundColor: BLUE, color: WHITE, borderRadius: 999, fontSize: 10 }}
             >
-              IN PROGRESS
+              {plan?.isPaused ? "已暂停" : allDone ? "待保存完成照" : "进行中"}
             </span>
             <p style={{ color: COFFEE, fontSize: 24, fontWeight: 600 }}>{space.title}</p>
           </div>
@@ -151,8 +206,8 @@ export function InProgressDetail({
             />
             <Row
               icon={<Flame size={14} />}
-              label="连续天数"
-              value={`${space.streak} 天`}
+              label="整理记录"
+              value={`${space.streak} 次`}
               highlight
             />
           </div>
@@ -179,6 +234,14 @@ export function InProgressDetail({
             />
           </div>
         </div>
+
+        {executing && currentStep && <div ref={activeStepRef} className="mx-6 mt-6 p-5" style={{ backgroundColor: WHITE, borderRadius: 22 }}>
+          <p style={{ color: ORANGE, fontSize: 11, fontWeight: 600 }}>当前步骤</p>
+          <h2 className="mt-2" style={{ color: COFFEE, fontSize: 17, fontWeight: 600 }}>{currentStep.title}</h2>
+          <p className="mt-2" style={{ color: COFFEE, opacity: 0.7, fontSize: 13, lineHeight: 1.7 }}>{currentStep.detail}</p>
+        </div>}
+        {error && <p role="alert" className="mx-6 mt-4" style={{ color: "#9A4230", fontSize: 12 }}>{error}</p>}
+        {!plan && <p className="mx-6 mt-4" style={{ color: COFFEE, opacity: 0.6, fontSize: 13 }}>这个空间暂无进行中的整理计划。</p>}
 
         {/* Zones step list */}
         <div className="px-6 mt-7 mb-3">
@@ -283,15 +346,21 @@ export function InProgressDetail({
       </div>
 
       {/* Resume CTA */}
-      <div className="absolute left-0 right-0 bottom-0 px-6 pb-6 pt-3">
+      <div className="absolute left-0 right-0 bottom-0 px-6 pb-6 pt-3" style={{ background: `linear-gradient(0deg, ${LINEN} 70%, transparent)` }}>
         <div className="flex gap-2">
           <button
+            type="button"
+            disabled={busy || !plan || allDone}
+            onClick={() => void togglePause()}
             className="h-14 px-5 rounded-full flex items-center justify-center gap-2"
             style={{ backgroundColor: WHITE, color: COFFEE, fontSize: 13, fontWeight: 600 }}
           >
-            <Pause size={16} /> Pause
+            {plan?.isPaused ? <Play size={16} /> : <Pause size={16} />} {plan?.isPaused ? "继续" : "暂停"}
           </button>
           <button
+            type="button"
+            disabled={busy || !plan}
+            onClick={() => void continuePlan()}
             className="flex-1 h-14 rounded-full flex items-center justify-center gap-2"
             style={{
               backgroundColor: ORANGE,
@@ -301,7 +370,7 @@ export function InProgressDetail({
               boxShadow: "0 8px 24px rgba(250,136,58,0.35)",
             }}
           >
-            <Play size={16} fill={WHITE} /> Resume Cleaning
+            <Play size={16} fill={WHITE} /> {busy ? "保存中…" : allDone ? "保存完成照" : executing && !plan?.isPaused ? "完成当前步骤" : "继续整理"}
           </button>
         </div>
       </div>

@@ -4,7 +4,6 @@ import deskArt from "../../assets/spaces/desk.png";
 import kitchenArt from "../../assets/spaces/kitchen.png";
 import teatableArt from "../../assets/spaces/teatable.png";
 // 真机演示专用：书桌场景的整理步骤图（预先生成好的成品图）
-import demoAfterOverall from "../../assets/demo/after-overall.jpg";
 import demoStepClear from "../../assets/demo/step-clear.jpg";
 import demoStepItems from "../../assets/demo/step-items.jpg";
 import demoStepComputer from "../../assets/demo/step-computer.jpg";
@@ -47,24 +46,19 @@ import { motion, AnimatePresence } from "motion/react";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { Raccoon } from "./Raccoon";
 import { COFFEE, ORANGE, LINEN, BLUE, WHITE, SOFT } from "./theme";
-import { isUsableNativeHint, nativeRequest, type NativeState, type NativeItem, type NativeHint } from "../nativeBridge";
+import { isUsableNativeHint, nativeRequest, type NativeState, type NativePlan, type NativeItem, type NativeHint } from "../nativeBridge";
 
 const ROOM_IMG =
   "https://images.unsplash.com/photo-1768548273848-ebab6f26b48c?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080";
 const THUMB_IMG =
   "https://images.unsplash.com/photo-1764588037085-a78240016f8b?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=400";
 
-type Step =
-  | "capture"
-  | "generating"
-  | "plandeck"
-  | "tune"
-  | "zones"
-  | "arPreview"
-  | "tools"
-  | "arGuide"
-  | "task"
-  | "reward";
+const SHOOT_STEPS = ["capture", "generating", "plandeck", "tune", "zones", "arPreview", "tools", "arGuide", "task", "reward"] as const;
+type Step = typeof SHOOT_STEPS[number];
+
+function initialShootStep(value?: string): Step {
+  return SHOOT_STEPS.find((candidate) => candidate.toLowerCase() === value?.toLowerCase()) ?? "capture";
+}
 
 type PlanTier = "basic" | "smart" | "pro";
 
@@ -99,7 +93,7 @@ const GEN_PLANS: GenPlan[] = [
       "闲置物品分类归入储物区",
       "开放区域适量留白，减少视觉压迫",
     ],
-    minutes: 25,
+    minutes: 10,
     tier: "basic",
   },
   {
@@ -115,7 +109,7 @@ const GEN_PLANS: GenPlan[] = [
       "按使用频率分三区收纳，常用物触手可及",
       "抽屉加装分隔件，建立固定归位习惯",
     ],
-    minutes: 40,
+    minutes: 60,
     tier: "smart",
   },
   {
@@ -131,7 +125,7 @@ const GEN_PLANS: GenPlan[] = [
       "软装与绿植点缀增加生活气息",
       "以区域功能为主，不强求分类精确",
     ],
-    minutes: 20,
+    minutes: 5,
     tier: "basic",
   },
 ];
@@ -190,11 +184,9 @@ function personalizePlans(items: NativeItem[]): GenPlan[] {
   const advice = (key: string) => PLAN_CATEGORY_ADVICE[key] ?? PLAN_CATEGORY_ADVICE["收纳工具"];
   const a1 = advice(top);
   const a2 = ranked.length > 1 ? advice(second) : null;
-  // 时长跟着物品量走：东西越多越久，但不低于 15 分钟、不超过一小时。
-  const scale = (base: number) => Math.min(60, Math.max(15, Math.round((base + items.length * 2) / 5) * 5));
 
   return GEN_PLANS.map((plan) => {
-    const minutes = scale(plan.minutes);
+    const minutes = plan.minutes;
     if (plan.id === "breathe") {
       return {
         ...plan,
@@ -233,35 +225,52 @@ export function ShootFlow({
   onClose,
   onFinish,
   demoStep,
+  reusePlan = false,
 }: {
   onClose: () => void;
   onFinish?: () => void;
   /** dev/演示：跳过拍摄直接落到某一步（?flow=），不影响正常流程 */
-  demoStep?: Step;
+  demoStep?: string;
+  reusePlan?: boolean;
 }) {
-  const [step, setStep] = useState<Step>(demoStep ?? "capture");
+  const [step, setStep] = useState<Step>(() => initialShootStep(demoStep));
   const [assets, setAssets] = useState<CapturedAsset[]>([]);
   // 确认过要收的物品、以及由这些物品生成并勾选的区域，后面每一步都用它。
   const [confirmedItems, setConfirmedItems] = useState<NativeItem[]>([]);
-  // 演示模式没有真实识别结果，喂一组示例物品让中后段有内容可看
-  useEffect(() => {
-    if (demoStep && demoStep !== "capture") {
-      setConfirmedItems([
-        { id: "d1", name: "笔记本电脑", category: "电子产品", confidence: 0.92, suggestedZone: "桌面收纳区", isSelected: true },
-        { id: "d2", name: "书本", category: "学习用品", confidence: 0.9, suggestedZone: "桌面收纳区", isSelected: true },
-        { id: "d3", name: "笔", category: "文具", confidence: 0.88, suggestedZone: "手边工具区", isSelected: true },
-        { id: "d4", name: "键盘", category: "电子产品", confidence: 0.9, suggestedZone: "桌面收纳区", isSelected: true },
-        { id: "d5", name: "水瓶", category: "日用品", confidence: 0.86, suggestedZone: "手边工具区", isSelected: true },
-      ]);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [demoStep]);
   const [zoneList, setZoneList] = useState<FlowZone[]>([]);
   const photo = assets[0]?.src;
   const [plans, setPlans] = useState<GenPlan[]>(GEN_PLANS);
   const [chosen, setChosen] = useState<GenPlan>(GEN_PLANS[0]);
+  const [nativePlan, setNativePlan] = useState<NativePlan | null>(null);
   // where the generating animation should land when it finishes
   const [genReturn, setGenReturn] = useState<Step>("plandeck");
+  const [flowError, setFlowError] = useState<string | null>(null);
+  const [processing, setProcessing] = useState(false);
+  const processingGeneration = useRef(0);
+
+  useEffect(() => () => {
+    // Invalidate any in-flight result before cancelling the native scan. The
+    // cancel request can resolve after unmount, so late responses must not
+    // update state when the flow has already been closed.
+    processingGeneration.current += 1;
+    void nativeRequest("scan.cancel").catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    if (!demoStep || initialShootStep(demoStep) === "capture") return;
+    let alive = true;
+    // Direct screen previews use the current device data just like the normal flow.
+    void nativeRequest<NativeState>("state.get").then((state) => {
+      if (!alive) return;
+      const selected = state.spaces.find((space) => space.id === state.selectedSpaceID);
+      const items = selected?.detectedItems.length ? selected.detectedItems : state.scannedItems ?? [];
+      setConfirmedItems(items);
+      setZoneList(buildFlowZones(items));
+      setPlans(personalizePlans(items));
+      setNativePlan(selected?.activePlan ?? null);
+    }).catch(() => undefined);
+    return () => { alive = false; };
+  }, [demoStep]);
 
   // 生成方案前重新拉一次识别结果，让方案卡里的建议跟着这次拍到的物品走。
   const refreshPlans = async () => {
@@ -275,41 +284,68 @@ export function ShootFlow({
 
   return (
     <div className="absolute inset-0 z-50" style={{ backgroundColor: LINEN }}>
+      {processing && <div className="absolute inset-0 z-[90] flex flex-col items-center justify-center gap-3" style={{ backgroundColor: "rgba(20,15,12,0.72)" }}><Loader2 size={26} color={WHITE} className="animate-spin" /><p style={{ color: WHITE, fontSize: 13, fontWeight: 600 }}>正在处理本批照片…</p><p style={{ color: WHITE, opacity: 0.7, fontSize: 11 }}>识别完成后可确认或手动添加物品</p><button onClick={() => { processingGeneration.current += 1; setProcessing(false); onClose(); }} className="px-5 py-2.5" style={{ backgroundColor: "rgba(255,255,255,0.16)", color: WHITE, borderRadius: 999, fontSize: 12 }}>取消并返回</button></div>}
+      {flowError && <button onClick={() => setFlowError(null)} className="absolute top-3 left-5 right-5 z-[80] px-4 py-3 text-left" style={{ backgroundColor: "#FFF4F1", color: "#9A4230", borderRadius: 14, fontSize: 12 }}>{flowError} · 点击关闭</button>}
       {step === "capture" && (
         <CaptureStep
           onClose={onClose}
           on完成={(captured) => {
+            const generation = ++processingGeneration.current;
+            setProcessing(true);
             setAssets(captured);
             // 「检查照片」页已删（设计稿没有这屏，且前面拍摄页已有类似的查看）：
             // 拍完直接进生成方案。识别等待 + 物品保存挪到后台跑，generating 动画期间正好完成。
             setGenReturn("plandeck");
             void (async () => {
               try {
-                // 连拍时识别是串行跑完所有照片，等满可能要几十秒。
-                // 这里最多等 8 秒：点完提交马上有反馈，识别没跑完也先继续（后面步骤仍能拿到已识别的部分）。
-                await Promise.race([
-                  nativeRequest("scan.await", {}).catch(() => undefined),
-                  new Promise<void>((resolve) => window.setTimeout(resolve, 8000)),
-                ]);
-                const state = await nativeRequest<NativeState>("state.get");
-                // 识别还没落库时，用每张照片自己轮询到的结果兜底，后面的分区/引导才有物品可用。
-                const scanned = (state.scannedItems ?? []).length > 0
-                  ? state.scannedItems
-                  : captured.flatMap((a) => a.items ?? []);
+                // 等待本批照片的实际结果后再确认物品。
+                const awaited = await nativeRequest<{ items?: NativeItem[] }>("scan.await", { captureIDs: captured.map((asset) => asset.id) });
+                if (processingGeneration.current !== generation) return;
+                const scanned = awaited.items ?? [];
                 const payload = scanned.map((item) => ({
                   ...item,
                   category: item.category || "收纳工具",
                   suggestedZone: item.suggestedZone || "手边工具区",
                   isSelected: item.isSelected ?? true,
                 }));
-                await nativeRequest("items.save", { items: payload });
-                setConfirmedItems(payload);
-              } catch {
-                setConfirmedItems([]);
+                if (payload.length > 0) {
+                  await nativeRequest("items.save", { items: payload });
+                  if (processingGeneration.current !== generation) return;
+                  setConfirmedItems(payload);
+                } else {
+                  setConfirmedItems([]);
+                  if (processingGeneration.current === generation) setFlowError("没有识别到物品，可以在下一步手动补录。");
+                }
+              } catch (error) {
+                if (processingGeneration.current === generation) {
+                  setConfirmedItems([]);
+                  setFlowError(error instanceof Error ? error.message : "识别未完成，可以在下一步手动补录物品。");
+                }
               }
-              await refreshPlans().catch(() => undefined);
-              setStep("generating");
-            })();
+              if (processingGeneration.current !== generation) return;
+              if (reusePlan) {
+                try {
+                  const state = await nativeRequest<NativeState>("state.get");
+                  const space = state.spaces.find((candidate) => candidate.id === state.selectedSpaceID);
+                  const source = space?.activePlan ?? space?.completedPlans[0];
+                  if (!space || !source) throw new Error("这个空间还没有原方案，请选择新方案。");
+                  const updated = await nativeRequest<NativeState>("plan.reuse", { spaceID: space.id, planID: source.id });
+                  if (processingGeneration.current !== generation) return;
+                  const plan = updated.spaces.find((candidate) => candidate.id === space.id)?.activePlan;
+                  if (!plan?.steps.length) throw new Error("原方案没有可执行步骤，请选择新方案。");
+                  setNativePlan(plan);
+                  setZoneList(buildFlowZones(updated.scannedItems));
+                  setGenReturn("arGuide");
+                } catch (error) {
+                  if (processingGeneration.current !== generation) return;
+                  setFlowError(error instanceof Error ? error.message : "原方案恢复失败，请选择新方案。");
+                }
+              }
+              await refreshPlans().catch(() => { if (processingGeneration.current === generation) setFlowError("无法读取本机识别结果，请重试。"); });
+              if (processingGeneration.current === generation) setStep("generating");
+            })().finally(() => {
+              if (processingGeneration.current === generation) setProcessing(false);
+            });
           }}
         />
       )}
@@ -321,18 +357,7 @@ export function ShootFlow({
           plans={plans}
           photo={photo}
           onClose={onClose}
-          onStart={async (p) => {
-            setChosen(p);
-            try {
-              await nativeRequest("plan.generate", {
-                style: p.id === "efficient" ? "隐藏清爽" : p.id === "living" ? "温暖可见" : "快速复原",
-                minutes: p.minutes <= 5 ? 5 : p.minutes >= 60 ? 60 : 10,
-                goal: p.vibe,
-                focusZone: "",
-              });
-            } catch { /* The local UI remains usable and shows native errors at capture time. */ }
-            setStep("zones");
-          }}
+          onStart={(p) => { setChosen(p); setFlowError(null); setStep("zones"); }}
           onTune={(p) => {
             setChosen(p);
             setStep("tune");
@@ -346,6 +371,7 @@ export function ShootFlow({
           onBack={() => setStep("plandeck")}
           onConfirm={(refined) => {
             setChosen(refined);
+            setFlowError(null);
             setStep("zones");
           }}
         />
@@ -355,23 +381,69 @@ export function ShootFlow({
           photo={photo}
           items={confirmedItems}
           onBack={() => setStep("plandeck")}
-          onNext={(zs) => {
-            setZoneList(zs);
-            setStep("arGuide");
+          onNext={async (zs) => {
+            if (zs.length === 0) { setFlowError("请至少选择一个整理区域。"); return; }
+            try {
+              const generated = await nativeRequest<NativeState>("plan.generate", {
+                style: chosen.id === "efficient" ? "隐藏清爽" : chosen.id === "living" ? "温暖可见" : "快速复原",
+                minutes: chosen.minutes <= 5 ? 5 : chosen.minutes >= 60 ? 60 : 10,
+                goal: chosen.vibe,
+                focusZone: zs.map((z) => z.label).join("、"),
+              });
+              const selected = generated.spaces.find((space) => space.id === generated.selectedSpaceID);
+              if (!selected?.activePlan || selected.activePlan.steps.length === 0) throw new Error("方案没有生成可执行步骤，请重试");
+              setNativePlan(selected.activePlan);
+              setZoneList(zs);
+              setFlowError(null);
+              setStep("arGuide");
+            } catch (error) { setFlowError(error instanceof Error ? error.message : "方案生成失败，请检查设置后重试。"); }
           }}
+        />
+      )}
+      {step === "arPreview" && (
+        <ARPreviewStep
+          photo={photo}
+          zones={zoneList}
+          onBack={() => setStep("zones")}
+          onNext={() => setStep("tools")}
+        />
+      )}
+      {step === "tools" && (
+        <ToolsStep
+          items={confirmedItems}
+          onBack={() => setStep("arPreview")}
+          onNext={() => setStep(nativePlan && zoneList.length > 0 ? "arGuide" : "zones")}
         />
       )}
       {step === "arGuide" && (
         <ARGuideStep
           photo={photo}
           zones={zoneList}
+          nativePlan={nativePlan}
           onBack={() => setStep("zones")}
-          onComplete={() => {
-            void completeNativePlan().finally(() => setStep("reward"));
-          }}
+          onComplete={() => setStep("reward")}
         />
       )}
-      {step === "reward" && <RewardStep photo={photo} onClose={onFinish || onClose} />}
+      {step === "task" && (
+        <TaskStep
+          plan={nativePlan}
+          onBack={() => setStep(nativePlan && zoneList.length > 0 ? "arGuide" : "zones")}
+          onComplete={async (id) => {
+            const current = await nativeRequest<NativeState>("state.get");
+            const selected = current.spaces.find((space) => space.id === current.selectedSpaceID);
+            if (!nativePlan || selected?.activePlan?.id !== nativePlan.id) throw new Error("方案已改变，请返回空间页继续整理");
+            const updated = await nativeRequest<NativeState>("plan.step.complete", { id });
+            const space = updated.spaces.find((candidate) => candidate.id === selected.id);
+            const plan = space?.activePlan?.id === nativePlan.id
+              ? space.activePlan
+              : space?.completedPlans.find((candidate) => candidate.id === nativePlan.id);
+            if (!plan) throw new Error("未读取到最新方案，请返回空间页检查进度");
+            setNativePlan(plan);
+          }}
+          onFinish={() => setStep("reward")}
+        />
+      )}
+      {step === "reward" && <RewardStep photo={photo} itemCount={zoneList.reduce((sum, zone) => sum + zone.items, 0)} areaCount={zoneList.length} timeBudget={nativePlan?.timeBudget ?? zoneList.reduce((sum, zone) => sum + zone.mins, 0)} onClose={onFinish || onClose} />}
     </div>
   );
 }
@@ -394,7 +466,7 @@ function isoBox(f: { cx: number; cy: number; hw: number; hh: number; h: number }
 
 const GEN_PHASES = [
   { main: "正在理解你的空间", sub: "" },
-  { main: "识别家具与物品", sub: "发现 3 件家具 · 5 个物品" },
+  { main: "识别家具与物品", sub: "根据你的照片生成识别结果" },
   { main: "正在规划整理方式", sub: "为你生成专属方案" },
 ];
 
@@ -403,24 +475,14 @@ const W_LINE = "rgba(123,92,72,0.44)";
 const W_SOFT = "rgba(123,92,72,0.24)";
 const W_GHOST = "rgba(123,92,72,0.07)";
 
-async function completeNativePlan() {
-  // 原生请求万一不回包，不能把用户卡在最后一步：最多等 6 秒就直接去完成页。
-  const guard = new Promise<void>((resolve) => window.setTimeout(resolve, 6000));
-  const work = (async () => {
-    let state = await nativeRequest<NativeState>("state.get");
-    let selected = state.spaces.find((space) => space.id === state.selectedSpaceID);
-    for (let i = 0; i < 100; i += 1) {
-      const active = selected?.activePlan?.steps.find((step) => step.status === "active");
-      if (!active) break;
-      state = await nativeRequest<NativeState>("plan.step.complete", { id: active.id });
-      selected = state.spaces.find((space) => space.id === state.selectedSpaceID);
-    }
-  })();
-  try {
-    await Promise.race([work, guard]);
-  } catch {
-    /* 失败也不影响进完成页 */
-  }
+async function completeNativePlan(expectedStepID?: string) {
+  // 每次用户完成一个引导步骤只推进一个原生步骤，完成状态由原生计划决定。
+  const state = await nativeRequest<NativeState>("state.get");
+  const selected = state.spaces.find((space) => space.id === state.selectedSpaceID);
+  const active = selected?.activePlan?.steps.find((step) => step.status === "active");
+  if (!active) throw new Error("当前整理方案没有可完成的步骤");
+  if (expectedStepID && active.id !== expectedStepID) throw new Error("方案进度已改变，请返回空间页继续整理");
+  await nativeRequest("plan.step.complete", { id: active.id });
 }
 
 function GeneratingStep({ onDone }: { refining?: boolean; onDone: () => void }) {
@@ -768,8 +830,8 @@ function PlanDeckStep({
       {/* ── 照片：全出血贴顶大图（约占上半屏），X / 预计时长 / 翻页箭头叠在照片上 ── */}
       <div className="relative flex-shrink-0 overflow-hidden" style={{ height: "52%" }}>
         <ImageWithFallback
-          // 演示场景：方案页顶部直接展示这张书桌整理后的成品效果图（真实照片前面拍摄页已经看过）。
-          src={DEMO_GUIDE ? demoAfterOverall : photo || plan.image}
+          // 展示本次整理前照片，方案不生成或替换成果图。
+          src={photo || ""}
           alt={plan.name}
           className="h-full w-full object-cover"
         />
@@ -961,7 +1023,7 @@ function PlanPreviewCard({ plan, photo, tweaks }: { plan: GenPlan; photo?: strin
               }}>
                 <Sparkles size={9} color="rgba(255,255,255,0.75)" />
                 <span style={{ color: "rgba(255,255,255,0.85)", fontSize: 9.5, fontWeight: 600, letterSpacing: "0.02em" }}>
-                  AI 效果预览
+                  整理前照片
                 </span>
               </div>
             </div>
@@ -971,7 +1033,7 @@ function PlanPreviewCard({ plan, photo, tweaks }: { plan: GenPlan; photo?: strin
                 backgroundColor: plan.accent, borderRadius: 999,
                 padding: "3px 9px", fontSize: 9, fontWeight: 700, color: WHITE,
               }}>
-                ✓ 已应用
+                偏好记录
               </div>
             </div>
 
@@ -1003,7 +1065,7 @@ function PlanPreviewCard({ plan, photo, tweaks }: { plan: GenPlan; photo?: strin
       {tweaks.length > 0 && (
         <div style={{ padding: "10px 13px 13px" }}>
           <p style={{ color: COFFEE, opacity: 0.5, fontSize: 10.5, fontWeight: 600, marginBottom: 7, letterSpacing: "0.02em" }}>
-            已调整 {tweaks.length} 项
+            已记录 {tweaks.length} 项偏好
           </p>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
             {tweaks.map((t, i) => (
@@ -1323,13 +1385,12 @@ function CaptureStep({
   const [freshEntryId, setFreshEntryId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const scanInit = useRef<Promise<unknown> | null>(null);
   const recTimer = useRef<any>(null);
   // 真实取景：相机画面垫在 WebView 底下，页面原地透明透出来，UI 一个像素都不动。
-  // 相机在点进来之前就已经待命，所以这里乐观地认为"画面已经在"——
-  // 容器一开始就是透明的，画面直接透出来，中间没有"深色底 → 画面"的跳变。
-  // 万一真的没起来，startPreview 失败后才会切成深色底并给重试提示。
+  // 原生确认预览成功后再透明；权限未授予时保留深色等待/错误状态。
   const previewRef = useRef<HTMLDivElement>(null);
-  const [liveFeed, setLiveFeed] = useState(true);
+  const [liveFeed, setLiveFeed] = useState(false);
   // 等待画面期间一律用深色底（和相机出画面前的黑屏一致），不再显示任何占位图。
   // 取景失败只在这页里提示 + 重试，绝不跳到系统相机页。
   const [camFailed, setCamFailed] = useState(false);
@@ -1346,6 +1407,11 @@ function CaptureStep({
   const [scanning, setScanning] = useState<Record<string, boolean>>({});
   // 提交只在点第一下时生效：之后按钮进 loading，避免连点触发多次提交。
   const [submitting, setSubmitting] = useState(false);
+  useEffect(() => {
+    scanInit.current = nativeRequest("scan.begin").catch((error) => { setError(error instanceof Error ? error.message : "扫描初始化失败，请重试"); throw error; });
+    return () => { scanInit.current = null; };
+  }, []);
+
   const pollShotItems = (captureID: string) => {
     let tries = 0;
     // 拍完立刻在照片上显示「正在识别中…」，识别结果回来后换成真实标签。
@@ -1361,27 +1427,13 @@ function CaptureStep({
       tries += 1;
       try {
         const res = await nativeRequest<{ ready?: boolean; items?: NativeItem[] }>("scan.results", { captureID });
-        if (res?.ready && Array.isArray(res.items) && res.items.length > 0) {
+        if (res?.ready) {
           window.clearInterval(timer);
-          finish(res.items!);
+          finish(Array.isArray(res.items) ? res.items : []);
           return;
         }
       } catch {
         /* 还没识别完，继续等下一轮 */
-      }
-      // 兜底：单张编号没取到结果时，从全局识别结果里拿（仍是真实识别结果）。
-      if (tries % 3 === 0) {
-        try {
-          const state = await nativeRequest<NativeState>("state.get");
-          const all = (state?.scannedItems ?? []).filter((it: NativeItem) => it && it.name);
-          if (all.length > 0) {
-            window.clearInterval(timer);
-            finish(all);
-            return;
-          }
-        } catch {
-          /* 继续等 */
-        }
       }
       if (tries >= 30) {
         window.clearInterval(timer);
@@ -1424,6 +1476,10 @@ function CaptureStep({
           return true;
         }
         setCamReason(res.reason ?? "unavailable");
+        if (res.reason === "denied") {
+          setLiveFeed(false);
+          return false;
+        }
       } catch {
         setCamReason("unavailable");
       }
@@ -1547,6 +1603,7 @@ function CaptureStep({
 
   const snapPhoto = async () => {
     if (busy) return;
+    try { await scanInit.current; } catch { return; }
     setShutter(true);
     setTimeout(() => setShutter(false), 200);
     setBusy(true);
@@ -1598,6 +1655,23 @@ function CaptureStep({
     } finally {
       setBusy(false);
     }
+  };
+
+  const chooseFromLibrary = async () => {
+    if (busy) return;
+    try {
+      await scanInit.current;
+      setBusy(true); setError(null);
+      const id = `p${Date.now()}`;
+      const shot = await nativeRequest<{ preview?: string }>("capture.open", { source: "photo", purpose: "scan", captureID: id });
+      if (!shot.preview) throw new Error("没有读取到照片，请重试");
+      setShots((arr) => [...arr, { id, kind: "photo", src: shot.preview!, label: "相册照片" }]);
+      setCurrentIdx(shots.length);
+      setFreshEntryId(id);
+      pollShotItems(id);
+      setTimeout(() => setPreviewMode(true), 220);
+    } catch (error) { setError(error instanceof Error ? error.message : "读取相册失败，请重试"); }
+    finally { setBusy(false); }
   };
 
   const toggleRecord = async () => {
@@ -1710,7 +1784,7 @@ function CaptureStep({
           >
             <Loader2 size={26} className="animate-spin" color={WHITE} />
             <p style={{ color: WHITE, fontSize: 13, fontWeight: 600 }}>正在识别你拍的照片…</p>
-            <p style={{ color: "rgba(255,255,255,0.6)", fontSize: 11 }}>最多等 8 秒，识别不完也会继续</p>
+            <p style={{ color: "rgba(255,255,255,0.6)", fontSize: 11 }}>正在核对本批照片的识别结果，请稍候</p>
           </div>
         )}
         {/* Shutter flash overlay */}
@@ -2037,6 +2111,7 @@ function CaptureStep({
           >
             重试
           </button>
+          <button onClick={() => void chooseFromLibrary()} className="px-5 py-2.5 rounded-full" style={{ backgroundColor: "rgba(255,255,255,0.16)", color: WHITE, fontSize: 13 }}>从相册选择</button>
         </div>
       )}
 
@@ -4470,16 +4545,33 @@ function PlanStep({ onBack, onNext }: { onBack: () => void; onNext: () => void }
 
 /* ---------- C. Task Progress ---------- */
 
-function TaskStep({ onBack, onComplete }: { onBack: () => void; onComplete: () => void }) {
-  const tasks = [
-    "把书叠整齐",
-    "擦拭茶几",
-    "把杯子放回厨房",
-    "折叠盖毯",
-  ];
+function TaskStep({ plan, onBack, onComplete, onFinish }: {
+  plan: NativePlan | null;
+  onBack: () => void;
+  onComplete: (id: string) => Promise<void>;
+  onFinish: () => void;
+}) {
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const submitting = useRef(false);
+  const active = plan?.steps.find((task) => task.status === "active");
+  const taskZones = [...new Set(plan?.steps.map((task) => task.zone) ?? [])];
+  const currentZone = active?.zone ?? taskZones[taskZones.length - 1];
+  const tasks = plan?.steps.filter((task) => task.zone === currentZone) ?? [];
+  const completedCount = plan?.steps.filter((task) => task.status === "done").length ?? 0;
+  const allDone = !!plan?.steps.length && completedCount === plan.steps.length;
+  const completeCurrent = async () => {
+    if (!active || submitting.current || plan?.isPaused) return;
+    submitting.current = true;
+    setSaving(true);
+    setError(null);
+    try { await onComplete(active.id); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : "步骤保存失败，请重试"); }
+    finally { submitting.current = false; setSaving(false); }
+  };
 
   return (
-    <div className="h-full w-full flex flex-col" style={{ backgroundColor: LINEN }}>
+    <div className="h-full w-full flex flex-col overflow-y-auto" style={{ backgroundColor: LINEN }}>
       <div className="px-6 pt-14 pb-2 flex items-center justify-between">
         <button
           onClick={onBack}
@@ -4492,33 +4584,33 @@ function TaskStep({ onBack, onComplete }: { onBack: () => void; onComplete: () =
         <div className="w-11" />
       </div>
 
-      <div className="px-6 mt-4 flex items-center">
-        {[1, 2, 3].map((n, i) => (
-          <div key={n} className="flex items-center flex-1 last:flex-none">
+      <div className="px-6 mt-4 flex items-center overflow-x-auto flex-shrink-0">
+        {taskZones.map((zone, i) => (
+          <div key={zone} className="flex items-center flex-1 last:flex-none">
             <div className="flex flex-col items-center">
               <div
                 className="h-9 w-9 rounded-full flex items-center justify-center"
                 style={{
-                  backgroundColor: n === 1 ? ORANGE : SOFT,
-                  color: n === 1 ? WHITE : COFFEE,
+                  backgroundColor: zone === currentZone ? ORANGE : SOFT,
+                  color: zone === currentZone ? WHITE : COFFEE,
                   fontSize: 13,
                   fontWeight: 600,
                 }}
               >
-                {n}
+                {i + 1}
               </div>
               <span
                 style={{
                   color: COFFEE,
                   fontSize: 10,
                   marginTop: 4,
-                  opacity: n === 1 ? 1 : 0.5,
+                  opacity: zone === currentZone ? 1 : 0.5,
                 }}
               >
-                区域 {n}
+                {zone}
               </span>
             </div>
-            {i < 2 && (
+            {i < taskZones.length - 1 && (
               <div className="flex-1 h-[2px] mx-2 mb-4" style={{ backgroundColor: SOFT }} />
             )}
           </div>
@@ -4538,47 +4630,54 @@ function TaskStep({ onBack, onComplete }: { onBack: () => void; onComplete: () =
             className="px-3 py-1"
             style={{ backgroundColor: ORANGE, color: WHITE, borderRadius: 999, fontSize: 11 }}
           >
-            Current Zone
+            {allDone ? "步骤已完成" : "当前区域"}
           </span>
-          <span style={{ color: COFFEE, opacity: 0.55, fontSize: 12 }}>03:42</span>
+          <span style={{ color: COFFEE, opacity: 0.55, fontSize: 12 }}>{completedCount}/{plan?.steps.length ?? 0} 步</span>
         </div>
-        <p style={{ color: COFFEE, fontSize: 22, fontWeight: 600 }}>茶几区</p>
-        <p style={{ color: COFFEE, opacity: 0.6, fontSize: 12, marginTop: 4 }}>4 quick tasks</p>
+        <p style={{ color: COFFEE, fontSize: 22, fontWeight: 600 }}>{currentZone || "还没有整理方案"}</p>
+        <p style={{ color: COFFEE, opacity: 0.6, fontSize: 12, marginTop: 4 }}>{plan ? `${tasks.length} 个整理步骤` : "先选择整理区域，生成可执行的计划。"}</p>
+        {plan?.isPaused && <p className="mt-3" style={{ color: ORANGE, fontSize: 12 }}>方案已暂停，请先在「项目」中继续计划。</p>}
+        {error && <p role="alert" className="mt-3" style={{ color: "#9A4230", fontSize: 12 }}>{error}</p>}
 
         <div className="space-y-2 mt-5">
-          {tasks.map((t, i) => (
-            <div
-              key={t}
-              className="flex items-center gap-3 px-4 py-3"
+          {tasks.map((task) => (
+            <button
+              key={task.id}
+              type="button"
+              onClick={() => void completeCurrent()}
+              disabled={task.status !== "active" || saving || plan?.isPaused}
+              className="w-full text-left flex items-center gap-3 px-4 py-3"
               style={{ backgroundColor: LINEN, borderRadius: 14 }}
             >
               <div
-                className="h-6 w-6 rounded-full flex items-center justify-center"
+                className="h-6 w-6 rounded-full flex items-center justify-center flex-shrink-0"
                 style={{
-                  backgroundColor: i < 2 ? ORANGE : WHITE,
-                  border: i < 2 ? "none" : `2px solid ${SOFT}`,
+                  backgroundColor: task.status === "done" ? ORANGE : WHITE,
+                  border: task.status === "done" ? "none" : `2px solid ${task.status === "active" ? ORANGE : SOFT}`,
                 }}
               >
-                {i < 2 && <Check size={14} color={WHITE} />}
+                {task.status === "done" && <Check size={14} color={WHITE} />}
               </div>
-              <span
+              <span className="flex-1"
                 style={{
                   color: COFFEE,
                   fontSize: 13,
-                  textDecoration: i < 2 ? "line-through" : "none",
-                  opacity: i < 2 ? 0.5 : 1,
+                  textDecoration: task.status === "done" ? "line-through" : "none",
+                  opacity: task.status === "done" ? 0.5 : 1,
                 }}
               >
-                {t}
+                {task.title}
+                {task.status === "active" && <span className="block mt-1" style={{ fontSize: 11, opacity: 0.65 }}>{task.detail}</span>}
               </span>
-            </div>
+            </button>
           ))}
         </div>
       </div>
 
-      <div className="mt-auto px-6 pb-8">
+      <div className="mt-auto px-6 pt-6 pb-8">
         <button
-          onClick={onComplete}
+          onClick={!plan ? onBack : allDone ? onFinish : () => void completeCurrent()}
+          disabled={!!plan && !allDone && (!active || saving || plan.isPaused)}
           className="w-full py-4"
           style={{
             backgroundColor: ORANGE,
@@ -4589,7 +4688,7 @@ function TaskStep({ onBack, onComplete }: { onBack: () => void; onComplete: () =
             boxShadow: "0 8px 24px rgba(250,136,58,0.35)",
           }}
         >
-          Complete Zone
+          {!plan ? "选择整理区域" : allDone ? "保存完成照" : saving ? "保存中…" : "完成当前步骤"}
         </button>
       </div>
     </div>
@@ -4601,7 +4700,7 @@ function TaskStep({ onBack, onComplete }: { onBack: () => void; onComplete: () =
 const AFTER_IMG =
   "https://images.unsplash.com/photo-1749705319317-f9a2bf24fe3d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080";
 
-function RewardStep({ photo, onClose }: { photo?: string; onClose: () => void }) {
+function RewardStep({ photo, itemCount, areaCount, timeBudget, onClose }: { photo?: string; itemCount: number; areaCount: number; timeBudget: number; onClose: () => void }) {
   const [afterPhoto, setAfterPhoto] = useState<string | null>(null);
   const [showComparison, setShowComparison] = useState(false);
   const [slider, setSlider] = useState(50);
@@ -4609,6 +4708,15 @@ function RewardStep({ photo, onClose }: { photo?: string; onClose: () => void })
   const [captureError, setCaptureError] = useState<string | null>(null);
   const [liveFeed, setLiveFeed] = useState(false);
   const [busy, setBusy] = useState(false);
+  const chooseFromLibrary = async () => {
+    if (busy) return;
+    setBusy(true); setCaptureError(null);
+    try {
+      const shot = await nativeRequest<{ preview?: string }>("capture.open", { source: "photo", purpose: "after" });
+      if (shot.preview) setAfterPhoto(shot.preview); else setCaptureError("没有读取到照片，请重试");
+    } catch (error) { setCaptureError((error as Error).message); }
+    finally { setBusy(false); }
+  };
   const previewRef = useRef<HTMLDivElement>(null);
 
   // 整理后的打卡照走和主拍摄页同一套内联相机：不跳原生页，也不会误触发识别。
@@ -4622,8 +4730,9 @@ function RewardStep({ photo, onClose }: { photo?: string; onClose: () => void })
   const startPreview = async (): Promise<boolean> => {
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        const res = await nativeRequest<{ ok: boolean }>("camera.preview.start", rectOf());
+        const res = await nativeRequest<{ ok: boolean; reason?: string }>("camera.preview.start", rectOf());
         if (res.ok === true) { setLiveFeed(true); return true; }
+        if (res.reason === "denied") { setLiveFeed(false); return false; }
       } catch { /* 下面统一重试 */ }
       await new Promise((r) => setTimeout(r, 600));
     }
@@ -4688,10 +4797,9 @@ function RewardStep({ photo, onClose }: { photo?: string; onClose: () => void })
         className="relative h-full w-full overflow-hidden"
         style={{ backgroundColor: liveFeed ? "transparent" : "#1a1411" }}
       >
+        <button onClick={onClose} className="absolute top-14 left-5 z-20 px-3.5 py-2" style={{ backgroundColor: "rgba(255,255,255,0.92)", color: COFFEE, borderRadius: 999, fontSize: 11, fontWeight: 600 }}>稍后完成</button>
         {/* 实时取景画面（相机画面垫在 WebView 底下，透明后透上来）；没起来时用整理前照片兜底 */}
-        {!liveFeed && (
-          <ImageWithFallback src={photo || AFTER_IMG} alt="相机" className="h-full w-full object-cover" />
-        )}
+        {!liveFeed && <div className="h-full w-full flex items-center justify-center" style={{ backgroundColor: "#1a1411", color: WHITE, fontSize: 12 }}>相机预览不可用，请重试</div>}
 
         {/* Vignette */}
         <div
@@ -4711,7 +4819,7 @@ function RewardStep({ photo, onClose }: { photo?: string; onClose: () => void })
         )}
 
         {/* Top instruction */}
-        <div className="absolute top-14 left-0 right-0 px-6">
+        <div className="absolute top-28 left-0 right-0 px-6">
           <div
             className="p-4 flex items-center gap-3"
             style={{
@@ -4744,6 +4852,7 @@ function RewardStep({ photo, onClose }: { photo?: string; onClose: () => void })
               {captureError}
             </p>
           )}
+          <button onClick={() => void chooseFromLibrary()} disabled={busy} className="px-4 py-3" style={{ backgroundColor: "rgba(255,255,255,0.16)", color: WHITE, borderRadius: 999, fontSize: 12 }}>从相册选择</button>
           <button
             onClick={() => {
               setFlash(true);
@@ -4775,13 +4884,14 @@ function RewardStep({ photo, onClose }: { photo?: string; onClose: () => void })
       <div className="relative h-full w-full overflow-hidden" style={{ backgroundColor: LINEN }}>
         <div className="h-full w-full overflow-y-auto pb-10">
           {/* Top bar */}
-          <div className="px-6 pt-14 pb-2">
+          <div className="px-6 pt-14 pb-2 flex items-center justify-between">
             <span
               className="inline-block px-3 py-1"
               style={{ backgroundColor: ORANGE, color: WHITE, borderRadius: 999, fontSize: 10, fontWeight: 600 }}
             >
               整理完成
             </span>
+            <button onClick={onClose} style={{ color: COFFEE, opacity: 0.7, fontSize: 11 }}>稍后完成</button>
           </div>
 
           {/* Title */}
@@ -4889,21 +4999,21 @@ function RewardStep({ photo, onClose }: { photo?: string; onClose: () => void })
               className="flex-1 py-3 text-center"
               style={{ backgroundColor: WHITE, borderRadius: 16, boxShadow: "0 4px 12px rgba(123,92,72,0.06)" }}
             >
-              <p style={{ color: ORANGE, fontSize: 18, fontWeight: 600 }}>3</p>
+              <p style={{ color: ORANGE, fontSize: 18, fontWeight: 600 }}>{areaCount}</p>
               <p style={{ color: COFFEE, opacity: 0.6, fontSize: 10 }}>区域</p>
             </div>
             <div
               className="flex-1 py-3 text-center"
               style={{ backgroundColor: WHITE, borderRadius: 16, boxShadow: "0 4px 12px rgba(123,92,72,0.06)" }}
             >
-              <p style={{ color: ORANGE, fontSize: 18, fontWeight: 600 }}>19</p>
+              <p style={{ color: ORANGE, fontSize: 18, fontWeight: 600 }}>{itemCount}</p>
               <p style={{ color: COFFEE, opacity: 0.6, fontSize: 10 }}>物品</p>
             </div>
             <div
               className="flex-1 py-3 text-center"
               style={{ backgroundColor: WHITE, borderRadius: 16, boxShadow: "0 4px 12px rgba(123,92,72,0.06)" }}
             >
-              <p style={{ color: ORANGE, fontSize: 18, fontWeight: 600 }}>32</p>
+              <p style={{ color: ORANGE, fontSize: 18, fontWeight: 600 }}>{timeBudget}</p>
               <p style={{ color: COFFEE, opacity: 0.6, fontSize: 10 }}>分钟</p>
             </div>
           </div>
@@ -4958,11 +5068,11 @@ function RewardStep({ photo, onClose }: { photo?: string; onClose: () => void })
           className="px-3 py-1 mb-3"
           style={{ backgroundColor: ORANGE, color: WHITE, borderRadius: 999, fontSize: 11 }}
         >
-          新徽章
+          整理完成
         </span>
-        <p style={{ color: COFFEE, fontSize: 22, fontWeight: 600 }}>整理浣熊</p>
+        <p style={{ color: COFFEE, fontSize: 22, fontWeight: 600 }}>这一轮整理完成</p>
         <p style={{ color: COFFEE, opacity: 0.6, fontSize: 13, marginTop: 6 }}>
-          全部3个区域已整理 — 你的空间焕然一新 ✨
+          {areaCount} 个区域 · {itemCount} 件物品 · 方案用时 {timeBudget} 分钟
         </p>
 
         <div className="flex gap-3 mt-5 w-full">
@@ -4970,22 +5080,22 @@ function RewardStep({ photo, onClose }: { photo?: string; onClose: () => void })
             className="flex-1 py-3 text-center"
             style={{ backgroundColor: LINEN, borderRadius: 16 }}
           >
-            <p style={{ color: ORANGE, fontSize: 18, fontWeight: 600 }}>3</p>
+            <p style={{ color: ORANGE, fontSize: 18, fontWeight: 600 }}>{areaCount}</p>
             <p style={{ color: COFFEE, opacity: 0.6, fontSize: 10 }}>区域</p>
           </div>
           <div
             className="flex-1 py-3 text-center"
             style={{ backgroundColor: LINEN, borderRadius: 16 }}
           >
-            <p style={{ color: ORANGE, fontSize: 18, fontWeight: 600 }}>19</p>
+            <p style={{ color: ORANGE, fontSize: 18, fontWeight: 600 }}>{itemCount}</p>
             <p style={{ color: COFFEE, opacity: 0.6, fontSize: 10 }}>物品</p>
           </div>
           <div
             className="flex-1 py-3 text-center"
             style={{ backgroundColor: LINEN, borderRadius: 16 }}
           >
-            <p style={{ color: ORANGE, fontSize: 18, fontWeight: 600 }}>+150</p>
-            <p style={{ color: COFFEE, opacity: 0.6, fontSize: 10 }}>经验值</p>
+            <p style={{ color: ORANGE, fontSize: 18, fontWeight: 600 }}>{timeBudget}</p>
+            <p style={{ color: COFFEE, opacity: 0.6, fontSize: 10 }}>方案分钟</p>
           </div>
         </div>
 
@@ -5097,7 +5207,7 @@ function buildFlowZones(items: NativeItem[]): FlowZone[] {
       top: "3%",
       w: "94%",
       h: "94%",
-      positioned: true,
+      positioned: picked.some((item) => isUsableNativeHint(item.arHint)),
       items: names.length,
       mins: Math.max(2, Math.round(names.length * 1.5)),
       names,
@@ -5128,9 +5238,14 @@ function ZoneSelectStep({
   photo?: string;
   items: NativeItem[];
   onBack: () => void;
-  onNext: (zones: FlowZone[]) => void;
+  onNext: (zones: FlowZone[]) => void | Promise<void>;
 }) {
-  const zones = buildFlowZones(items);
+  const [manualItems, setManualItems] = useState<NativeItem[]>([]);
+  const [manualName, setManualName] = useState("");
+  const [manualError, setManualError] = useState<string | null>(null);
+  const [starting, setStarting] = useState(false);
+  const allItems = [...items, ...manualItems];
+  const zones = buildFlowZones(allItems);
   const [selected, setSelected] = useState<number[]>(zones.map((z) => z.n));
 
   const toggle = (n: number) =>
@@ -5139,6 +5254,12 @@ function ZoneSelectStep({
   const clearAll = () => setSelected([]);
   const totalItems = zones.filter((z) => selected.includes(z.n)).reduce((s, z) => s + z.items, 0);
   const totalMins = zones.filter((z) => selected.includes(z.n)).reduce((s, z) => s + z.mins, 0);
+  const startPlan = async () => {
+    if (selected.length === 0 || starting) return;
+    setStarting(true);
+    try { await onNext(zones.filter((z) => selected.includes(z.n))); }
+    finally { setStarting(false); }
+  };
 
   return (
     <div className="h-full w-full flex flex-col" style={{ backgroundColor: LINEN }}>
@@ -5157,8 +5278,26 @@ function ZoneSelectStep({
         </div>
       </div>
 
-      {/* 检测区：规整选框（选中橙 / 未选蓝灰），徽章+勾点 */}
+      {/* 检测区：识别为空时允许用户手动补录，不生成示例物品。 */}
       <p className="px-5 mt-4 mb-2" style={{ color: COFFEE, fontSize: 12.5, fontWeight: 700 }}>检测区</p>
+      {items.length === 0 && (
+        <div className="mx-5 mb-3 p-4" style={{ backgroundColor: WHITE, borderRadius: 16 }}>
+          <p style={{ color: COFFEE, opacity: 0.7, fontSize: 12 }}>没有识别到物品，可以手动补录后继续。</p>
+          <div className="flex gap-2 mt-3">
+            <input value={manualName} onChange={(e) => setManualName(e.target.value)} placeholder="例如：书本" className="flex-1 px-3 py-2 outline-none" style={{ backgroundColor: LINEN, borderRadius: 10, color: COFFEE, fontSize: 12 }} />
+            <button disabled={!manualName.trim()} onClick={async () => {
+              const name = manualName.trim(); setManualError(null);
+              try {
+                const state = await nativeRequest<NativeState>("item.add", { name, category: "收纳工具" });
+                const saved = state.scannedItems.find((item) => item.name === name);
+                if (!saved) throw new Error("物品保存失败，请重试");
+                setManualItems((prev) => [...prev, saved]); setManualName("");
+              } catch (error) { setManualError(error instanceof Error ? error.message : "物品保存失败，请重试"); }
+            }} className="px-3 py-2" style={{ backgroundColor: ORANGE, color: WHITE, borderRadius: 10, fontSize: 12 }}>添加</button>
+          </div>
+          {manualError && <p className="mt-2" style={{ color: "#C25C43", fontSize: 11 }}>{manualError}</p>}
+        </div>
+      )}
       <div className="mx-5 relative overflow-hidden" style={{ borderRadius: 18, aspectRatio: "4/3" }}>
         <ImageWithFallback src={photo || ROOM_IMG} alt="空间场景" className="h-full w-full object-cover" />
         <div className="absolute inset-0" style={{ backgroundColor: "rgba(26,20,17,0.18)" }} />
@@ -5282,8 +5421,8 @@ function ZoneSelectStep({
             清除
           </button>
           <button
-            onClick={() => onNext(zones.filter((z) => selected.includes(z.n)))}
-            disabled={selected.length === 0}
+            onClick={() => void startPlan()}
+            disabled={selected.length === 0 || starting}
             className="flex-[1.4] py-3"
             style={{
               backgroundColor: selected.length > 0 ? ORANGE : "#EADFCE",
@@ -5294,7 +5433,7 @@ function ZoneSelectStep({
               boxShadow: selected.length > 0 ? "0 6px 18px rgba(250,136,58,0.32)" : "none",
             }}
           >
-            开始 →
+            {starting ? "生成中…" : "开始 →"}
           </button>
         </div>
       </div>
@@ -5576,7 +5715,7 @@ function groupZoneItems(names: string[]): { label: string; items: string[] }[] {
  * 走到第几步就显示第几张图。想回到「真实识别驱动」把它改成 false 即可，
  * 那时画面用真实照片、分组来自识别结果、步骤数按识别出的组数算。
  */
-const DEMO_GUIDE = true;
+const DEMO_GUIDE = false;
 
 const DEMO_GROUPS = [
   { label: "物品", items: ["笔", "笔记本", "收纳盒"] },
@@ -5623,11 +5762,13 @@ const DEMO_STEPS = [
 function ARGuideStep({
   photo,
   zones,
+  nativePlan,
   onBack,
   onComplete,
 }: {
   photo?: string;
   zones: FlowZone[];
+  nativePlan?: NativePlan | null;
   onBack: () => void;
   onComplete: () => void;
 }) {
@@ -5635,7 +5776,15 @@ function ARGuideStep({
   const [stepIdx, setStepIdx] = useState(0); // 0=清理 1=分类 2..=逐组收纳
   const [flow, setFlow] = useState<"guide" | "celebrate" | "checklist">("guide");
   const [checkIdx, setCheckIdx] = useState(0);
-  const totalZones = zones.length;
+  const [stepError, setStepError] = useState<string | null>(null);
+  const advancing = useRef(false);
+  useEffect(() => {
+    if (!nativePlan?.steps.length) return;
+    const activeIndex = nativePlan.steps.findIndex((candidate) => candidate.status === "active");
+    setStepIdx(activeIndex >= 0 ? activeIndex : nativePlan.steps.length - 1);
+    if (nativePlan.steps.every((candidate) => candidate.status === "done")) setFlow("celebrate");
+  }, [nativePlan?.id]);
+  const totalZones = nativePlan ? 1 : zones.length;
   const zone = zones[zoneIdx];
   if (!zone) {
     return (
@@ -5648,8 +5797,10 @@ function ARGuideStep({
   // 真机演示锁死：引导五步用预先生成好的成品图 + 写定的文案，走到哪一步就显示哪张。
   // 关掉这个开关就回到真实识别驱动的原逻辑（groups 来自识别结果、画面用真实照片）。
   const groups = DEMO_GUIDE ? DEMO_GROUPS : groupZoneItems(zone.names);
-  const zoneTasks = buildZoneTasks(zones);
-  const totalSteps = DEMO_GUIDE ? DEMO_STEPS.length : 2 + groups.length;
+  const zoneTasks = nativePlan
+    ? [{ zone: 1, label: "整理方案", color: ORANGE, tasks: nativePlan.steps.map((step) => ({ id: step.id, text: step.title })) }]
+    : buildZoneTasks(zones);
+  const totalSteps = nativePlan?.steps.length || (DEMO_GUIDE ? DEMO_STEPS.length : 2 + groups.length);
   const isPrepare = stepIdx === 0;
   const isGroup = stepIdx === 1;
   const placeIdx = Math.min(Math.max(stepIdx - 2, 0), Math.max(groups.length - 1, 0));
@@ -5657,9 +5808,12 @@ function ARGuideStep({
   const demoStep = DEMO_GUIDE ? DEMO_STEPS[Math.min(stepIdx, DEMO_STEPS.length - 1)] : null;
   // 演示图本身已经画好分区/整理结果，不再往上面叠示意框，避免两层标注打架。
   const stepImage = demoStep ? demoStep.image : photo || ROOM_IMG;
-  const showOverlay = !DEMO_GUIDE;
+  const showOverlay = !DEMO_GUIDE && !nativePlan;
 
-  const stepMeta = demoStep
+  const nativeStep = nativePlan?.steps[stepIdx];
+  const stepMeta = nativeStep
+    ? { title: nativeStep.title, desc: nativeStep.detail, btn: stepIdx + 1 >= totalSteps ? "完成收纳" : "下一步" }
+    : demoStep
     ? { title: demoStep.title, desc: demoStep.desc, btn: stepIdx + 1 >= totalSteps ? "完成收纳" : "下一步" }
     : isPrepare
     ? {
@@ -5679,9 +5833,17 @@ function ARGuideStep({
         btn: stepIdx + 1 >= totalSteps ? "完成收纳" : "下一步",
       };
 
-  const advanceStep = () => {
-    if (stepIdx + 1 < totalSteps) setStepIdx(stepIdx + 1);
-    else setFlow("celebrate");
+  const advanceStep = async () => {
+    if (advancing.current) return;
+    advancing.current = true;
+    setStepError(null);
+    try {
+      await completeNativePlan(nativeStep?.id);
+      if (stepIdx + 1 < totalSteps) setStepIdx(stepIdx + 1);
+      else setFlow("celebrate");
+    } catch (error) {
+      setStepError(error instanceof Error ? error.message : "步骤保存失败，请重试");
+    } finally { advancing.current = false; }
   };
 
   const advanceZone = () => {
@@ -5697,6 +5859,7 @@ function ARGuideStep({
 
   return (
     <div className="h-full w-full flex flex-col" style={{ backgroundColor: "#13110f" }}>
+      {stepError && <p className="absolute top-14 left-5 right-5 z-50 px-3 py-2" style={{ backgroundColor: "#FFF4F1", color: "#9A4230", borderRadius: 12, fontSize: 11 }}>{stepError}</p>}
       {/* 全屏真实照片 */}
       <div className="relative flex-1 overflow-hidden">
         <ImageWithFallback src={stepImage} alt="实时画面" className="h-full w-full object-cover" />
@@ -5875,7 +6038,7 @@ function ARGuideStep({
         </p>
 
         {/* 清理步：清出去 → 示意 */}
-        {isPrepare && (
+        {!nativePlan && isPrepare && (
           <div className="flex items-center mt-4 mb-1 px-1">
             <div className="h-16 w-20 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: LINEN }}>
               <Trash2 size={26} color={COFFEE} />
@@ -5893,7 +6056,7 @@ function ARGuideStep({
         )}
 
         {/* 分类步：橙色分区示意卡 */}
-        {isGroup && (
+        {!nativePlan && isGroup && (
           <div className="flex gap-2 mt-3.5 mb-1">
             {groups.map((g) => (
               <div
@@ -5915,7 +6078,7 @@ function ARGuideStep({
         )}
 
         {/* 收纳步：蓝色格子示意，当前组高亮 */}
-        {!isPrepare && !isGroup && (
+        {!nativePlan && !isPrepare && !isGroup && (
           <>
             <div className="mt-3.5" style={{ height: 116, display: "flex", gap: 8 }}>
               {groups.map((g, i) => {
@@ -5948,13 +6111,13 @@ function ARGuideStep({
 
         {/* 底部按钮：跳过 + 绿色主按钮 */}
         <div className="flex gap-2 mt-4">
-          <button
+          {!nativePlan && <button
             onClick={advanceStep}
             className="px-5 py-3.5 flex items-center justify-center active:scale-[0.98] transition-transform"
             style={{ backgroundColor: LINEN, color: COFFEE, borderRadius: 999, fontSize: 12, fontWeight: 700 }}
           >
             <SkipForward size={13} style={{ marginRight: 5 }} /> 跳过
-          </button>
+          </button>}
           <button
             onClick={advanceStep}
             className="flex-1 py-3.5 flex items-center justify-center gap-1.5 active:scale-[0.98] transition-transform"
@@ -5987,9 +6150,9 @@ function ARGuideStep({
             >
               <Check size={30} color={WHITE} strokeWidth={3} />
             </div>
-            <p style={{ color: WHITE, fontSize: 21, fontWeight: 700, marginTop: 14 }}>已整洁啦</p>
+            <p style={{ color: WHITE, fontSize: 21, fontWeight: 700, marginTop: 14 }}>整理步骤已完成</p>
             <p style={{ color: WHITE, opacity: 0.72, fontSize: 12, marginTop: 6 }}>
-              {zoneTasks[zoneIdx]?.label} 已经收拾干净
+              保存实际完成照，记录这一轮整理
             </p>
           </div>
           <div className="absolute left-5 right-5" style={{ bottom: 34 }}>
@@ -6431,7 +6594,9 @@ function ProofCaptureStep({
   const [liveFeed, setLiveFeed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const scanInit = useRef<Promise<unknown> | null>(null);
   const previewRef = useRef<HTMLDivElement>(null);
+  useEffect(() => () => { void nativeRequest("capture.after.cancel").catch(() => undefined); }, []);
 
   const rectOf = () => {
     const r = previewRef.current?.getBoundingClientRect();
@@ -6474,7 +6639,7 @@ function ProofCaptureStep({
     setFlash(true);
     setTimeout(() => setFlash(false), 180);
     try {
-      const shot = await nativeRequest<{ preview?: string }>("camera.capture", {});
+      const shot = await nativeRequest<{ preview?: string }>("camera.capture", { purpose: "after-preview" });
       const src = shot.preview;
       if (!src) {
         setError("没有拿到照片，光线亮一点再试一次");
@@ -6489,6 +6654,21 @@ function ProofCaptureStep({
       setBusy(false);
     }
   }
+
+  const saveProof = async () => {
+    if (busy) return;
+    setBusy(true); setError(null);
+    try { await nativeRequest("capture.after.commit"); onDone(); }
+    catch (error) { setError(error instanceof Error ? error.message : "完成照保存失败，请重试"); }
+    finally { setBusy(false); }
+  };
+  const retakeProof = async () => {
+    if (busy) return;
+    setCaptured(false); setProofShot(null); setError(null);
+    void nativeRequest("capture.after.cancel").catch(() => undefined);
+    try { const result = await nativeRequest<{ ok: boolean }>("camera.preview.start", rectOf()); setLiveFeed(result.ok === true); }
+    catch { setLiveFeed(false); }
+  };
 
   return (
     <div className="h-full w-full flex flex-col relative" style={{ backgroundColor: "#130F09" }}>
@@ -6581,7 +6761,8 @@ function ProofCaptureStep({
             <div style={{ padding: "20px 20px 44px", backgroundColor: "#130F09" }}>
               <motion.button
                 whileTap={{ scale: 0.97 }}
-                onClick={onDone}
+                onClick={() => void saveProof()}
+                disabled={busy}
                 style={{
                   width: "100%", padding: "16px 0",
                   backgroundColor: ORANGE, color: WHITE,
@@ -6593,7 +6774,7 @@ function ProofCaptureStep({
                 完成整理 ✦
               </motion.button>
               <button
-                onClick={() => setCaptured(false)}
+                onClick={() => void retakeProof()}
                 style={{
                   width: "100%", marginTop: 12, padding: "12px 0",
                   backgroundColor: "transparent", color: "rgba(255,255,255,0.5)",
@@ -6602,6 +6783,7 @@ function ProofCaptureStep({
               >
                 重新拍摄
               </button>
+              {error && <p style={{ color: "#E25A4A", fontSize: 12, marginTop: 10, textAlign: "center" }}>{error}</p>}
             </div>
           </motion.div>
         )}
@@ -6802,6 +6984,7 @@ type RelightStep =
   | "tune"
   | "plandeck"
   | "zones"
+  | "guide"
   | "proof"
   | "complete";
 
@@ -6817,36 +7000,50 @@ export function RelightFlow({ spaceId, spaceName, spaceVivid, onClose, onComplet
   const [relightMode, setRelightMode] = useState<"tune" | "new">("tune");
   const [relightAssets, setRelightAssets] = useState<CapturedAsset[]>([]);
   const [relightItems, setRelightItems] = useState<NativeItem[]>([]);
+  const [relightZones, setRelightZones] = useState<FlowZone[]>([]);
+  const [nativePlan, setNativePlan] = useState<NativePlan | null>(null);
+  const [flowError, setFlowError] = useState<string | null>(null);
+  const [processing, setProcessing] = useState(false);
+  const flowGeneration = useRef(0);
+  useEffect(() => () => {
+    flowGeneration.current += 1;
+    void nativeRequest("scan.cancel").catch(() => undefined);
+  }, []);
   // 方案卡也跟着这次真实拍到的物品走，和主线用同一套算法。
   const relightPlans = personalizePlans(relightItems);
 
   return (
     <div className="absolute inset-0 z-50" style={{ backgroundColor: LINEN }}>
+      {processing && <div className="absolute inset-0 z-[90] flex flex-col items-center justify-center gap-3" style={{ backgroundColor: "rgba(20,15,12,0.72)" }}><Loader2 size={26} color={WHITE} className="animate-spin" /><p style={{ color: WHITE, fontSize: 13, fontWeight: 600 }}>正在处理本批照片…</p><button onClick={onClose} style={{ color: WHITE, fontSize: 12 }}>取消并返回</button></div>}
+      {flowError && <button onClick={() => setFlowError(null)} className="absolute top-3 left-5 right-5 z-[80] px-4 py-3 text-left" style={{ backgroundColor: "#FFF4F1", color: "#9A4230", borderRadius: 14, fontSize: 12 }}>{flowError} · 点击关闭</button>}
       {step === "capture" && (
         <CaptureStep
           onClose={onClose}
           on完成={(assets) => {
             setRelightAssets(assets);
+            const generation = ++flowGeneration.current;
+            setProcessing(true);
             void (async () => {
               try {
-                // 同样的 8 秒上限：识别没跑完也先进下一步，不等到按钮像卡住。
-                const result = (await Promise.race([
-                  nativeRequest<{ items?: NativeItem[] }>("scan.await", {
-                    captureIDs: assets.map((asset) => asset.id),
-                  }).catch(() => undefined),
-                  new Promise<undefined>((resolve) => window.setTimeout(() => resolve(undefined), 8000)),
-                ])) as { items?: NativeItem[] } | undefined;
-                let items = result?.items ?? [];
-                if (items.length === 0) {
-                  const state = await nativeRequest<NativeState>("state.get").catch(() => undefined);
-                  items = state?.scannedItems ?? [];
-                }
+                const result = await nativeRequest<{ items?: NativeItem[] }>("scan.await", { captureIDs: assets.map((asset) => asset.id) });
+                if (flowGeneration.current !== generation) return;
+                const items = result.items ?? [];
                 setRelightItems(items);
-              } catch {
+                const state = await nativeRequest<NativeState>("state.get");
+                if (flowGeneration.current !== generation) return;
+                const space = state.spaces.find((candidate) => candidate.id === spaceId);
+                const original = space?.activePlan ?? space?.completedPlans[0];
+                if (original) {
+                  const base = personalizePlans(items).find((plan) => plan.id === (original.style === "隐藏清爽" ? "efficient" : original.style === "温暖可见" ? "living" : "breathe")) ?? GEN_PLANS[0];
+                  setChosen({ ...base, name: "原方案", vibe: original.summary, minutes: original.timeBudget });
+                }
+              } catch (error) {
+                if (flowGeneration.current !== generation) return;
                 setRelightItems([]);
+                setFlowError(error instanceof Error ? error.message : "识别未完成，请在分区页手动补录。");
               }
-              setStep("analyzing");
-            })();
+              if (flowGeneration.current === generation) setStep("analyzing");
+            })().finally(() => { if (flowGeneration.current === generation) setProcessing(false); });
           }}
         />
       )}
@@ -6886,14 +7083,25 @@ export function RelightFlow({ spaceId, spaceName, spaceVivid, onClose, onComplet
           photo={relightAssets[0]?.src}
           items={relightItems}
           onBack={() => setStep(relightMode === "tune" ? "tune" : "plandeck")}
-          onNext={() => setStep("proof")}
+          onNext={async (zones) => {
+            try {
+              if (zones.length === 0) throw new Error("请至少选择一个整理区域。");
+              const state = await nativeRequest<NativeState>("state.get");
+              if (state.selectedSpaceID !== spaceId) throw new Error("空间已改变，请返回空间页重试。");
+              const updated = await nativeRequest<NativeState>("plan.generate", { style: chosen.id === "efficient" ? "隐藏清爽" : chosen.id === "living" ? "温暖可见" : "快速复原", minutes: chosen.minutes <= 5 ? 5 : chosen.minutes >= 60 ? 60 : 10, goal: chosen.vibe, focusZone: zones.map((zone) => zone.label).join("、") });
+              const plan = updated.spaces.find((space) => space.id === spaceId)?.activePlan;
+              if (!plan?.steps.length) throw new Error("未生成可执行步骤，请重试。");
+              setNativePlan(plan); setRelightZones(zones); setFlowError(null); setStep("guide");
+            } catch (error) { setFlowError(error instanceof Error ? error.message : "方案保存失败，请重试。"); }
+          }}
         />
       )}
+      {step === "guide" && <ARGuideStep photo={relightAssets[0]?.src} zones={relightZones} nativePlan={nativePlan} onBack={() => setStep("zones")} onComplete={() => setStep("proof")} />}
       {step === "proof" && (
         <ProofCaptureStep
           spaceName={spaceName}
           beforePhoto={relightAssets[0]?.src}
-          onBack={() => setStep("zones")}
+          onBack={() => setStep("guide")}
           onDone={() => setStep("complete")}
         />
       )}

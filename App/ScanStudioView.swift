@@ -72,6 +72,11 @@ final class ScanStudioModel: ObservableObject {
             permissionError = "没有相机权限。请到「设置 → 隐私与安全性 → 相机」里允许「灵爪收纳」后重试。"
             return
         }
+        guard await engine.waitUntilReady() else {
+            permissionError = "相机暂不可用，请关闭其他正在使用相机的应用后重试。"
+            return
+        }
+        permissionError = nil
         if mode == .ar { beginAR() }
     }
 
@@ -208,7 +213,11 @@ final class ScanStudioModel: ObservableObject {
     func finishAR() async -> ScanStudioResult? {
         guard !detections.isEmpty else { return nil }
         var images: [UIImage] = []
-        if let frame = await engine.capturePhoto() { images.append(frame) }
+        guard let frame = await engine.capturePhoto() else {
+            showNotice("未能取得环境照片，请对准后重试")
+            return nil
+        }
+        images.append(frame)
         return ScanStudioResult(thumbnails: images.compactMap { Self.thumbnailDataURL(for: $0) }, images: images)
     }
 

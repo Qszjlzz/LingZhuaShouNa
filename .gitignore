@@ -1,6 +1,7 @@
 # Xcode and Apple build output
 DerivedData/
 .derivedData/
+.derivedData-*/
 build/
 *.xcresult/
 *.xcactivitylog

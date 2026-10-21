@@ -1,7 +1,7 @@
-import { Home, Grid3x3, Users, User, Camera } from "lucide-react";
+import { Home, Grid3x3, FolderKanban, User, Camera } from "lucide-react";
 import { COFFEE, ORANGE, WHITE } from "./theme";
 
-export type Tab = "spatial" | "classification" | "community" | "mine";
+export type Tab = "spatial" | "classification" | "project" | "mine";
 
 export function BottomNav({
   active,
@@ -36,10 +36,10 @@ export function BottomNav({
         />
         <div className="w-14" />
         <NavIcon
-          icon={<Users size={22} />}
-          label="社区"
-          active={active === "community"}
-          onClick={() => onChange("community")}
+          icon={<FolderKanban size={22} />}
+          label="项目"
+          active={active === "project"}
+          onClick={() => onChange("project")}
         />
         <NavIcon
           icon={<User size={22} />}

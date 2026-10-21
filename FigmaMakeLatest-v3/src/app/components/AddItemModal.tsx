@@ -2,21 +2,41 @@ import { useState } from "react";
 import { Camera, Type, X, Check } from "lucide-react";
 import { COFFEE, ORANGE, LINEN, BLUE, WHITE, SOFT } from "./theme";
 
-type Mode = "choice" | "photo" | "text";
+type Mode = "choice" | "text";
 
 export function AddItemModal({
   onClose,
   onAdd,
+  onCamera,
   subgroups: subgroupsProp,
+  selectedSubgroup,
 }: {
   onClose: () => void;
-  onAdd: (item: { name: string; subgroup: string }) => void;
+  onAdd: (item: { name: string; subgroup: string }) => Promise<void>;
+  onCamera?: () => void;
   subgroups?: string[];
+  selectedSubgroup?: string;
 }) {
-  const subgroups = subgroupsProp && subgroupsProp.length > 0 ? subgroupsProp : ["书籍", "文具", "衣物", "电子产品", "收纳工具", "玩偶杂物"];
+  const subgroups = subgroupsProp && subgroupsProp.length > 0 ? subgroupsProp : ["未分组"];
   const [mode, setMode] = useState<Mode>("choice");
   const [name, setName] = useState("");
-  const [subgroup, setSubgroup] = useState(subgroups[0]);
+  const [subgroup, setSubgroup] = useState(selectedSubgroup && subgroups.includes(selectedSubgroup) ? selectedSubgroup : subgroups[0]);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const save = async () => {
+    if (!name.trim() || saving) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await onAdd({ name: name.trim(), subgroup });
+      onClose();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "保存失败，请重试");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <div
@@ -41,7 +61,6 @@ export function AddItemModal({
         <div className="flex items-center justify-between mb-5">
           <p style={{ color: COFFEE, fontSize: 17, fontWeight: 600 }}>
             {mode === "choice" && "添加新物品"}
-            {mode === "photo" && "拍照添加"}
             {mode === "text" && "手动填写"}
           </p>
           <button
@@ -60,7 +79,7 @@ export function AddItemModal({
               bg={ORANGE}
               title="拍照"
               sub="AI 自动识别"
-              onClick={() => setMode("photo")}
+              onClick={() => { onClose(); onCamera?.(); }}
             />
             <ChoiceCard
               icon={<Type size={26} color={WHITE} />}
@@ -69,58 +88,6 @@ export function AddItemModal({
               sub="填写物品信息"
               onClick={() => setMode("text")}
             />
-          </div>
-        )}
-
-        {mode === "photo" && (
-          <div>
-            <div
-              className="h-48 w-full flex flex-col items-center justify-center mb-4"
-              style={{ backgroundColor: LINEN, borderRadius: 20 }}
-            >
-              <div
-                className="h-16 w-16 rounded-full flex items-center justify-center mb-3"
-                style={{ backgroundColor: ORANGE, boxShadow: "0 8px 20px rgba(250,136,58,0.35)" }}
-              >
-                <Camera size={28} color={WHITE} />
-              </div>
-              <p style={{ color: COFFEE, fontSize: 13, fontWeight: 600 }}>点击拍摄</p>
-              <p style={{ color: COFFEE, opacity: 0.55, fontSize: 11, marginTop: 2 }}>
-                AI will detect & tag the book
-              </p>
-            </div>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setMode("choice")}
-                className="flex-1 py-3"
-                style={{
-                  backgroundColor: LINEN,
-                  color: COFFEE,
-                  borderRadius: 999,
-                  fontSize: 13,
-                  fontWeight: 600,
-                }}
-              >
-                Back
-              </button>
-              <button
-                onClick={() => {
-                  onAdd({ name: "新物品", subgroup });
-                  onClose();
-                }}
-                className="flex-1 py-3 flex items-center justify-center gap-2"
-                style={{
-                  backgroundColor: ORANGE,
-                  color: WHITE,
-                  borderRadius: 999,
-                  fontSize: 13,
-                  fontWeight: 600,
-                  boxShadow: "0 6px 16px rgba(250,136,58,0.3)",
-                }}
-              >
-                <Check size={16} /> 确认
-              </button>
-            </div>
           </div>
         )}
 
@@ -189,14 +156,11 @@ export function AddItemModal({
                   fontWeight: 600,
                 }}
               >
-                Back
+                返回
               </button>
               <button
-                disabled={!name.trim()}
-                onClick={() => {
-                  onAdd({ name: name.trim(), subgroup });
-                  onClose();
-                }}
+                disabled={!name.trim() || saving}
+                onClick={() => void save()}
                 className="flex-1 py-3 flex items-center justify-center gap-2"
                 style={{
                   backgroundColor: name.trim() ? ORANGE : SOFT,
@@ -207,9 +171,10 @@ export function AddItemModal({
                   boxShadow: name.trim() ? "0 6px 16px rgba(250,136,58,0.3)" : "none",
                 }}
               >
-                <Check size={16} /> 保存物品
+                <Check size={16} /> {saving ? "保存中" : "保存物品"}
               </button>
             </div>
+            {error && <p role="alert" className="mt-3 text-xs" style={{ color: "#B44740" }}>{error}</p>}
           </div>
         )}
       </div>

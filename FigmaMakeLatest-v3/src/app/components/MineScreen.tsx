@@ -1,64 +1,72 @@
 import { useState } from "react";
-import { ChevronRight, Settings, Calendar, Users, Bookmark, HelpCircle, LogOut } from "lucide-react";
-import { Raccoon } from "./Raccoon";
+import { ChevronRight, Settings, FolderKanban, Users, Bookmark, HelpCircle, LogOut, Lock } from "lucide-react";
+import profileAvatar from "../../assets/profile-avatar.png";
 import { COFFEE, ORANGE, LINEN, WHITE, BLUE, SOFT } from "./theme";
-import { MyPlansScreen } from "./MyPlansScreen";
 import { SavedPostsScreen } from "./SavedPostsScreen";
 import { FriendsScreen } from "./FriendsScreen";
-import { BadgesScreen } from "./BadgesScreen";
+import { BadgesScreen, badgesFromState } from "./BadgesScreen";
 import { AISettingsScreen } from "./AISettingsScreen";
+import type { NativeState } from "../nativeBridge";
+import { plansFromState } from "../projectPlans";
 
-const stats = [
-  { label: "已追踪物品", value: "248" },
-  { label: "已整理空间", value: "12" },
-  { label: "已获得徽章", value: "7" },
-];
-
-const badges = ["🦝", "✨", "🏆", "🌿", "📦", "🎯", "💎"];
-
-export function MineScreen() {
-  const [openPlans, setOpenPlans] = useState(false);
+export function MineScreen({ nativeState, onNativeChange, onOpenProjects }: { nativeState?: NativeState | null; onNativeChange?: () => void; onOpenProjects?: () => void } = {}) {
   const [openSaved, setOpenSaved] = useState(false);
   const [openFriends, setOpenFriends] = useState(false);
   const [openBadges, setOpenBadges] = useState(false);
+  const [initialBadgeId, setInitialBadgeId] = useState<string | null>(null);
   const [openSettings, setOpenSettings] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const isBrowserPreview = !nativeState && !window.webkit?.messageHandlers?.smartpaw;
+  const badges = badgesFromState(nativeState);
+  const earnedBadges = badges.filter((badge) => !badge.locked);
+  const displayedBadges = earnedBadges.length ? earnedBadges : badges;
+  const stats = [
+    { label: "已追踪物品", value: nativeState ? nativeState.profileStats?.trackedItemCount ?? nativeState.spaces.reduce((count, space) => count + space.detectedItems.length, 0) : isBrowserPreview ? 248 : 0 },
+    { label: "已整理空间", value: nativeState ? nativeState.profileStats?.organizedSpaceCount ?? nativeState.spaces.filter((space) => space.completedPlans.length > 0).length : isBrowserPreview ? 12 : 0 },
+    { label: "已获得徽章", value: earnedBadges.length },
+  ];
 
-  if (openPlans) return <MyPlansScreen onBack={() => setOpenPlans(false)} />;
-  if (openSaved) return <SavedPostsScreen onBack={() => setOpenSaved(false)} />;
-  if (openFriends) return <FriendsScreen onBack={() => setOpenFriends(false)} />;
-  if (openBadges) return <BadgesScreen onBack={() => setOpenBadges(false)} />;
+  const openBadge = (id: string | null) => {
+    setInitialBadgeId(id);
+    setOpenBadges(true);
+  };
+
+  const showNotice = (message: string) => {
+    setNotice(message);
+    window.setTimeout(() => setNotice((current) => current === message ? null : current), 1800);
+  };
+
+  if (openSaved) return <SavedPostsScreen nativeState={nativeState} onNativeChange={onNativeChange} onBack={() => setOpenSaved(false)} />;
+  if (openFriends) return <FriendsScreen nativeState={nativeState} onNativeChange={onNativeChange} onBack={() => setOpenFriends(false)} />;
+  if (openBadges) return <BadgesScreen nativeState={nativeState} initialBadgeId={initialBadgeId} onBack={() => setOpenBadges(false)} />;
   if (openSettings) return <AISettingsScreen onBack={() => setOpenSettings(false)} />;
 
   const menu: { icon: any; label: string; sub: string; onClick?: () => void }[] = [
-    { icon: Calendar, label: "我的方案", sub: "3个进行中", onClick: () => setOpenPlans(true) },
-    { icon: Bookmark, label: "已保存帖子", sub: "24", onClick: () => setOpenSaved(true) },
+    // The bottom tab is named “项目”, while the personal-page entry keeps the
+    // Figma label “我的计划” and opens the same project/plan route.
+    { icon: FolderKanban, label: "我的计划", sub: `${nativeState || isBrowserPreview ? plansFromState(nativeState).length : 0} 个计划`, onClick: onOpenProjects },
+    { icon: Bookmark, label: "已保存帖子", sub: nativeState ? String(nativeState.favorites.length) : isBrowserPreview ? "24" : "0", onClick: () => setOpenSaved(true) },
     { icon: Users, label: "好友", sub: "邀请和分享", onClick: () => setOpenFriends(true) },
     { icon: Settings, label: "设置", sub: "云端识别与方案", onClick: () => setOpenSettings(true) },
-    { icon: HelpCircle, label: "帮助与反馈", sub: "" },
-    { icon: LogOut, label: "退出登录", sub: "" },
+    { icon: HelpCircle, label: "帮助与反馈", sub: "", onClick: () => showNotice("本地演示暂未接入帮助与反馈") },
+    { icon: LogOut, label: "退出登录", sub: "", onClick: () => showNotice("本地版本未接入账号登录") },
   ];
 
   return (
     <div className="h-full w-full overflow-y-auto pb-32" style={{ backgroundColor: WHITE }}>
       <div className="px-6 pt-14 pb-6 flex flex-col items-center text-center">
-        <div
-          className="h-24 w-24 rounded-full flex items-center justify-center mb-4"
-          style={{
-            background: `radial-gradient(circle, ${LINEN} 0%, ${SOFT} 100%)`,
-            boxShadow: `0 0 0 6px rgba(250,136,58,0.08)`,
-          }}
-        >
-          <Raccoon size={76} />
+        <div className="relative h-32 w-32 mb-4">
+          <img src={profileAvatar} alt="Sarah 的浣熊头像" className="absolute -inset-2 h-36 w-36 max-w-none" />
         </div>
         <p style={{ color: COFFEE, fontSize: 22, fontWeight: 600 }}>Sarah Chen</p>
         <p style={{ color: COFFEE, opacity: 0.55, fontSize: 13, marginTop: 4 }}>
-          @sarah · 加入于 2026年3月
+          @sarah · 于 2026 年 5 月加入
         </p>
         <span
           className="mt-3 px-3 py-1"
           style={{ backgroundColor: LINEN, color: COFFEE, borderRadius: 999, fontSize: 11 }}
         >
-          等级 4 · 整理大师
+          4 级 · 整洁大师
         </span>
       </div>
 
@@ -86,24 +94,26 @@ export function MineScreen() {
       <div className="px-6 mt-7">
         <div className="flex items-center justify-between mb-3">
           <p style={{ color: COFFEE, fontSize: 15, fontWeight: 600 }}>徽章</p>
-          <button onClick={() => setOpenBadges(true)} style={{ color: ORANGE, fontSize: 12 }}>
+          <button onClick={() => openBadge(null)} style={{ color: ORANGE, fontSize: 12 }}>
             查看全部
           </button>
         </div>
         <div className="overflow-x-auto">
           <div className="flex gap-3" style={{ width: "max-content" }}>
-            {badges.map((b, i) => (
+            {displayedBadges.map((b, i) => (
               <button
-                key={i}
-                onClick={() => setOpenBadges(true)}
-                className="h-14 w-14 rounded-2xl flex items-center justify-center"
+                key={b.id}
+                aria-label={`${b.name}${b.locked ? "，尚未解锁" : "，已获得"}`}
+                onClick={() => openBadge(b.id)}
+                className="relative h-14 w-14 rounded-2xl flex items-center justify-center"
                 style={{
-                  backgroundColor: i === 0 ? ORANGE : LINEN,
+                  backgroundColor: i === 0 && !b.locked ? ORANGE : LINEN,
                   fontSize: 24,
-                  boxShadow: i === 0 ? "0 6px 16px rgba(250,136,58,0.3)" : "none",
+                  boxShadow: i === 0 && !b.locked ? "0 6px 16px rgba(250,136,58,0.3)" : "none",
                 }}
               >
-                {b}
+                <span style={{ filter: b.locked ? "grayscale(1)" : "none", opacity: b.locked ? 0.45 : 1 }}>{b.emoji}</span>
+                {b.locked && <Lock size={12} color={COFFEE} className="absolute bottom-1 right-1" />}
               </button>
             ))}
           </div>
@@ -139,6 +149,7 @@ export function MineScreen() {
           );
         })}
       </div>
+      {notice && <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-full" style={{ backgroundColor: COFFEE, color: WHITE, fontSize: 12 }} role="status">{notice}</div>}
     </div>
   );
 }
