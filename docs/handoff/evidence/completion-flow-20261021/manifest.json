@@ -1,0 +1,12 @@
+{
+  "date": "2026-10-21",
+  "web_asset": "index-CghoGBxs.js",
+  "web_asset_sha256": "ba5e2fb3303131098d2b2018c0631edd0f496118d0dad32cde50a9747d503969",
+  "web_index_sha256": "b581524de250b32500b8d4b50536b3f05223c7a144b520b85e5d0ca1bfadcecc",
+  "dist_equals_bundled_resources": true,
+  "ios_app_equals_bundled_resources": true,
+  "ios_scheme": "SmartPaw",
+  "ios_configuration": "Debug",
+  "simulator": "iPhone 16 Pro / iOS 18.5",
+  "scope": "Latest build installed and launched to spatial map. Latest completion-photo to map-achievement route verified by production web smoke with simulated native bridge; not re-exercised in native simulator."
+}

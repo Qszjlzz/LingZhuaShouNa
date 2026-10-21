@@ -4696,15 +4696,57 @@ function TaskStep({ plan, onBack, onComplete, onFinish }: {
 const AFTER_IMG =
   "https://images.unsplash.com/photo-1749705319317-f9a2bf24fe3d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080";
 
+function playCompletionBurst(origin: HTMLElement) {
+  const { left, top, width, height } = origin.getBoundingClientRect();
+  const cx = left + width / 2;
+  const cy = top + height / 2;
+  const fragments = [
+    { angle: -90, dist: 58, size: 9, color: ORANGE },
+    { angle: -38, dist: 64, size: 7, color: BLUE },
+    { angle: 14, dist: 54, size: 8, color: ORANGE },
+    { angle: 66, dist: 68, size: 6, color: SOFT },
+    { angle: 118, dist: 56, size: 9, color: ORANGE },
+    { angle: 170, dist: 62, size: 7, color: BLUE },
+    { angle: -142, dist: 52, size: 8, color: SOFT },
+    { angle: -66, dist: 72, size: 5, color: ORANGE },
+  ];
+
+  fragments.forEach(({ angle, dist, size, color }) => {
+    const rad = (angle * Math.PI) / 180;
+    const tx = Math.cos(rad) * dist;
+    const ty = Math.sin(rad) * dist;
+    const el = document.createElement("span");
+    el.style.cssText = `
+      position:fixed;
+      left:${cx}px; top:${cy}px;
+      width:${size}px; height:${size}px;
+      background:${color};
+      border-radius:2px;
+      pointer-events:none;
+      z-index:9999;
+      box-shadow: 0 2px 8px rgba(250,136,58,0.28);
+      transform:translate(-50%,-50%) rotate(45deg) scale(1);
+      opacity:1;
+      transition:transform 0.62s cubic-bezier(0.22,1,0.36,1),opacity 0.52s ease-out;
+    `;
+    document.body.appendChild(el);
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      el.style.transform = `translate(calc(-50% + ${tx}px),calc(-50% + ${ty}px)) rotate(45deg) scale(0.2)`;
+      el.style.opacity = "0";
+    }));
+    setTimeout(() => el.remove(), 700);
+  });
+}
+
 function RewardStep({ photo, itemCount, areaCount, timeBudget, onClose, onFinish }: { photo?: string; itemCount: number; areaCount: number; timeBudget: number; onClose: () => void; onFinish: () => void }) {
   const [afterPhoto, setAfterPhoto] = useState<string | null>(null);
-  const [showComparison, setShowComparison] = useState(false);
   const [slider, setSlider] = useState(50);
   const [flash, setFlash] = useState(false);
   const [captureError, setCaptureError] = useState<string | null>(null);
   const [liveFeed, setLiveFeed] = useState(false);
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
+  const edgeStartX = useRef<number | null>(null);
   const beginBusy = () => {
     if (busyRef.current) return false;
     busyRef.current = true;
@@ -4730,12 +4772,15 @@ function RewardStep({ photo, itemCount, areaCount, timeBudget, onClose, onFinish
     finally { endBusy(); }
   };
 
-  const saveAfterPhoto = async () => {
+  const saveAfterPhoto = async (event: React.MouseEvent<HTMLButtonElement>) => {
     if (!beginBusy()) return;
+    const button = event.currentTarget;
     setCaptureError(null);
     try {
       await nativeRequest<NativeState>("capture.after.commit");
-      setShowComparison(true);
+      playCompletionBurst(button);
+      await new Promise((resolve) => setTimeout(resolve, 660));
+      onFinish();
     } catch (error) {
       setCaptureError((error as Error).message || "完成照保存失败，请重试");
     } finally { endBusy(); }
@@ -4747,7 +4792,6 @@ function RewardStep({ photo, itemCount, areaCount, timeBudget, onClose, onFinish
     try {
       await nativeRequest("capture.after.cancel");
       setAfterPhoto(null);
-      setShowComparison(false);
     } catch (error) {
       setCaptureError((error as Error).message || "暂时无法重新拍摄，请重试");
     } finally { endBusy(); }
@@ -4837,9 +4881,19 @@ function RewardStep({ photo, itemCount, areaCount, timeBudget, onClose, onFinish
       <div
         ref={previewRef}
         className="relative h-full w-full overflow-hidden"
+        onPointerDown={(event) => {
+          if (busyRef.current) return;
+          edgeStartX.current = event.clientX <= 24 ? event.clientX : null;
+          if (edgeStartX.current !== null) event.currentTarget.setPointerCapture(event.pointerId);
+        }}
+        onPointerUp={(event) => {
+          const startX = edgeStartX.current;
+          edgeStartX.current = null;
+          if (!busyRef.current && startX !== null && event.clientX - startX >= 80) onClose();
+        }}
+        onPointerCancel={() => { edgeStartX.current = null; }}
         style={{ backgroundColor: liveFeed ? "transparent" : "#1a1411" }}
       >
-        <button onClick={onClose} disabled={busy} className="absolute top-14 left-5 z-20 px-3.5 py-2" style={{ backgroundColor: "rgba(255,255,255,0.92)", color: COFFEE, borderRadius: 999, fontSize: 11, fontWeight: 600 }}>稍后完成</button>
         {/* 实时取景画面（相机画面垫在 WebView 底下，透明后透上来）；没起来时用整理前照片兜底 */}
         {!liveFeed && <div className="h-full w-full flex items-center justify-center" style={{ backgroundColor: "#1a1411", color: WHITE, fontSize: 12 }}>相机预览不可用，请重试</div>}
 
@@ -4861,7 +4915,7 @@ function RewardStep({ photo, itemCount, areaCount, timeBudget, onClose, onFinish
         )}
 
         {/* Top instruction */}
-        <div className="absolute top-28 left-0 right-0 px-6">
+        <div className="absolute top-14 left-0 right-0 px-6">
           <div
             className="p-4 flex items-center gap-3"
             style={{
@@ -4869,12 +4923,16 @@ function RewardStep({ photo, itemCount, areaCount, timeBudget, onClose, onFinish
               borderRadius: 20,
             }}
           >
-            <div
+            <button
+              type="button"
+              aria-label="从相册选择完成照"
+              onClick={() => void chooseFromLibrary()}
+              disabled={busy}
               className="h-10 w-10 rounded-full flex items-center justify-center flex-shrink-0"
               style={{ backgroundColor: ORANGE }}
             >
               <Camera size={20} color={WHITE} />
-            </div>
+            </button>
             <div className="flex-1">
               <p style={{ color: COFFEE, fontSize: 14, fontWeight: 600 }}>拍摄完成后的照片</p>
               <p style={{ color: COFFEE, opacity: 0.6, fontSize: 11 }}>
@@ -4885,16 +4943,15 @@ function RewardStep({ photo, itemCount, areaCount, timeBudget, onClose, onFinish
         </div>
 
         {/* Bottom controls */}
-        <div className="absolute bottom-0 left-0 right-0 pb-10 pt-6 px-8 flex flex-col items-center gap-3">
+        <div className="absolute bottom-0 left-0 right-0 pb-10 px-8 flex items-center justify-center">
           {captureError && (
             <p
-              className="px-4 py-2 text-center"
+              className="absolute bottom-32 left-6 right-6 px-4 py-2 text-center"
               style={{ backgroundColor: "rgba(0,0,0,0.55)", color: WHITE, borderRadius: 12, fontSize: 12 }}
             >
               {captureError}
             </p>
           )}
-          <button onClick={() => void chooseFromLibrary()} disabled={busy} className="px-4 py-3" style={{ backgroundColor: "rgba(255,255,255,0.16)", color: WHITE, borderRadius: 999, fontSize: 12 }}>从相册选择</button>
           <button
             aria-label="拍摄完成照"
             onClick={() => void captureAfter()}
@@ -4916,8 +4973,7 @@ function RewardStep({ photo, itemCount, areaCount, timeBudget, onClose, onFinish
   }
 
   // Before/After comparison view
-  if (!showComparison) {
-    return (
+  return (
       <div className="relative h-full w-full overflow-hidden" style={{ backgroundColor: LINEN }}>
         <div className="h-full w-full overflow-y-auto pb-10">
           {/* Top bar */}
@@ -5057,8 +5113,10 @@ function RewardStep({ photo, itemCount, areaCount, timeBudget, onClose, onFinish
 
           {/* Continue button */}
           <div className="px-6 mt-6">
-            <button
-              onClick={() => void saveAfterPhoto()}
+            <motion.button
+              whileTap={{ scale: 0.96 }}
+              transition={{ type: "spring", stiffness: 400, damping: 28 }}
+              onClick={(event) => void saveAfterPhoto(event)}
               disabled={busy}
               className="w-full py-4"
               style={{
@@ -5071,7 +5129,7 @@ function RewardStep({ photo, itemCount, areaCount, timeBudget, onClose, onFinish
               }}
             >
               {busy ? "保存中…" : "查看成就"}
-            </button>
+            </motion.button>
             <button
               onClick={() => void retakeAfterPhoto()}
               disabled={busy}
@@ -5084,136 +5142,6 @@ function RewardStep({ photo, itemCount, areaCount, timeBudget, onClose, onFinish
           </div>
         </div>
       </div>
-    );
-  }
-
-  // Final reward celebration view
-  return (
-    <div
-      className="h-full w-full flex flex-col items-center justify-center px-8"
-      style={{ backgroundColor: LINEN }}
-    >
-      <div
-        className="p-8 flex flex-col items-center text-center"
-        style={{
-          backgroundColor: WHITE,
-          borderRadius: 32,
-          boxShadow: "0 20px 50px rgba(123,92,72,0.12)",
-          width: "100%",
-        }}
-      >
-        <div
-          className="h-32 w-32 rounded-full flex items-center justify-center mb-5"
-          style={{
-            background: `radial-gradient(circle, ${LINEN} 0%, ${SOFT} 100%)`,
-            boxShadow: `0 0 0 8px rgba(250,136,58,0.1)`,
-          }}
-        >
-          <Raccoon size={104} />
-        </div>
-        <span
-          className="px-3 py-1 mb-3"
-          style={{ backgroundColor: ORANGE, color: WHITE, borderRadius: 999, fontSize: 11 }}
-        >
-          整理完成
-        </span>
-        <p style={{ color: COFFEE, fontSize: 22, fontWeight: 600 }}>这一轮整理完成</p>
-        <p style={{ color: COFFEE, opacity: 0.6, fontSize: 13, marginTop: 6 }}>
-          {areaCount} 个区域 · {itemCount} 件物品 · 方案用时 {timeBudget} 分钟
-        </p>
-
-        <div className="flex gap-3 mt-5 w-full">
-          <div
-            className="flex-1 py-3 text-center"
-            style={{ backgroundColor: LINEN, borderRadius: 16 }}
-          >
-            <p style={{ color: ORANGE, fontSize: 18, fontWeight: 600 }}>{areaCount}</p>
-            <p style={{ color: COFFEE, opacity: 0.6, fontSize: 10 }}>区域</p>
-          </div>
-          <div
-            className="flex-1 py-3 text-center"
-            style={{ backgroundColor: LINEN, borderRadius: 16 }}
-          >
-            <p style={{ color: ORANGE, fontSize: 18, fontWeight: 600 }}>{itemCount}</p>
-            <p style={{ color: COFFEE, opacity: 0.6, fontSize: 10 }}>物品</p>
-          </div>
-          <div
-            className="flex-1 py-3 text-center"
-            style={{ backgroundColor: LINEN, borderRadius: 16 }}
-          >
-            <p style={{ color: ORANGE, fontSize: 18, fontWeight: 600 }}>{timeBudget}</p>
-            <p style={{ color: COFFEE, opacity: 0.6, fontSize: 10 }}>方案分钟</p>
-          </div>
-        </div>
-
-        <motion.button
-          whileTap={{ scale: 0.96 }}
-          transition={{ type: "spring", stiffness: 400, damping: 28 }}
-          onClick={(e) => {
-            const btn = e.currentTarget;
-            const { left, top, width, height } = btn.getBoundingClientRect();
-            const cx = left + width / 2;
-            const cy = top + height / 2;
-
-            // Fragment colors & positions: isometric-tile diamonds burst outward
-            const frags = [
-              { angle: -90,  dist: 58, size: 9,  color: ORANGE },
-              { angle: -38,  dist: 64, size: 7,  color: BLUE },
-              { angle:  14,  dist: 54, size: 8,  color: ORANGE },
-              { angle:  66,  dist: 68, size: 6,  color: SOFT },
-              { angle: 118,  dist: 56, size: 9,  color: ORANGE },
-              { angle: 170,  dist: 62, size: 7,  color: BLUE },
-              { angle:-142,  dist: 52, size: 8,  color: SOFT },
-              { angle: -66,  dist: 72, size: 5,  color: ORANGE },
-            ];
-
-            frags.forEach(({ angle, dist, size, color }) => {
-              const rad = (angle * Math.PI) / 180;
-              const tx = Math.cos(rad) * dist;
-              const ty = Math.sin(rad) * dist;
-              const el = document.createElement("span");
-              el.style.cssText = `
-                position:fixed;
-                left:${cx}px; top:${cy}px;
-                width:${size}px; height:${size}px;
-                background:${color};
-                border-radius:2px;
-                pointer-events:none;
-                z-index:9999;
-                box-shadow: 0 2px 8px rgba(250,136,58,0.28);
-                transform:translate(-50%,-50%) rotate(45deg) scale(1);
-                opacity:1;
-                transition:transform 0.62s cubic-bezier(0.22,1,0.36,1),opacity 0.52s ease-out;
-              `;
-              document.body.appendChild(el);
-              requestAnimationFrame(() =>
-                requestAnimationFrame(() => {
-                  el.style.transform = `translate(calc(-50% + ${tx}px),calc(-50% + ${ty}px)) rotate(45deg) scale(0.2)`;
-                  el.style.opacity = "0";
-                })
-              );
-              setTimeout(() => el.remove(), 700);
-            });
-
-            setTimeout(onFinish, 660);
-          }}
-          className="w-full py-4 mt-6 flex items-center justify-center gap-2"
-          style={{
-            backgroundColor: ORANGE,
-            color: WHITE,
-            borderRadius: 999,
-            fontSize: 15,
-            fontWeight: 600,
-            border: "none",
-            cursor: "pointer",
-            boxShadow: "0 8px 24px rgba(250,136,58,0.35)",
-          }}
-        >
-          <CheckCircle2 size={16} />
-          返回空间
-        </motion.button>
-      </div>
-    </div>
   );
 }
 

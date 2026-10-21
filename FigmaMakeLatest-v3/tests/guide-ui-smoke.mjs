@@ -212,8 +212,10 @@ try {
   const rewardState = stateFor(rewardPlan, items);
   const reward = await setup(rewardState, "reward");
   await visibleText(reward.page, "拍摄完成后的照片");
+  assert.equal(await reward.page.getByRole("button", { name: "稍后完成", exact: true }).count(), 0);
+  await screenshot(reward.page, "08-reward-camera.png");
   await reward.page.evaluate(() => { window.__guideFixture.cancelNextPicker = true; });
-  await reward.page.getByRole("button", { name: "从相册选择", exact: true }).click();
+  await reward.page.getByRole("button", { name: "从相册选择完成照", exact: true }).click();
   await reward.page.getByRole("button", { name: "拍摄完成照", exact: true }).waitFor({ state: "visible" });
   assert.equal(await reward.page.getByText("已取消", { exact: true }).count(), 0);
   assert.equal(await reward.page.evaluate(() => window.__guideFixture.archivedProofs), 0);
@@ -232,7 +234,7 @@ try {
   assert.equal(await reward.page.evaluate(() => window.__guideFixture.proofStaged), false);
   assert.equal(await reward.page.evaluate(() => window.__guideFixture.proofCancels), 1);
 
-  await reward.page.getByRole("button", { name: "从相册选择", exact: true }).click();
+  await reward.page.getByRole("button", { name: "从相册选择完成照", exact: true }).click();
   await reward.page.getByRole("button", { name: "查看成就", exact: true }).waitFor({ state: "visible" });
   assert.equal(await reward.page.evaluate(() => window.__guideFixture.archivedProofs), 0);
   await reward.page.evaluate(() => { window.__guideFixture.failNextProofCommit = true; });
@@ -242,19 +244,22 @@ try {
   assert.equal(await reward.page.evaluate(() => window.__guideFixture.archivedProofs), 0);
   await screenshot(reward.page, "09-reward-commit-failure.png");
   await reward.page.getByRole("button", { name: "查看成就", exact: true }).click();
-  await visibleText(reward.page, "这一轮整理完成");
+  await reward.page.getByRole("button", { name: "加入我的家", exact: true }).waitFor({ state: "visible" });
+  await reward.page.waitForTimeout(500);
   assert.equal(await reward.page.evaluate(() => window.__guideFixture.proofStaged), false);
   assert.equal(await reward.page.evaluate(() => window.__guideFixture.archivedProofs), 1);
   assert.equal(await reward.page.evaluate(() => window.__guideFixture.proofCommits), 2);
   const completionCommands = await reward.page.evaluate(() => window.__guideFixture.calls.filter((call) => call.command === "camera.capture" || call.command === "capture.open").map((call) => call.payload.purpose));
   assert.deepEqual(completionCommands, ["after-preview", "after-preview", "after-preview"]);
   await screenshot(reward.page, "10-reward-archived.png");
-  checks.push("Reward flow: picker cancel is silent; camera and library photos stay staged; retake cancels staging; failed archive can retry; only 查看成就 archives once.");
+  await reward.page.getByRole("button", { name: "加入我的家", exact: true }).click();
+  await reward.page.getByRole("button", { name: "加入我的家", exact: true }).waitFor({ state: "hidden" });
+  checks.push("Reward flow: picker cancel is silent; camera and library photos stay staged; retake cancels staging; failed archive can retry; 查看成就 archives once and opens the spatial-map achievement modal, which can be claimed.");
   await reward.context.close();
 
   const later = await setup(rewardState, "reward");
   await visibleText(later.page, "拍摄完成后的照片");
-  await later.page.getByRole("button", { name: "从相册选择", exact: true }).click();
+  await later.page.getByRole("button", { name: "从相册选择完成照", exact: true }).click();
   await visibleText(later.page, "对比整理前后");
   assert.equal(await later.page.evaluate(() => window.__guideFixture.proofStaged), true);
   await later.page.getByRole("button", { name: "稍后完成", exact: true }).click();
@@ -266,11 +271,14 @@ try {
 
   const delayed = await setup(rewardState, "reward", { previewDelay: 350 });
   await visibleText(delayed.page, "拍摄完成后的照片");
-  await delayed.page.getByRole("button", { name: "稍后完成", exact: true }).click();
+  await delayed.page.mouse.move(5, 400);
+  await delayed.page.mouse.down();
+  await delayed.page.mouse.move(110, 400, { steps: 5 });
+  await delayed.page.mouse.up();
   await delayed.page.waitForTimeout(1300);
   assert.equal(await delayed.page.evaluate(() => window.__guideFixture.calls.filter((call) => call.command === "camera.preview.start").length), 1);
   await delayed.context.close();
-  checks.push("A delayed camera start cannot retry after leaving the completion-photo screen.");
+  checks.push("The completion-photo screen keeps the Figma camera layout, opens the library from its camera badge, and an edge-swipe exit cancels delayed camera retries.");
 
   for (const entry of ["project", "progress"]) {
     const route = await setup(rewardState, null);

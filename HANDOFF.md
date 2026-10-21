@@ -4,6 +4,8 @@
 
 **当前任务：逐张核实 Figma 的正式手机画板，让实际 iOS App 的对应界面与设计一致，并保留原有动效和真实业务。任务尚未完成。** 当前分支是工作进度快照，存在已知差异和未通过的识别测试，不能称为最终定稿或 App Store 可提交版。
 
+接手时先切到下方交接分支并检查工作区，再读用户决定、当前缺口和最新[完成流程报告](docs/design/completion-flow-parity-20261021.md)。详细整理组目前只核实了 **11 / 21 个 frame 的设计身份及尺寸**，不表示 11 个页面已验收。第 6 节列出继续工作的顺序。
+
 ## 1. 从哪份代码接手
 
 - 仓库：[Qszjlzz/LingZhuaShouNa](https://github.com/Qszjlzz/LingZhuaShouNa)。
@@ -49,9 +51,10 @@ Figma：[ui界面 / Page 1](https://www.figma.com/design/cHyKGPXFlSnNcjBWw9MNxE/
 2. [个人、徽章、项目专项](docs/design/personal-project-figma-verification-20261020.md)：用户决定、素材来源、动效、真实数据边界。
 3. [拍摄与整理流程差异](docs/design/shootflow-parity-20261021.md)：接下来最明确的界面和多区域问题。
 4. [整理引导进度修复与增量验收](docs/design/guide-progress-repair-20261021.md)：本轮清理/分类/复核恢复、真实 UUID 推进、测试证据与剩余边界。
-5. [重拍路由](docs/design/reshoot-route-verification-20261021.md) 与 [空间数据](docs/design/spatial-flow-data-verification-20261021.md)：数据接线与验收范围。
-6. [76 项原生测试结果](docs/design/native-test-results-20261021.md)：旧全量识别测试失败原因和量化结果；本轮未重跑全量。
-7. [画板到 App 状态的映射入口](docs/figma-screen-map.md)：继续按实际画布顺序补齐。
+5. [完成流程对齐与最新验证](docs/design/completion-flow-parity-20261021.md)：完成照取景、对比到地图成就弹窗、三张新增画板及最新资源。
+6. [重拍路由](docs/design/reshoot-route-verification-20261021.md) 与 [空间数据](docs/design/spatial-flow-data-verification-20261021.md)：数据接线与验收范围。
+7. [76 项原生测试结果](docs/design/native-test-results-20261021.md)：旧全量识别测试失败原因和量化结果；本轮未重跑全量。
+8. [画板到 App 状态的映射入口](docs/figma-screen-map.md)：继续按实际画布顺序补齐。
 
 | 证据目录 | 内容 | 使用边界 |
 | --- | --- | --- |
@@ -99,8 +102,8 @@ App/SmartPawApp.swift
 - 本轮真实原生方案补回清理 → 分类 → 复核 → 真实归位步骤入口。清理和分类是前置指引，不计入原生完成步数；跳过仅作用于这两个前置阶段。归位步骤按真实 UUID 调用原生保存，确认最新状态为 `done` 后才推进；保存失败留在当前步骤。
 - 普通整理和重新点亮生成后都会把最新原生物品送入分类 UI；卡片按步骤 `itemIDs` 配对，key 使用步骤 UUID，不按数组位置猜测。多于三组可横向浏览并在恢复时滚到当前组。
 - 本轮前置阶段以 plan UUID 隔离保存到 WKWebView `localStorage`。浏览器 reload 和原生 active/done 优先逻辑已测；WKWebView 被系统杀掉后的本机 localStorage 恢复尚未单独实测。
-- 当前内嵌网页资源为 `Resources/FigmaMakeLatestWeb/assets/index-CXVElg32.js`，SHA-256 为 `ebdc97c2d6016eb84d44ae4b94ef17dcdac2fde9e0536ae4e6e43c331540642b`；`index.html` SHA-256 为 `1f7621fa6bbfb32434b792052839936c0f1d03e057f63a8b0822dca563375ce4`。源 dist 与内嵌资源字节一致。此前引导修复报告中的 `index-Cym_NAvg.js` 指较早快照，当前资源清单以最新文件为准。
-- ShootFlow 修复前后 JSX motion AST 均为 54 个元素，所比较的动画属性序列一致。这不替代真实设备帧率或每条运行时动画验收。
+- 当前内嵌网页资源为 `Resources/FigmaMakeLatestWeb/assets/index-CghoGBxs.js`，SHA-256 为 `ba5e2fb3303131098d2b2018c0631edd0f496118d0dad32cde50a9747d503969`；`index.html` SHA-256 为 `b581524de250b32500b8d4b50536b3f05223c7a144b520b85e5d0ca1bfadcecc`。源 dist、内嵌资源及本次 App 包字节一致，见[资源清单](docs/handoff/evidence/completion-flow-20261021/manifest.json)。此前报告中的其它 JS 名指较早快照。
+- 之前整理引导修复比较到 54 个 JSX motion 元素及相同动画属性序列；这是历史快照。本次将完成碎片庆祝和按钮弹性参数迁至归档确认按钮后，未重跑全文件 AST 比较，不能继续称当前全文件动效声明完全不变。
 
 ### 本轮整理引导验收
 
@@ -131,9 +134,21 @@ App/SmartPawApp.swift
 - iOS Debug 构建成功并安装到 iPhone 16 Pro / iOS 18.5 模拟器。真实系统相册选图后，确认预览时原生状态仍有 `activePlan` 且 `completedPlans=0`；点击确认后 `activePlan` 清除、`completedPlans=1`。证据：[预览态](docs/handoff/evidence/completion-photo-20261021/native-progress-preview.png)、[归档态](docs/handoff/evidence/completion-photo-20261021/native-archived.png)。
 - 这次仅证明模拟器相册路线的暂存与归档门槛。没有验证真机相机、原生存储失败重试、重新点亮完成照全路线或完整 Figma 像素一致性。模拟器中的归档是测试数据，不是用户手机内容。
 
+### 最新完成流程对齐：网页路线通过，新包已启动
+
+完成照页按 `2261:3290` 上移提示条，并保留底部单独快门。相册入口放在提示条相机图标内，退出使用左边缘向右滑；拍照忙碌时有同步锁防止退出。这个操作约定仍需在 iPhone 上验证可发现性和真实触摸侧滑。
+
+对比页 `2261:3091` 的“查看成就”在原生确认归档成功后播放原碎片动画，再直接返回空间地图显示 `SpatialScreen` 的“加入我的家”弹窗（`2261:5907`）；额外的独立全屏完成卡已移除。原按钮弹性参数和碎片参数保留。对比页仍有“稍后完成”“重新拍摄”操作，逐屏视觉对齐尚未验收。
+
+本次重新通过 15 项逻辑测试、390 × 844 生产 dist 模拟 bridge smoke（无页面错误），并用 `SmartPaw` scheme 构建 Debug 包，在 iPhone 16 Pro / iOS 18.5 安装和启动到空间地图。最新完成照到地图弹窗的路线只由本次网页 smoke 验证，未在原生模拟器重走；较早原生相册暂存/归档结果仍按上节范围解读。
+
+新增画板已现场确认：`2261:3091` 为前后对比；`2261:3457` 为区域一完成并加载下一区域；图层名仍叫“区域1完成”的 `2276:1795` 实际为区域二完成。三张均为 390 × 844。当前单物理区域方案尚不覆盖两区域行为，不能把核实设计身份写成实现完成。
+
+完整证据、剩余差异与复跑命令见[完成流程报告](docs/design/completion-flow-parity-20261021.md)和[本批证据](docs/handoff/evidence/completion-flow-20261021/)。
+
 ### 动效已知证据
 
-徽章与原 MakePreview 的 AST 比对：16 个 motion 元素、43 组动效参数保留；ShootFlow 的 54 个 motion 元素、SpatialScreen 的 23 个 motion 元素与 Git HEAD 动效属性一致（计入 AnimatePresence 时空间共 30 个节点）。浏览器中徽章钻石的 transform 两次取样有变化。这些证明指定声明和一处运行动画，不能替代全部动效、真实路由触发或真机帧率验收。
+徽章与原 MakePreview 的 AST 比对：16 个 motion 元素、43 组动效参数保留；之前整理引导快照中，ShootFlow 的 54 个 motion 元素、SpatialScreen 的 23 个 motion 元素与当时 Git HEAD 动效属性一致（计入 AnimatePresence 时空间共 30 个节点）。本次迁移动画后没有重做全文件比较。浏览器中徽章钻石的 transform 两次取样有变化。这些证明指定声明和一处运行动画，不能替代全部动效、真实路由触发或真机帧率验收。
 
 ## 6. 接下来按什么顺序做
 
@@ -156,7 +171,7 @@ App/SmartPawApp.swift
 - 微调消息会调用 `chat.send` 并显示回复，但确认时构造的 `refined` 只改 `name` 和 `vibe`，不会改 `changes`、时长、方案图或原生步骤。当前聊天回复不能证明执行计划已按用户要求调整。见 [ShootFlow.tsx:1111](FigmaMakeLatest-v3/src/app/components/ShootFlow.tsx#L1111) 和 [ShootFlow.tsx:1140](FigmaMakeLatest-v3/src/app/components/ShootFlow.tsx#L1140)。
 - **本轮已更正的 Figma 画板身份**：[`2261:5717`](https://www.figma.com/design/cHyKGPXFlSnNcjBWw9MNxE/ui%E7%95%8C%E9%9D%A2?node-id=2261-5717) 是快速整理方案首屏；[`2261:3989`](https://www.figma.com/design/cHyKGPXFlSnNcjBWw9MNxE/ui%E7%95%8C%E9%9D%A2?node-id=2261-3989) 是尚未选区的分区选择；[`2261:3719`](https://www.figma.com/design/cHyKGPXFlSnNcjBWw9MNxE/ui%E7%95%8C%E9%9D%A2?node-id=2261-3719) 是桌面区域已选中的分区选择；[`2261:6249`](https://www.figma.com/design/cHyKGPXFlSnNcjBWw9MNxE/ui%E7%95%8C%E9%9D%A2?node-id=2261-6249) 是方案微调聊天；[`2285:11376`](https://www.figma.com/design/cHyKGPXFlSnNcjBWw9MNxE/ui%E7%95%8C%E9%9D%A2?node-id=2285-11376) 和 [`2285:11580`](https://www.figma.com/design/cHyKGPXFlSnNcjBWw9MNxE/ui%E7%95%8C%E9%9D%A2?node-id=2285-11580) 是两种正式加载状态；[`2261:3290`](https://www.figma.com/design/cHyKGPXFlSnNcjBWw9MNxE/ui%E7%95%8C%E9%9D%A2?node-id=2261-3290) 是完成照拍摄画面；[`2261:5907`](https://www.figma.com/design/cHyKGPXFlSnNcjBWw9MNxE/ui%E7%95%8C%E9%9D%A2?node-id=2261-5907) 是空间地图上的成就弹窗。以上均为 390 × 844，已选中身份的截图位于 [`detailed-flow-20261021`](app-analysis/figma-reference/detailed-flow-20261021/)；详见[完整盘点新增核验表](docs/design/figma-full-inventory-20261021.md#近距选中后的用途修正)和[画板映射](docs/figma-screen-map.md)。图层名与旧记录不可靠。其余未核对的 frame 和版本关系仍需继续检查。
 - 因此“显示 plans[0]”目前不能仅凭单张快速方案首屏称为已确认差异，也不能先做多方案轮播。区域选择两种状态则有明确设计证据：当前 `buildFlowZones` 固定一个全图区域、原生只执行一个物理区域，无法覆盖选区 UI 和区域二真实执行；修复前要先建立可靠的照片分区数据。
-- Figma 完成流程中，`2261:3290` 是拍摄完成照；其右邻可见整理前后对比页，CTA“查看成就”；再右侧 `2261:5907` 是“加入我的家”弹窗。完成照暂存、重拍/稍后取消、确认归档的生产网页 smoke 和模拟器相册暂存/归档已通过上述限定验收；真机相机、原生保存失败重试与对应页面的 Figma 逐屏比对仍待完成。不要把网页模拟 bridge 的通过扩大为 Swift 持久化通过。
+- Figma 完成流程中，`2261:3290` 是拍摄完成照；右邻 `2261:3091` 已独立选中核实为整理前后对比页，CTA“查看成就”；再右侧 `2261:5907` 是“加入我的家”弹窗。最新实现已直接进入地图弹窗，验证范围见上方最新增量。`2261:3457`、`2276:1795` 分别是区域一、区域二完成状态，见[新增画板记录](docs/design/completion-flow-parity-20261021.md#设计依据与画板关系)。真机相机、原生保存失败重试与逐屏视觉验收仍待完成。
 - 方案微调聊天 `2261:6249` 已核实，与 `5717` 首屏相邻；源码仍只更新方案名称和氛围文字，不改实际执行步骤。接下来应对照画板控件与可执行的真实步骤变更来处理。
 
 | 优先项 | 目前证据 / 下一步 |
@@ -246,4 +261,4 @@ App target team 当前为 `46484446VW`，test target 为 `3S323K52DX`；新电�
 
 ## 10. 可直接粘给新对话
 
-> 请接手灵爪收纳：仓库 https://github.com/Qszjlzz/LingZhuaShouNa ，从分支 `codex/figma-ui-handoff-20261021` 最新提交开始，先检查 `git status` 并完整阅读根目录 `HANDOFF.md`。主任务仍是把全部正式 Figma 手机画板与真实 App 逐屏对齐，保留原动效和真实业务；尚未完成。已确认 Sarah Chen 个人页加徽章、第三栏“项目”使用个人分组的“我的计划”卡片设计、移除独立日历、社区由项目替换、保持 React + WKWebView。本轮完成照暂存修复已覆盖普通主流程、项目页和进行中详情：15 项逻辑测试、生产 dist 模拟 bridge smoke、iOS Debug 构建和模拟器相册暂存/确认归档通过，证据在 `docs/handoff/evidence/completion-photo-20261021/`；真机相机和存储失败重试仍未验证。Figma 已现场核实 `2261:5717/6249`、`2261:3989/3719`、`2285:11376/11580`、`2261:3290`、`2261:5907`；截图和差异见本 HANDOFF 第 6 节、`docs/design/figma-full-inventory-20261021.md` 与 `docs/figma-screen-map.md`。接下来核实 `2261:3091`、`2261:3457`、`2276:1795` 及 `2261:6479` 其它 frame 的画布顺序、尺寸和版本，再覆盖其它空间/分类/个人与项目画板。已知主要差异包括真实多物理分区数据缺失、微调聊天不改实际步骤、加载状态和分类卡视觉待对齐。Figma 原分类插画尚缺；不得把局部验收或构建成功说成全 App 完成。
+> 请接手灵爪收纳：仓库 https://github.com/Qszjlzz/LingZhuaShouNa ，切到 `codex/figma-ui-handoff-20261021` 最新提交，先检查 `git status`，完整阅读根目录 `HANDOFF.md`，再读 `docs/design/completion-flow-parity-20261021.md`、`docs/figma-screen-map.md` 和 `docs/handoff/current-state-20261021.json`。主任务是全部正式 Figma 手机画板与实际 App 逐屏对齐，保留原动效和真实业务，尚未完成。已确认 Sarah Chen 个人页加徽章；第三栏“项目”采用个人分组“我的计划”卡片；不要独立日历；原社区入口由项目替换；沿用 React + WKWebView。详细整理组已核实 11/21 个 frame 的身份和 390×844 尺寸，不代表 UI 全部验收。最新“查看成就”确认归档后播放原碎片过渡并进入空间地图成就弹窗；15 项逻辑测试、生产网页模拟 bridge smoke、iOS Debug 构建及启动通过，最新路线尚未在原生模拟器重走。此前相册暂存和确认归档有独立有限验收。下一步核实剩余 frame，优先 `2276:1531`、`2277:32` 的实际用途及相邻关系，再处理真实双物理区域和微调实际步骤；继续空间、分类、个人/项目各正式画板。缺口和测试失败都已写进仓库，不要把局部通过或构建成功说成全 App 完成。

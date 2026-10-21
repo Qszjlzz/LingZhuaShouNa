@@ -24,17 +24,17 @@
     "Resources/FigmaMakeLatestWeb/index.html",
     "FigmaMakeLatest-v3/src/app/App.tsx"
   ],
-  "web_asset": "index-CXVElg32.js",
-  "web_asset_sha256": "ebdc97c2d6016eb84d44ae4b94ef17dcdac2fde9e0536ae4e6e43c331540642b",
-  "web_index_sha256": "1f7621fa6bbfb32434b792052839936c0f1d03e057f63a8b0822dca563375ce4",
-  "latest_incremental_report": "docs/design/guide-progress-repair-20261021.md",
-  "latest_incremental_report_scope": "Earlier guide progress repair snapshot; completion photo follow-up is documented in HANDOFF.md and docs/handoff/evidence/completion-photo-20261021/",
+  "web_asset": "index-CghoGBxs.js",
+  "web_asset_sha256": "ba5e2fb3303131098d2b2018c0631edd0f496118d0dad32cde50a9747d503969",
+  "web_index_sha256": "b581524de250b32500b8d4b50536b3f05223c7a144b520b85e5d0ca1bfadcecc",
+  "latest_incremental_report": "docs/design/completion-flow-parity-20261021.md",
+  "latest_incremental_report_scope": "Latest completion-flow layout/routing and Figma identity verification; earlier guide/native archive evidence remains scoped separately.",
   "latest_incremental_validation": {
     "guide_logic_tests": "15/15_passed",
     "production_web_ui_simulated_native_bridge": "passed_390x844_no_page_errors",
-    "native_targeted_tests": "4/4_passed",
-    "shootflow_motion_ast": "54_elements_and_compared_animation_attributes_unchanged",
-    "simulator_app": "ordinary_mainline_verified_through_pending_after_photo_then_restart_preserved_unarchived_state; completion_photo_picker_staged_without_archiving; explicit_confirm_archived_once",
+    "native_targeted_tests": "4/4_passed_in_earlier_guide_snapshot_not_rerun_for_latest_web_route",
+    "shootflow_motion_ast": "Earlier guide snapshot:54_elements_attributes_unchanged; latest reward burst/button parameters preserved by relocation; full AST comparison not rerun",
+    "simulator_app": "Latest Debug installed and launched to spatial map; latest completion-to-map route not re-exercised in native simulator. Earlier native mainline/restart and photo-library staging/archive evidence retained separately.",
     "simulator_evidence": [
       "docs/handoff/evidence/guide-20261021/08-native-cleaning.png",
       "docs/handoff/evidence/guide-20261021/09-native-classify.png",
@@ -57,10 +57,21 @@
       "native_archive_write_failure_retry",
       "relight_flow",
       "new_flow_native_save_failure_rollback",
-      "preflight_localstorage_restore_after_process_restart"
+      "preflight_localstorage_restore_after_process_restart",
+      "latest_completion_to_map_modal_route",
+      "real_touch_edge_swipe_exit"
     ],
     "simulator_photo_source": "Resources/ExternalScanTests/external-cluttered-study-pexels.jpg via simulator photo library; not a real-device camera test",
-    "real_device_camera": "not_tested"
+    "real_device_camera": "not_tested",
+    "latest_completion_flow_evidence": [
+      "docs/handoff/evidence/completion-flow-20261021/web-camera-layout.png",
+      "docs/handoff/evidence/completion-flow-20261021/web-before-after-preview.png",
+      "docs/handoff/evidence/completion-flow-20261021/web-commit-failure.png",
+      "docs/handoff/evidence/completion-flow-20261021/web-map-achievement.png",
+      "docs/handoff/evidence/completion-flow-20261021/web-smoke-result.json",
+      "docs/handoff/evidence/completion-flow-20261021/native-launch-space.png",
+      "docs/handoff/evidence/completion-flow-20261021/manifest.json"
+    ]
   },
   "latest_source_audit": {
     "plan_deck": "PlanDeckStep 固定读取 plans[0]；虽接收数组，但界面只呈现一项",
@@ -74,11 +85,17 @@
       "2285:11376": "识别加载状态",
       "2285:11580": "规划整理方式加载状态",
       "2261:3290": "拍摄完成照",
-      "2261:5907": "空间地图上的加入我的家成就弹窗"
+      "2261:5907": "空间地图上的加入我的家成就弹窗",
+      "2261:3091": "整理前后对比，查看成就CTA",
+      "2261:3457": "区域一完成，加载下一区域",
+      "2276:1795": "区域二完成，收纳任务完成；图层名仍是区域1完成"
     },
     "figma_parity_status": "这些节点身份及390x844尺寸已核实；其它画板映射和实际App逐屏验收未完成",
     "completion_photo_fix": "普通整理/项目详情/进行中详情均先预览；after-preview暂存；确认时commit归档，重拍/稍后退出cancel；15项逻辑测试、production dist simulated-bridge smoke、iOS Debug构建及模拟器相册暂存/归档已通过；真机相机和原生写入失败重试未验收",
-    "source": "FigmaMakeLatest-v3/src/app/components/ShootFlow.tsx；Figma 只读现场选择；screenshots: app-analysis/figma-reference/detailed-flow-20261021/"
+    "source": "FigmaMakeLatest-v3/src/app/components/ShootFlow.tsx；Figma 只读现场选择；screenshots: app-analysis/figma-reference/detailed-flow-20261021/",
+    "figma_detailed_flow_verified_frames": 11,
+    "figma_detailed_flow_total_frames": 21,
+    "completion_flow_latest": "RewardStep commit succeeds -> original fragment burst/button spring -> spatial map achievement modal; separate full-screen reward card removed. Camera layout simplified; library from camera badge; edge exit guarded by busyRef. Latest web smoke passed; latest native route/touch not verified."
   },
   "historical_native_tests": {
     "total": 76,
@@ -101,13 +118,13 @@
   "phone_install": "not_completed",
   "figma_full_parity": "not_completed",
   "first_next_actions": [
-    "按已现场核实的 Figma 节点补正式手机画板清单，并逐屏对照实际 App；不要把已核实节点身份误写为已完成 UI parity",
-    "按已核实的Figma节点继续补逐屏映射：尤其是区域选择双物理分区和区域二真实步骤；勿将示例区域或目的地标签当物理分区",
-    "现场核实详细整理组2261:6479其余 frame（特别是2261:3091、2261:3457、2276:1795）的画布顺序、尺寸和版本",
-    "补全剩余根节点、Frame 7及Page 2版本关系",
-    "逐屏映射并实现真实 App 状态，保留原动效；先处理双物理分区真实数据模型和方案微调落地行为",
-    "找到或补齐Figma分类插画素材，并实现真实多物理区域流程；保留真实进度和动效",
-    "构建安装、逐屏截图和主要交互验收"
+    "完整阅读HANDOFF、最新完成流程报告和screen map，检查分支及工作区；11/21仅表示设计身份已核实",
+    "核实详细整理组剩余10个frame的画布顺序、尺寸和版本，优先2276:1531、2277:32；不要用层名猜用途",
+    "在最终原生包重走完成照到地图弹窗、重拍/取消、真实触摸侧滑；真机相机另验收",
+    "建立可靠的照片双物理区域及对应真实步骤模型，勿把目的地当物理分区",
+    "使方案微调真正改变执行步骤，并保留真实UUID、持久化和失败回滚",
+    "补齐分类独立插画，继续空间/分类/个人/项目逐屏视觉与交互验证",
+    "补全剩余根节点、Frame 7及Page 2版本关系；持续更新交接及证据"
   ],
   "handoff": "HANDOFF.md"
 }

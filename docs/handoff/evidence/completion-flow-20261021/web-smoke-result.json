@@ -1,0 +1,15 @@
+{
+  "status": "passed",
+  "viewport": "390x844",
+  "source": "production dist with simulated native bridge; not a Swift persistence or real-camera test",
+  "checks": [
+    "Fresh plan reaches cleaning/classification/review; reviewing and reload do not complete native steps.",
+    "Skipping preflight changes no native completion; failed save stays retryable; each successful UUID advances once; completion restores after reload and is not archived without a photo.",
+    "Eleven groups retain readable cards without page overflow; resuming the final group scrolls its active card into view.",
+    "Reward flow: picker cancel is silent; camera and library photos stay staged; retake cancels staging; failed archive can retry; 查看成就 archives once and opens the spatial-map achievement modal, which can be claimed.",
+    "Leaving an already staged reward preview with 稍后完成 cancels proof without archiving.",
+    "The completion-photo screen keeps the Figma camera layout, opens the library from its camera badge, and an edge-swipe exit cancels delayed camera retries.",
+    "Project and in-progress photo entry points stage, cancel, retry failed commits, and archive only after explicit confirmation; double commit clicks submit once."
+  ],
+  "pageErrors": []
+}
