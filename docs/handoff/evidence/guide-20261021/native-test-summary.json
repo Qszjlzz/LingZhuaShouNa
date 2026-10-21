@@ -1,0 +1,36 @@
+{
+  "devicesAndConfigurations": [
+    {
+      "device": {
+        "architecture": "arm64",
+        "deviceId": "D4AFC2D2-6379-431E-AE17-F828DBB53484",
+        "deviceName": "iPhone 16 Pro",
+        "modelName": "iPhone 16 Pro",
+        "osBuildNumber": "22F77",
+        "osVersion": "18.5",
+        "platform": "iOS Simulator"
+      },
+      "expectedFailures": 0,
+      "failedTests": 0,
+      "passedTests": 4,
+      "skippedTests": 0,
+      "testPlanConfiguration": {
+        "configurationId": "1",
+        "configurationName": "Test Scheme Action"
+      }
+    }
+  ],
+  "environmentDescription": "SmartPaw · Built with macOS 15.5",
+  "expectedFailures": 0,
+  "failedTests": 0,
+  "finishTime": 1792568971.855,
+  "passedTests": 4,
+  "result": "Passed",
+  "skippedTests": 0,
+  "startTime": 1792568935.382,
+  "statistics": [],
+  "testFailures": [],
+  "title": "Test - SmartPaw",
+  "topInsights": [],
+  "totalTestCount": 4
+}

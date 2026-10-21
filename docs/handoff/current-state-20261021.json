@@ -24,7 +24,33 @@
     "Resources/FigmaMakeLatestWeb/index.html",
     "FigmaMakeLatest-v3/src/app/App.tsx"
   ],
-  "web_asset": "index-Bm7H3tNW.js",
+  "web_asset": "index-Cym_NAvg.js",
+  "web_asset_sha256": "9d79b5dbf4223964e53ae20becca5d6b6581a2d43c77d15133f7603ea45ea31f",
+  "latest_incremental_report": "docs/design/guide-progress-repair-20261021.md",
+  "latest_incremental_validation": {
+    "guide_logic_tests": "15/15_passed",
+    "production_web_ui_simulated_native_bridge": "passed_390x844_no_page_errors",
+    "native_targeted_tests": "4/4_passed",
+    "shootflow_motion_ast": "54_elements_and_compared_animation_attributes_unchanged",
+    "simulator_app": "mainline_verified_through_pending_after_photo; two_native_steps_done; force_quit_restart_preserved_100_percent_unarchived_state",
+    "simulator_evidence": [
+      "docs/handoff/evidence/guide-20261021/08-native-cleaning.png",
+      "docs/handoff/evidence/guide-20261021/09-native-classify.png",
+      "docs/handoff/evidence/guide-20261021/10-native-review.png",
+      "docs/handoff/evidence/guide-20261021/11-native-second-step.png",
+      "docs/handoff/evidence/guide-20261021/12-native-completed.png",
+      "docs/handoff/evidence/guide-20261021/13-native-checklist.png",
+      "docs/handoff/evidence/guide-20261021/14-native-restarted.png"
+    ],
+    "simulator_pending_checks": [
+      "after_photo_capture_and_archive",
+      "relight_flow",
+      "new_flow_native_save_failure_rollback",
+      "preflight_localstorage_restore_after_process_restart"
+    ],
+    "simulator_photo_source": "Resources/ExternalScanTests/external-cluttered-study-pexels.jpg via simulator photo library; not a real-device camera test",
+    "real_device_camera": "not_tested"
+  },
   "historical_native_tests": {
     "total": 76,
     "passed": 70,
@@ -37,7 +63,7 @@
   "handoff_validation": {
     "fresh_web_build": "passed",
     "bundle_identity": "passed",
-    "native_rebuild": "not_rerun",
+    "native_rebuild": "passed_and_installed_in_simulator",
     "release_preflight": {
       "failures": 2,
       "warnings": 2
@@ -46,10 +72,11 @@
   "phone_install": "not_completed",
   "figma_full_parity": "not_completed",
   "first_next_actions": [
+    "补验新整理引导的完成照拍摄/归档、保存失败回滚及前置阶段跨进程恢复；主线到待完成照与 100% 未归档重启状态已有模拟器证据",
     "核实详细整理组2261:6479全部frame的画布顺序、尺寸和版本",
     "补全剩余根节点、Frame 7及Page 2版本关系",
     "逐屏映射真实App状态",
-    "修复已确认的分类/执行/多区域差异并保留真实进度和动效",
+    "找到或补齐Figma分类插画素材，并实现真实多物理区域流程；保留真实进度和动效",
     "构建安装、逐屏截图和主要交互验收"
   ],
   "handoff": "HANDOFF.md"

@@ -15,7 +15,12 @@ export type NativeItem = {
   arHint?: NativeHint;
 };
 
-export type NativeStep = { id: string; title: string; detail: string; zone: string; status: "pending" | "active" | "done" };
+export type NativeStep = {
+  id: string; title: string; detail: string; zone: string;
+  status: "pending" | "active" | "done";
+  itemIDs?: string[];
+  arHint?: NativeHint;
+};
 export type NativePlan = { id: string; style: string; timeBudget: number; summary: string; toolList: string[]; steps: NativeStep[]; isPaused?: boolean; completedAt?: string };
 export type NativeSpace = { id: string; name: string; subtitle: string; detectedItems: NativeItem[]; activePlan?: NativePlan; completedPlans: NativePlan[]; lastOrganizedAt?: string };
 export type NativeState = {

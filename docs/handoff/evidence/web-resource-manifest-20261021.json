@@ -1,6 +1,8 @@
 {
   "date": "2026-10-21",
   "timezone": "Asia/Shanghai",
+  "stage": "initial_handoff_38b9171",
+  "superseded_by": "guide-20261021/resource-manifest.json",
   "bundle": {
     "index.html": "cee44f23bca015fdcfa16cb6998844c72eef9f09a2c4cf7a464b92f46b872673",
     "assets/index-Bm7H3tNW.js": "1a755392b16807780fd45a5b7b34fa2dd83f0263f3f689a3182c58b879f060ba"

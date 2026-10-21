@@ -1,0 +1,31 @@
+{
+  "date": "2026-10-21",
+  "stage": "guide_progress_repair",
+  "asset": "assets/index-Cym_NAvg.js",
+  "identity_matches": true,
+  "artifacts": {
+    "source_dist": {
+      "index.html": "f56ac011b58c7def50a32d13f1836de4cc5084c70b42b53e841b425a0d17cd95",
+      "assets/index-Cym_NAvg.js": "9d79b5dbf4223964e53ae20becca5d6b6581a2d43c77d15133f7603ea45ea31f"
+    },
+    "bundled_web": {
+      "index.html": "f56ac011b58c7def50a32d13f1836de4cc5084c70b42b53e841b425a0d17cd95",
+      "assets/index-Cym_NAvg.js": "9d79b5dbf4223964e53ae20becca5d6b6581a2d43c77d15133f7603ea45ea31f"
+    },
+    "built_app": {
+      "index.html": "f56ac011b58c7def50a32d13f1836de4cc5084c70b42b53e841b425a0d17cd95",
+      "assets/index-Cym_NAvg.js": "9d79b5dbf4223964e53ae20becca5d6b6581a2d43c77d15133f7603ea45ea31f"
+    },
+    "installed_simulator_app": {
+      "index.html": "f56ac011b58c7def50a32d13f1836de4cc5084c70b42b53e841b425a0d17cd95",
+      "assets/index-Cym_NAvg.js": "9d79b5dbf4223964e53ae20becca5d6b6581a2d43c77d15133f7603ea45ea31f"
+    }
+  },
+  "source_sha256": {
+    "FigmaMakeLatest-v3/src/app/components/ShootFlow.tsx": "f63cce4b4948442cad1381b41f8e12b6cd6a92e9a621f0ebd570dec2b035a3f4",
+    "FigmaMakeLatest-v3/src/app/guideProgress.ts": "db84fc00e10d835c461f71606e86cd75965bde3387d565a588b1de8bd7bd7fb8",
+    "FigmaMakeLatest-v3/src/app/nativeBridge.ts": "f310f043dd32b9c534964206d3837095bc4d475643712726240fa23cae36c21c",
+    "FigmaMakeLatest-v3/package.json": "201ffa7981e9ec33e3556c542833aabc6fa60828acfe993b3ec89ea3858eb7f2"
+  },
+  "scope": "Artifact identity only; functional evidence and limits are in docs/design/guide-progress-repair-20261021.md. Built/installed app paths are local observations, not prerequisites for another computer."
+}

@@ -3,7 +3,14 @@ set -eu
 
 PROJECT_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$PROJECT_ROOT/FigmaMakeLatest-v3"
-npm run build
+if command -v npm >/dev/null 2>&1; then
+    npm run build
+elif command -v pnpm >/dev/null 2>&1; then
+    pnpm run build
+else
+    echo "Node.js and npm or pnpm are required to build the bundled web UI." >&2
+    exit 1
+fi
 
 # Keep the bundled entry and assets from the same build.
 python3 - "$PROJECT_ROOT" <<'PY'

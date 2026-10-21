@@ -38,6 +38,7 @@ import {
   Vibrate,
   MoveHorizontal,
   Loader2,
+  Eye,
   SprayCan,
   Droplets,
   HelpCircle,
@@ -47,6 +48,7 @@ import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { Raccoon } from "./Raccoon";
 import { COFFEE, ORANGE, LINEN, BLUE, WHITE, SOFT } from "./theme";
 import { isUsableNativeHint, nativeRequest, type NativeState, type NativePlan, type NativeItem, type NativeHint } from "../nativeBridge";
+import { completeGuideNativeStep, groupsForNativePlan, guidePhaseKey, guideStartIndex, type GuidePhase } from "../guideProgress";
 
 const ROOM_IMG =
   "https://images.unsplash.com/photo-1768548273848-ebab6f26b48c?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080";
@@ -334,6 +336,7 @@ export function ShootFlow({
                   const plan = updated.spaces.find((candidate) => candidate.id === space.id)?.activePlan;
                   if (!plan?.steps.length) throw new Error("原方案没有可执行步骤，请选择新方案。");
                   setNativePlan(plan);
+                  setConfirmedItems(updated.spaces.find((candidate) => candidate.id === space.id)?.detectedItems ?? updated.scannedItems);
                   setZoneList(buildFlowZones(updated.scannedItems));
                   setGenReturn("arGuide");
                 } catch (error) {
@@ -393,6 +396,7 @@ export function ShootFlow({
               const selected = generated.spaces.find((space) => space.id === generated.selectedSpaceID);
               if (!selected?.activePlan || selected.activePlan.steps.length === 0) throw new Error("方案没有生成可执行步骤，请重试");
               setNativePlan(selected.activePlan);
+              setConfirmedItems(selected.detectedItems);
               setZoneList(zs);
               setFlowError(null);
               setStep("arGuide");
@@ -419,7 +423,9 @@ export function ShootFlow({
         <ARGuideStep
           photo={photo}
           zones={zoneList}
+          items={confirmedItems}
           nativePlan={nativePlan}
+          onPlanChange={setNativePlan}
           onBack={() => setStep("zones")}
           onComplete={() => setStep("reward")}
         />
@@ -474,16 +480,6 @@ const GEN_PHASES = [
 const W_LINE = "rgba(123,92,72,0.44)";
 const W_SOFT = "rgba(123,92,72,0.24)";
 const W_GHOST = "rgba(123,92,72,0.07)";
-
-async function completeNativePlan(expectedStepID?: string) {
-  // 每次用户完成一个引导步骤只推进一个原生步骤，完成状态由原生计划决定。
-  const state = await nativeRequest<NativeState>("state.get");
-  const selected = state.spaces.find((space) => space.id === state.selectedSpaceID);
-  const active = selected?.activePlan?.steps.find((step) => step.status === "active");
-  if (!active) throw new Error("当前整理方案没有可完成的步骤");
-  if (expectedStepID && active.id !== expectedStepID) throw new Error("方案进度已改变，请返回空间页继续整理");
-  await nativeRequest("plan.step.complete", { id: active.id });
-}
 
 function GeneratingStep({ onDone }: { refining?: boolean; onDone: () => void }) {
   const [phase, setPhase] = useState(0);
@@ -5762,29 +5758,44 @@ const DEMO_STEPS = [
 function ARGuideStep({
   photo,
   zones,
+  items,
   nativePlan,
+  onPlanChange,
   onBack,
   onComplete,
 }: {
   photo?: string;
   zones: FlowZone[];
+  items: NativeItem[];
   nativePlan?: NativePlan | null;
+  onPlanChange?: (plan: NativePlan) => void;
   onBack: () => void;
   onComplete: () => void;
 }) {
   const [zoneIdx, setZoneIdx] = useState(0);
   const [stepIdx, setStepIdx] = useState(0); // 0=清理 1=分类 2..=逐组收纳
-  const [flow, setFlow] = useState<"guide" | "celebrate" | "checklist">("guide");
+  const [flow, setFlow] = useState<"guide" | "review" | "celebrate" | "checklist">("guide");
   const [checkIdx, setCheckIdx] = useState(0);
   const [stepError, setStepError] = useState<string | null>(null);
+  const [executionPlan, setExecutionPlan] = useState<NativePlan | null>(nativePlan ?? null);
   const advancing = useRef(false);
+  const placingCards = useRef<HTMLDivElement>(null);
   useEffect(() => {
+    setExecutionPlan(nativePlan ?? null);
     if (!nativePlan?.steps.length) return;
-    const activeIndex = nativePlan.steps.findIndex((candidate) => candidate.status === "active");
-    setStepIdx(activeIndex >= 0 ? activeIndex : nativePlan.steps.length - 1);
-    if (nativePlan.steps.every((candidate) => candidate.status === "done")) setFlow("celebrate");
+    let phase: GuidePhase | null = null;
+    try {
+      const stored = localStorage.getItem(guidePhaseKey(nativePlan.id));
+      if (stored === "classify" || stored === "execute") phase = stored;
+    } catch { /* Native progress still restores if browser storage is unavailable. */ }
+    setStepIdx(guideStartIndex(nativePlan, phase));
+    setFlow(nativePlan.steps.every((candidate) => candidate.status === "done") ? "celebrate" : "guide");
   }, [nativePlan?.id]);
-  const totalZones = nativePlan ? 1 : zones.length;
+  useEffect(() => {
+    placingCards.current?.querySelector<HTMLElement>('[data-guide-current="true"]')?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [stepIdx]);
+  const currentPlan = executionPlan ?? nativePlan ?? null;
+  const totalZones = currentPlan ? 1 : zones.length;
   const zone = zones[zoneIdx];
   if (!zone) {
     return (
@@ -5796,21 +5807,23 @@ function ARGuideStep({
   }
   // 真机演示锁死：引导五步用预先生成好的成品图 + 写定的文案，走到哪一步就显示哪张。
   // 关掉这个开关就回到真实识别驱动的原逻辑（groups 来自识别结果、画面用真实照片）。
-  const groups = DEMO_GUIDE ? DEMO_GROUPS : groupZoneItems(zone.names);
-  const zoneTasks = nativePlan
-    ? [{ zone: 1, label: "整理方案", color: ORANGE, tasks: nativePlan.steps.map((step) => ({ id: step.id, text: step.title })) }]
+  const groups = currentPlan ? groupsForNativePlan(currentPlan, items)
+    : (DEMO_GUIDE ? DEMO_GROUPS : groupZoneItems(zone.names)).map((group, index) => ({ ...group, id: `group-${index}`, itemCount: group.items.length }));
+  const zoneTasks = currentPlan
+    ? [{ zone: 1, label: "整理方案", color: ORANGE, tasks: currentPlan.steps.map((step) => ({ id: step.id, text: step.title, done: step.status === "done" })) }]
     : buildZoneTasks(zones);
-  const totalSteps = nativePlan?.steps.length || (DEMO_GUIDE ? DEMO_STEPS.length : 2 + groups.length);
+  const totalSteps = currentPlan ? 2 + currentPlan.steps.length : (DEMO_GUIDE ? DEMO_STEPS.length : 2 + groups.length);
   const isPrepare = stepIdx === 0;
   const isGroup = stepIdx === 1;
-  const placeIdx = Math.min(Math.max(stepIdx - 2, 0), Math.max(groups.length - 1, 0));
+  const nativeStepIndex = stepIdx - 2;
+  const placeIdx = Math.min(Math.max(nativeStepIndex, 0), Math.max(groups.length - 1, 0));
   const placing = groups[placeIdx] ?? { label: "物品", items: [] as string[] };
   const demoStep = DEMO_GUIDE ? DEMO_STEPS[Math.min(stepIdx, DEMO_STEPS.length - 1)] : null;
   // 演示图本身已经画好分区/整理结果，不再往上面叠示意框，避免两层标注打架。
   const stepImage = demoStep ? demoStep.image : photo || ROOM_IMG;
-  const showOverlay = !DEMO_GUIDE && !nativePlan;
+  const showOverlay = !DEMO_GUIDE && !currentPlan;
 
-  const nativeStep = nativePlan?.steps[stepIdx];
+  const nativeStep = currentPlan?.steps[nativeStepIndex];
   const stepMeta = nativeStep
     ? { title: nativeStep.title, desc: nativeStep.detail, btn: stepIdx + 1 >= totalSteps ? "完成收纳" : "下一步" }
     : demoStep
@@ -5824,7 +5837,7 @@ function ARGuideStep({
     : isGroup
     ? {
         title: "物品分类",
-        desc: "照画面上的橙色分区，把清出来的东西按组暂时归堆，先别急着放回收纳盒。",
+        desc: "按照下方的橙色分类卡，把清出来的东西按组暂时归堆，先别急着放回收纳盒。",
         btn: "下一步",
       }
     : {
@@ -5838,9 +5851,20 @@ function ARGuideStep({
     advancing.current = true;
     setStepError(null);
     try {
-      await completeNativePlan(nativeStep?.id);
-      if (stepIdx + 1 < totalSteps) setStepIdx(stepIdx + 1);
-      else setFlow("celebrate");
+      if (nativeStep) {
+        const updatedPlan = await completeGuideNativeStep(currentPlan!.id, nativeStep.id, (command, payload) => nativeRequest<NativeState>(command, payload));
+        setExecutionPlan(updatedPlan);
+        onPlanChange?.(updatedPlan);
+        if (updatedPlan.steps.every((candidate) => candidate.status === "done")) setFlow("celebrate");
+        else setStepIdx(guideStartIndex(updatedPlan, "execute"));
+      } else {
+        if (currentPlan && (isPrepare || isGroup)) {
+          try { localStorage.setItem(guidePhaseKey(currentPlan.id), isPrepare ? "classify" : "execute"); }
+          catch { /* Instructional progress never marks a native step as completed. */ }
+        }
+        if (stepIdx + 1 < totalSteps) setStepIdx(stepIdx + 1);
+        else setFlow("celebrate");
+      }
     } catch (error) {
       setStepError(error instanceof Error ? error.message : "步骤保存失败，请重试");
     } finally { advancing.current = false; }
@@ -6038,7 +6062,7 @@ function ARGuideStep({
         </p>
 
         {/* 清理步：清出去 → 示意 */}
-        {!nativePlan && isPrepare && (
+        {isPrepare && (
           <div className="flex items-center mt-4 mb-1 px-1">
             <div className="h-16 w-20 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: LINEN }}>
               <Trash2 size={26} color={COFFEE} />
@@ -6056,21 +6080,22 @@ function ARGuideStep({
         )}
 
         {/* 分类步：橙色分区示意卡 */}
-        {!nativePlan && isGroup && (
-          <div className="flex gap-2 mt-3.5 mb-1">
+        {isGroup && (
+          <div role="list" aria-label="物品分类卡" className="flex gap-2 mt-3.5 mb-1 overflow-x-auto" style={{ paddingBottom: 4 }}>
             {groups.map((g) => (
               <div
-                key={g.label}
-                className="flex-1 px-2 py-3 flex flex-col items-center gap-1.5"
-                style={{ backgroundColor: ORANGE, borderRadius: 12 }}
+                key={g.id}
+                role="listitem"
+                className="px-2 py-3 flex flex-col items-center gap-1.5"
+                style={{ flex: groups.length > 3 ? "0 0 104px" : "1 1 0", minWidth: 0, backgroundColor: ORANGE, borderRadius: 12 }}
               >
-                <span style={{ color: WHITE, fontSize: 10.5, fontWeight: 800 }}>{g.label}</span>
+                <span style={{ color: WHITE, fontSize: 10.5, fontWeight: 800, textAlign: "center", overflowWrap: "anywhere" }}>{g.label}</span>
                 <div
                   className="w-full py-2 flex items-center justify-center gap-1.5"
                   style={{ border: "1.5px dashed rgba(255,255,255,0.85)", borderRadius: 9 }}
                 >
                   <Box size={13} color={WHITE} />
-                  <span style={{ color: WHITE, opacity: 0.92, fontSize: 9.5 }}>{g.items.length} 件</span>
+                  <span style={{ color: WHITE, opacity: 0.92, fontSize: 9.5 }}>{g.itemCount === undefined ? "查看步骤说明" : `${g.itemCount} 件`}</span>
                 </div>
               </div>
             ))}
@@ -6078,26 +6103,30 @@ function ARGuideStep({
         )}
 
         {/* 收纳步：蓝色格子示意，当前组高亮 */}
-        {!nativePlan && !isPrepare && !isGroup && (
+        {!isPrepare && !isGroup && (
           <>
-            <div className="mt-3.5" style={{ height: 116, display: "flex", gap: 8 }}>
+            <div ref={placingCards} role="list" aria-label="归位分组" className="mt-3.5 overflow-x-auto" style={{ height: 116, display: "flex", gap: 8 }}>
               {groups.map((g, i) => {
                 const active = i === placeIdx;
                 return (
                   <div
-                    key={g.label}
-                    className="flex-1 flex flex-col items-center justify-center gap-1 px-1"
+                    key={g.id}
+                    role="listitem"
+                    data-guide-current={active}
+                    className="flex flex-col items-center justify-center gap-1 px-1"
                     style={{
+                      flex: groups.length > 3 ? "0 0 104px" : "1 1 0",
+                      minWidth: 0,
                       backgroundColor: active ? "#b7d7ee" : "#e9f2fa",
                       border: active ? "1.5px solid #7fb3d8" : "1.5px dashed #bcd4e8",
                       borderRadius: 12,
                     }}
                   >
-                    <span style={{ color: "#33586e", fontSize: 10.5, fontWeight: 800, textAlign: "center" }}>
+                    <span style={{ color: "#33586e", fontSize: 10.5, fontWeight: 800, textAlign: "center", overflowWrap: "anywhere" }}>
                       {g.label}
                     </span>
                     <span style={{ color: "#33586e", opacity: 0.65, fontSize: 9 }}>
-                      {g.items.length} 件
+                      {g.itemCount === undefined ? "查看步骤说明" : `${g.itemCount} 件`}
                     </span>
                   </div>
                 );
@@ -6111,7 +6140,14 @@ function ARGuideStep({
 
         {/* 底部按钮：跳过 + 绿色主按钮 */}
         <div className="flex gap-2 mt-4">
-          {!nativePlan && <button
+          {isGroup && <button
+            onClick={() => { setCheckIdx(0); setFlow("review"); }}
+            className="px-4 py-3.5 flex items-center justify-center gap-1.5 active:scale-[0.98] transition-transform"
+            style={{ backgroundColor: LINEN, color: COFFEE, borderRadius: 999, fontSize: 12, fontWeight: 700 }}
+          >
+            <Eye size={14} /> 复核
+          </button>}
+          {(isPrepare || isGroup) && <button
             onClick={advanceStep}
             className="px-5 py-3.5 flex items-center justify-center active:scale-[0.98] transition-transform"
             style={{ backgroundColor: LINEN, color: COFFEE, borderRadius: 999, fontSize: 12, fontWeight: 700 }}
@@ -6161,7 +6197,7 @@ function ARGuideStep({
               style={{ backgroundColor: WHITE, borderRadius: 18, boxShadow: "0 10px 30px rgba(0,0,0,0.28)" }}
             >
               <div className="flex-1">
-                <p style={{ color: COFFEE, fontSize: 12.5, fontWeight: 700 }}>{totalSteps} 步都完成啦</p>
+                <p style={{ color: COFFEE, fontSize: 12.5, fontWeight: 700 }}>{currentPlan ? `${currentPlan.steps.length} 个归位步骤已完成` : "本轮整理步骤已完成"}</p>
                 <p style={{ color: COFFEE, opacity: 0.55, fontSize: 10.5, marginTop: 1 }}>
                   看一下这个区域的整理清单
                 </p>
@@ -6178,18 +6214,17 @@ function ARGuideStep({
         </div>
       )}
 
-      {/* 整理清单页：tab 切区域查看 */}
-      {flow === "checklist" && (
+      {(flow === "review" || flow === "checklist") && (
         <div className="absolute inset-0 z-50 flex flex-col" style={{ backgroundColor: LINEN }}>
           <div className="px-5 pt-14 pb-1 flex items-center justify-between">
             <button
-              onClick={() => setFlow("celebrate")}
+              onClick={() => setFlow(flow === "review" ? "guide" : "celebrate")}
               className="h-9 w-9 rounded-full flex items-center justify-center"
               style={{ backgroundColor: WHITE }}
             >
               <X size={16} color={COFFEE} />
             </button>
-            <p style={{ color: COFFEE, fontSize: 15, fontWeight: 700 }}>整理清单</p>
+            <p style={{ color: COFFEE, fontSize: 15, fontWeight: 700 }}>{flow === "review" ? "物品复核" : "整理清单"}</p>
             <div style={{ width: 36 }} />
           </div>
 
@@ -6230,11 +6265,11 @@ function ARGuideStep({
                   <div key={t.id} className="flex items-start gap-2.5">
                     <span
                       className="h-4 w-4 rounded-full flex items-center justify-center flex-shrink-0"
-                      style={{ backgroundColor: `${ORANGE}22`, marginTop: 1 }}
+                      style={{ backgroundColor: t.done ? `${ORANGE}22` : WHITE, border: t.done ? "none" : `1px solid ${SOFT}`, marginTop: 1 }}
                     >
-                      <Check size={9} color={ORANGE} strokeWidth={3} />
+                      {t.done && <Check size={9} color={ORANGE} strokeWidth={3} />}
                     </span>
-                    <span style={{ color: COFFEE, opacity: 0.75, fontSize: 12, lineHeight: 1.5 }}>{t.text}</span>
+                    <span style={{ color: COFFEE, opacity: t.done ? 0.75 : 1, fontSize: 12, lineHeight: 1.5 }}>{t.text}</span>
                   </div>
                 ))}
               </div>
@@ -6243,7 +6278,7 @@ function ARGuideStep({
 
           <div className="px-5 pb-8">
             <button
-              onClick={advanceZone}
+              onClick={flow === "review" ? () => setFlow("guide") : advanceZone}
               className="w-full py-4 flex items-center justify-center gap-2 active:scale-[0.98] transition-transform"
               style={{
                 backgroundColor: ORANGE,
@@ -6254,7 +6289,7 @@ function ARGuideStep({
                 boxShadow: "0 10px 28px rgba(250,136,58,0.34)",
               }}
             >
-              {zoneIdx + 1 < totalZones ? `开始收纳区域 ${zones[zoneIdx + 1]?.n}` : "查看整理成果"}
+              {flow === "review" ? "返回继续整理" : zoneIdx + 1 < totalZones ? `开始收纳区域 ${zones[zoneIdx + 1]?.n}` : "查看整理成果"}
               <ChevronRight size={15} />
             </button>
           </div>
@@ -7089,14 +7124,16 @@ export function RelightFlow({ spaceId, spaceName, spaceVivid, onClose, onComplet
               const state = await nativeRequest<NativeState>("state.get");
               if (state.selectedSpaceID !== spaceId) throw new Error("空间已改变，请返回空间页重试。");
               const updated = await nativeRequest<NativeState>("plan.generate", { style: chosen.id === "efficient" ? "隐藏清爽" : chosen.id === "living" ? "温暖可见" : "快速复原", minutes: chosen.minutes <= 5 ? 5 : chosen.minutes >= 60 ? 60 : 10, goal: chosen.vibe, focusZone: zones.map((zone) => zone.label).join("、") });
-              const plan = updated.spaces.find((space) => space.id === spaceId)?.activePlan;
+              const selected = updated.spaces.find((space) => space.id === spaceId);
+              const plan = selected?.activePlan;
               if (!plan?.steps.length) throw new Error("未生成可执行步骤，请重试。");
+              setRelightItems(selected?.detectedItems ?? updated.scannedItems);
               setNativePlan(plan); setRelightZones(zones); setFlowError(null); setStep("guide");
             } catch (error) { setFlowError(error instanceof Error ? error.message : "方案保存失败，请重试。"); }
           }}
         />
       )}
-      {step === "guide" && <ARGuideStep photo={relightAssets[0]?.src} zones={relightZones} nativePlan={nativePlan} onBack={() => setStep("zones")} onComplete={() => setStep("proof")} />}
+      {step === "guide" && <ARGuideStep photo={relightAssets[0]?.src} zones={relightZones} items={relightItems} nativePlan={nativePlan} onPlanChange={setNativePlan} onBack={() => setStep("zones")} onComplete={() => setStep("proof")} />}
       {step === "proof" && (
         <ProofCaptureStep
           spaceName={spaceName}

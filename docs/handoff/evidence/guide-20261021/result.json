@@ -1,0 +1,11 @@
+{
+  "status": "passed",
+  "viewport": "390x844",
+  "source": "production dist with simulated native bridge; not a Swift persistence or real-camera test",
+  "checks": [
+    "Fresh plan reaches cleaning/classification/review; reviewing and reload do not complete native steps.",
+    "Skipping preflight changes no native completion; failed save stays retryable; each successful UUID advances once; completion restores after reload and is not archived without a photo.",
+    "Eleven groups retain readable cards without page overflow; resuming the final group scrolls its active card into view."
+  ],
+  "pageErrors": []
+}
