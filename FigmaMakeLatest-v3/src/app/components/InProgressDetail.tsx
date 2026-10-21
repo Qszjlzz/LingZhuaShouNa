@@ -4,6 +4,7 @@ import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { COFFEE, ORANGE, LINEN, BLUE, WHITE, SOFT } from "./theme";
 import { nativeRequest, type NativeSpace, type NativeState } from "../nativeBridge";
 import defaultCover from "../../../../Resources/Assets.xcassets/FigmaProfilePlanCloset.imageset/closet.png";
+import { CompletionPhotoReview, useCompletionPhoto } from "./CompletionPhotoReview";
 
 export type ProgressSpace = {
   id: string;
@@ -108,6 +109,7 @@ export function InProgressDetail({
     if (updated) setLocalSpace(updated);
     onNativeChange?.(state);
   };
+  const completionPhoto = useCompletionPhoto((state) => { update(state); onBack(); });
   const perform = async (action: () => Promise<void>) => {
     if (submitting.current) return;
     submitting.current = true; setBusy(true); setError("");
@@ -128,10 +130,7 @@ export function InProgressDetail({
     const selectedPlan = state.spaces.find((space) => space.id === localSpace.id)?.activePlan;
     if (selectedPlan?.id !== plan.id) throw new Error("方案已更新，请返回空间页重新打开。");
     if (allDone) {
-      const result = await nativeRequest<{ state?: NativeState }>("capture.open", { purpose: "after", source: "photo" });
-      if (result.state) update(result.state);
-      else update(await nativeRequest<NativeState>("state.get"));
-      onBack();
+      await completionPhoto.choose(localSpace.id);
     } else if (plan.isPaused) {
       update(await nativeRequest<NativeState>("plan.pause.set", { spaceID: localSpace.id, planID: plan.id, isPaused: false }));
       setExecuting(true);
@@ -359,7 +358,7 @@ export function InProgressDetail({
           </button>
           <button
             type="button"
-            disabled={busy || !plan}
+            disabled={busy || completionPhoto.busy || !plan}
             onClick={() => void continuePlan()}
             className="flex-1 h-14 rounded-full flex items-center justify-center gap-2"
             style={{
@@ -370,10 +369,12 @@ export function InProgressDetail({
               boxShadow: "0 8px 24px rgba(250,136,58,0.35)",
             }}
           >
-            <Play size={16} fill={WHITE} /> {busy ? "保存中…" : allDone ? "保存完成照" : executing && !plan?.isPaused ? "完成当前步骤" : "继续整理"}
+            <Play size={16} fill={WHITE} /> {busy || completionPhoto.busy ? "处理中…" : allDone ? "保存完成照" : executing && !plan?.isPaused ? "完成当前步骤" : "继续整理"}
           </button>
         </div>
       </div>
+      {completionPhoto.error && !completionPhoto.preview && <p role="alert" className="absolute bottom-28 left-6 right-6 text-center" style={{ color: "#9A4230", fontSize: 12 }}>{completionPhoto.error}</p>}
+      <CompletionPhotoReview preview={completionPhoto.preview} busy={completionPhoto.busy} error={completionPhoto.error} onLater={() => void completionPhoto.discard()} onReselect={() => void completionPhoto.reselect()} onCommit={() => void completionPhoto.commit()} />
     </div>
   );
 }

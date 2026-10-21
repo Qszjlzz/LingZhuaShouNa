@@ -94,25 +94,25 @@ App/SmartPawApp.swift
 - 项目 Tab 使用 MyPlansScreen，“我的计划”也指向同一 Tab；四个筛选和暂停/继续已连接，日历/旧社区不在当前启动依赖闭包。旧组件文件仍在，不需要为了证明移除页面就删历史源码。
 - 空间地图和进行中详情使用原生 UUID、物品、方案及动作。保存失败不先显示成功；暂停、步骤、完成照、归档有真实持久化与回滚。
 - compare / same / new 已区别处理：重新点亮、沿用历史方案、新方案；`plan.reuse` 创建独立方案/步骤 ID、重置进度、保留已完成历史。
-- 重新点亮链路已接入识别等待、方案生成、真实执行及完成照暂存；点击确认才归档，重拍/退出清理暂存。这部分仍缺最终完整 UI 操作验收。
+- 重新点亮链路已接入识别等待、方案生成、真实执行及完成照暂存；点击确认才归档，重拍/退出清理暂存。完成照确认修复还覆盖普通主流程、项目页和进行中详情的生产入口；当前已有模拟器相册选图验收，但真机相机与完整 Figma 视觉验收未完成。
 - 最新无进行中计划的空间页：完成过整理显示“开始下一次整理”，首次仍显示“开始第一次整理”。最终模拟器重启画面已看见新文案。
 - 本轮真实原生方案补回清理 → 分类 → 复核 → 真实归位步骤入口。清理和分类是前置指引，不计入原生完成步数；跳过仅作用于这两个前置阶段。归位步骤按真实 UUID 调用原生保存，确认最新状态为 `done` 后才推进；保存失败留在当前步骤。
 - 普通整理和重新点亮生成后都会把最新原生物品送入分类 UI；卡片按步骤 `itemIDs` 配对，key 使用步骤 UUID，不按数组位置猜测。多于三组可横向浏览并在恢复时滚到当前组。
 - 本轮前置阶段以 plan UUID 隔离保存到 WKWebView `localStorage`。浏览器 reload 和原生 active/done 优先逻辑已测；WKWebView 被系统杀掉后的本机 localStorage 恢复尚未单独实测。
-- 本轮资源为 `Resources/FigmaMakeLatestWeb/assets/index-Cym_NAvg.js`；增量报告记录 SHA-256，源 dist 与内嵌资源字节一致。旧 `index-Bm7H3tNW.js` 已被替换。
+- 当前内嵌网页资源为 `Resources/FigmaMakeLatestWeb/assets/index-CXVElg32.js`，SHA-256 为 `ebdc97c2d6016eb84d44ae4b94ef17dcdac2fde9e0536ae4e6e43c331540642b`；`index.html` SHA-256 为 `1f7621fa6bbfb32434b792052839936c0f1d03e057f63a8b0822dca563375ce4`。源 dist 与内嵌资源字节一致。此前引导修复报告中的 `index-Cym_NAvg.js` 指较早快照，当前资源清单以最新文件为准。
 - ShootFlow 修复前后 JSX motion AST 均为 54 个元素，所比较的动画属性序列一致。这不替代真实设备帧率或每条运行时动画验收。
 
 ### 本轮整理引导验收
 
-[增量报告](docs/design/guide-progress-repair-20261021.md)记录本轮范围。15 项逻辑测试、生产 dist + 模拟 native bridge 的浏览器交互测试（390 × 844，无页面错误）以及 4 项原生定向测试通过。浏览器测试覆盖前置阶段恢复、前置跳过不完成原生步骤、保存失败重试、三个 UUID 逐步完成和 11 组卡片布局；它不证明 Swift bridge 的新完整点击链路或真实相机。
+[增量报告](docs/design/guide-progress-repair-20261021.md)记录整理引导修复：15 项逻辑测试、生产 dist + 模拟 native bridge 的浏览器交互测试（390 × 844，无页面错误）以及 4 项原生定向测试通过。之后完成照暂存修复另有生产 dist smoke 和真实原生模拟器验收，范围、证据与限制见下节及[完成照验收证据](docs/handoff/evidence/completion-photo-20261021/)。
 
-本轮最终 App 已在 iPhone 16 Pro / iOS 18.5 模拟器安装并启动；真实原生 bridge 的整理主线已经走到待完成照状态，详见下节和新增截图。该验证使用仓库书桌测试图从相册导入，不是真机相机验收。完成照拍摄/归档、重新点亮、新流程保存失败、以及 WKWebView localStorage 跨进程重启恢复仍未由本次模拟器流程验证。
+本轮最终 App 已在 iPhone 16 Pro / iOS 18.5 模拟器安装并启动；真实原生 bridge 的普通整理主线走到待完成照状态并验证重启未归档。完成照选择、暂存预览、确认归档则在后续定向模拟器操作中验证，见下节。测试图片来自模拟器相册，不是真机相机验收。重新点亮、新流程实际 UI 保存失败及 WKWebView localStorage 跨进程重启恢复仍未由本轮模拟器流程验证。
 
 ### 本轮真实原生 bridge 整理主线
 
-最终 `index-Cym_NAvg.js` 已随 App 构建、安装并启动。使用模拟器相册中的仓库书桌测试图，实际通过：正常入口 → 选图 → 检查照片 → 提交并生成 → 确认方案 → 单区域 → 清理 → 分类（书籍 1 件、电子产品 2 件）→ 复核（两项均未完成）→ 返回 → 跳过前置分类 → 完成两个真实 UUID 步骤。原生进度先后显示 `done/active`、`done/done`；庆祝页准确显示 2 个完成步骤；清单两项均打勾。由于没有拍完成照，`completedPlans` 始终为 0。强制结束 App 后重新启动，空间页保留 100% 进度并显示“待保存完成照”，说明未误归档；另已只读核对 Swift 对应持久化数据。
+引导修复快照 `index-Cym_NAvg.js` 已随 App 构建、安装并启动。使用模拟器相册中的仓库书桌测试图，实际通过：正常入口 → 选图 → 检查照片 → 提交并生成 → 确认方案 → 单区域 → 清理 → 分类（书籍 1 件、电子产品 2 件）→ 复核（两项均未完成）→ 返回 → 跳过前置分类 → 完成两个真实 UUID 步骤。原生进度先后显示 `done/active`、`done/done`；庆祝页准确显示 2 个完成步骤；清单两项均打勾。由于没有拍完成照，`completedPlans` 始终为 0。强制结束 App 后重新启动，空间页保留 100% 进度并显示“待保存完成照”，说明未误归档；另已只读核对 Swift 对应持久化数据。
 
-证据在 [本轮模拟器截图](docs/handoff/evidence/guide-20261021/)：`08-native-cleaning.png`、`09-native-classify.png`、`10-native-review.png`、`11-native-second-step.png`、`12-native-completed.png`、`13-native-checklist.png`、`14-native-restarted.png`。这些截图证明模拟器和测试照片下的真实原生进度/重启状态；不证明真机相机、完成照存储/归档、重拍、重新点亮或异常保存回滚。
+证据在 [本轮模拟器截图](docs/handoff/evidence/guide-20261021/)：`08-native-cleaning.png`、`09-native-classify.png`、`10-native-review.png`、`11-native-second-step.png`、`12-native-completed.png`、`13-native-checklist.png`、`14-native-restarted.png`。这些截图证明模拟器和测试照片下的真实原生进度/重启状态；不证明真机相机、完成照存储/归档（该项另见下方第 5 节）、重拍、重新点亮或异常保存回滚。
 
 ### 真正在模拟器走过的普通主流程
 
@@ -122,6 +122,15 @@ App/SmartPawApp.swift
 
 参考：[真实识别](app-analysis/figma-reference/verified-20261021/simulator/final-photo-recognition.png)、[项目完成记录](app-analysis/figma-reference/verified-20261021/simulator/final-project-completed.png)、[Sarah 实际统计](app-analysis/figma-reference/verified-20261021/simulator/final-profile-earned.png)。最后一次已获得徽章直接点击操作遭遇工具故障，`final-badge-after-click.png` 不应自动算作该操作通过。
 
+### 完成照暂存与归档：已完成限定验收
+
+本轮把完成照从“选中即归档”改为“选中后先预览、确认后再归档”，覆盖正常 ShootFlow、项目页和进行中详情三个生产入口。重拍/重新选择和稍后退出会清理暂存；归档失败时预览保留，可再次确认。相机启动等待期间离开页面也会停止后续重试。
+
+- `pnpm test:guide`：15 / 15 通过。
+- 生产 dist + 模拟 native bridge 的 390 × 844 Playwright smoke 通过，无页面错误；覆盖相册取消、相机/相册暂存、重拍取消、稍后退出取消、防重复操作、归档失败重试及确认后只归档一次。结果：[web-smoke-result.json](docs/handoff/evidence/completion-photo-20261021/web-smoke-result.json)。此项不证明原生持久化。
+- iOS Debug 构建成功并安装到 iPhone 16 Pro / iOS 18.5 模拟器。真实系统相册选图后，确认预览时原生状态仍有 `activePlan` 且 `completedPlans=0`；点击确认后 `activePlan` 清除、`completedPlans=1`。证据：[预览态](docs/handoff/evidence/completion-photo-20261021/native-progress-preview.png)、[归档态](docs/handoff/evidence/completion-photo-20261021/native-archived.png)。
+- 这次仅证明模拟器相册路线的暂存与归档门槛。没有验证真机相机、原生存储失败重试、重新点亮完成照全路线或完整 Figma 像素一致性。模拟器中的归档是测试数据，不是用户手机内容。
+
 ### 动效已知证据
 
 徽章与原 MakePreview 的 AST 比对：16 个 motion 元素、43 组动效参数保留；ShootFlow 的 54 个 motion 元素、SpatialScreen 的 23 个 motion 元素与 Git HEAD 动效属性一致（计入 AnimatePresence 时空间共 30 个节点）。浏览器中徽章钻石的 transform 两次取样有变化。这些证明指定声明和一处运行动画，不能替代全部动效、真实路由触发或真机帧率验收。
@@ -130,7 +139,7 @@ App/SmartPawApp.swift
 
 ### A. 先补全正式画板清单和版本关系
 
-- [ ] 完成详细整理分组 [`2261:6479`](https://www.figma.com/design/cHyKGPXFlSnNcjBWw9MNxE/ui%E7%95%8C%E9%9D%A2?node-id=2261-6479) 的 21 个 frame 子层：实际画布顺序、尺寸、19 张主流程手机与 2 张方案草图的归属。图层堆叠顺序不能当实施顺序。
+- [ ] 完成详细整理分组 [`2261:6479`](https://www.figma.com/design/cHyKGPXFlSnNcjBWw9MNxE/ui%E7%95%8C%E9%9D%A2?node-id=2261-6479) 的 21 个 frame 子层：实际画布顺序、尺寸与全部状态归属。右上两张浅色画板已核实为识别、规划加载态；图层堆叠顺序不能当实施顺序。
 - [ ] 补齐剩余根节点、Frame 7、Page 2、独立 RelightCompleteStep / SpatialScreen、旧 Container 的版本关系。不能只按节点 ID 新旧判断最终版。
 - [ ] 本次现场确认 Frame 9、10、11 是比赛展板，不作为独立手机页面；其内容可帮助定位，但不能把展板内重复手机再累加。
 - [ ] 为每个正式画板记录：节点链接、画布位置/尺寸、页面/弹层/状态、主要控件、对应 App 离散状态、素材来源、待确认点、Figma 截图、模拟器截图和差异。
@@ -138,9 +147,21 @@ App/SmartPawApp.swift
 
 ### B. 修复已经找到的差异，再逐屏验证
 
+#### 方案页 / 微调页的最新源码审计
+
+2026-10-21 补查 `FigmaMakeLatest-v3/src/app/components/ShootFlow.tsx` 后确认：
+
+- `PlanDeckStep` 固定读取 `plans[0]`，注释明确写着“现在只定一种方案”。即使上游传入多项，也不会出现多方案横向选择。见 [ShootFlow.tsx:801](FigmaMakeLatest-v3/src/app/components/ShootFlow.tsx#L801) 和 [ShootFlow.tsx:814](FigmaMakeLatest-v3/src/app/components/ShootFlow.tsx#L814)。
+- 方案卡上的“确认方案，开始整理”调用 `setStep("zones")`；它本身还没有生成原生执行计划。`plan.generate` 在区域页点击继续时才执行。见 [ShootFlow.tsx:358](FigmaMakeLatest-v3/src/app/components/ShootFlow.tsx#L358) 和 [ShootFlow.tsx:382](FigmaMakeLatest-v3/src/app/components/ShootFlow.tsx#L382)。因此对 Figma 时要分别核对方案确认与区域选择两个状态，不能把这两个按钮行为合并描述。
+- 微调消息会调用 `chat.send` 并显示回复，但确认时构造的 `refined` 只改 `name` 和 `vibe`，不会改 `changes`、时长、方案图或原生步骤。当前聊天回复不能证明执行计划已按用户要求调整。见 [ShootFlow.tsx:1111](FigmaMakeLatest-v3/src/app/components/ShootFlow.tsx#L1111) 和 [ShootFlow.tsx:1140](FigmaMakeLatest-v3/src/app/components/ShootFlow.tsx#L1140)。
+- **本轮已更正的 Figma 画板身份**：[`2261:5717`](https://www.figma.com/design/cHyKGPXFlSnNcjBWw9MNxE/ui%E7%95%8C%E9%9D%A2?node-id=2261-5717) 是快速整理方案首屏；[`2261:3989`](https://www.figma.com/design/cHyKGPXFlSnNcjBWw9MNxE/ui%E7%95%8C%E9%9D%A2?node-id=2261-3989) 是尚未选区的分区选择；[`2261:3719`](https://www.figma.com/design/cHyKGPXFlSnNcjBWw9MNxE/ui%E7%95%8C%E9%9D%A2?node-id=2261-3719) 是桌面区域已选中的分区选择；[`2261:6249`](https://www.figma.com/design/cHyKGPXFlSnNcjBWw9MNxE/ui%E7%95%8C%E9%9D%A2?node-id=2261-6249) 是方案微调聊天；[`2285:11376`](https://www.figma.com/design/cHyKGPXFlSnNcjBWw9MNxE/ui%E7%95%8C%E9%9D%A2?node-id=2285-11376) 和 [`2285:11580`](https://www.figma.com/design/cHyKGPXFlSnNcjBWw9MNxE/ui%E7%95%8C%E9%9D%A2?node-id=2285-11580) 是两种正式加载状态；[`2261:3290`](https://www.figma.com/design/cHyKGPXFlSnNcjBWw9MNxE/ui%E7%95%8C%E9%9D%A2?node-id=2261-3290) 是完成照拍摄画面；[`2261:5907`](https://www.figma.com/design/cHyKGPXFlSnNcjBWw9MNxE/ui%E7%95%8C%E9%9D%A2?node-id=2261-5907) 是空间地图上的成就弹窗。以上均为 390 × 844，已选中身份的截图位于 [`detailed-flow-20261021`](app-analysis/figma-reference/detailed-flow-20261021/)；详见[完整盘点新增核验表](docs/design/figma-full-inventory-20261021.md#近距选中后的用途修正)和[画板映射](docs/figma-screen-map.md)。图层名与旧记录不可靠。其余未核对的 frame 和版本关系仍需继续检查。
+- 因此“显示 plans[0]”目前不能仅凭单张快速方案首屏称为已确认差异，也不能先做多方案轮播。区域选择两种状态则有明确设计证据：当前 `buildFlowZones` 固定一个全图区域、原生只执行一个物理区域，无法覆盖选区 UI 和区域二真实执行；修复前要先建立可靠的照片分区数据。
+- Figma 完成流程中，`2261:3290` 是拍摄完成照；其右邻可见整理前后对比页，CTA“查看成就”；再右侧 `2261:5907` 是“加入我的家”弹窗。完成照暂存、重拍/稍后取消、确认归档的生产网页 smoke 和模拟器相册暂存/归档已通过上述限定验收；真机相机、原生保存失败重试与对应页面的 Figma 逐屏比对仍待完成。不要把网页模拟 bridge 的通过扩大为 Swift 持久化通过。
+- 方案微调聊天 `2261:6249` 已核实，与 `5717` 首屏相邻；源码仍只更新方案名称和氛围文字，不改实际执行步骤。接下来应对照画板控件与可执行的真实步骤变更来处理。
+
 | 优先项 | 目前证据 / 下一步 |
 | --- | --- |
-| 整理执行分类页 | 清理、分类、复核、仅前置跳过与真实 UUID 归位推进已在模拟器主线验证；见上方 [模拟器截图](docs/handoff/evidence/guide-20261021/) 和[增量验收](docs/design/guide-progress-repair-20261021.md)。仍缺 Figma 原橙色卡片独立素材，当前是使用真实分组数据的通用橙卡；完成照归档和失败保存回滚尚未在本轮模拟器验证 |
+| 整理执行分类页 | 清理、分类、复核、仅前置跳过与真实 UUID 归位推进已在模拟器主线验证；见上方 [模拟器截图](docs/handoff/evidence/guide-20261021/) 和[增量验收](docs/design/guide-progress-repair-20261021.md)。仍缺 Figma 原橙色卡片独立素材，当前是使用真实分组数据的通用橙卡；完成照暂存/归档有独立限定验收，但未做像素级页面验收 |
 | 多区域流程 | `buildFlowZones` 固定一个“收纳区域”，`nativePlan` 仍只执行一个物理区域，无法覆盖 Figma 区域二。先核实真实分区与步骤语义，不能把目的地当物理区域或开启固定演示五步冒充真实完成 |
 | AR/工具页路由 | `arPreview`、`tools` 有分支但正常主线直接 `zones → arGuide`；核实最终画板后决定是否接回，不为覆盖旧函数而接入弃用页 |
 | 分类页/书籍页/添加弹层 | 已存画布显示不同书籍层级、来源弹层和表单；当前 BooksCategoryScreen 被大量替换，添加拍照会直接进相机，最近物品图标/空态等也有差异。按 `2283:9423` 的 11 张手机逐屏重查，不能只复原 MakePreview 就称 Figma 一致 |
@@ -164,11 +185,11 @@ App/SmartPawApp.swift
 - 帮助与反馈、退出登录只有提示，真实账号/帮助流程未接入。好友、收藏的当前实现也不能据已有组件就视为完整线上社交。
 - 普通拍摄面向当前选中空间，创建新空间的完整产品流程尚未验收。
 - 上次全量自动测试：**76 个用例，70 通过、6 失败、0 跳过；15 是断言失败数，不是 15 个失败用例。** 本轮没有重跑全量；已有失败涉及原生识别/定位，且识别服务也有改动，没有修改前对照，不能说全是旧问题。
-- 本轮新增/定向证据是 15 项 Node 流程测试、390 × 844 模拟 bridge 网页交互测试和 4 项原生进度/归档定向测试，详见[增量报告](docs/design/guide-progress-repair-20261021.md)。不要把局部通过扩写为全 App 或全量回归通过。
+- 引导修复有 15 项 Node 流程测试、390 × 844 模拟 bridge 网页交互测试和 4 项原生进度/归档定向测试，详见[增量报告](docs/design/guide-progress-repair-20261021.md)。完成照修复另有生产网页 smoke、Debug 构建与模拟器相册暂存/归档的限定验收，见本文件第 5 节。不要把局部通过扩写为全 App 或全量回归通过。
 - Figma 分类橙色插画素材尚未找到。当前卡片仅恢复数据驱动的结构和操作，不等于逐屏视觉复刻。
-- 实际 iOS 模拟器已通过本轮整理主线到“待保存完成照”，强制退出后仍保持 100% 进度且未归档；本轮没有验证完成照与归档、重新点亮、新流程保存失败回滚或前置 localStorage 跨进程恢复。模拟器用测试照片和相册选择不能验证真机相机。真机相机、实时帧率、AR、系统分享、VoiceOver、动态字体、多机型和全部离线行为尚未完成验收。
+- 实际 iOS 模拟器普通主线已验证到待保存完成照并测试重启未归档；完成照选中后的暂存预览和确认后归档另有模拟器相册验收。仍未验证真机相机、原生持久化失败重试、重新点亮完整路线、新流程实际 UI 保存失败回滚或前置 localStorage 跨进程恢复。真机相机、实时帧率、AR、系统分享、VoiceOver、动态字体、多机型和全部离线行为尚未完成验收。
 - 6 图对象级：16 个标注目标匹配 11 个（68.75%），平均 IoU 0.643；杂物堆/车库出现 0 候选。不能降低门槛只为变绿。详细失败名称和原因已写入测试报告。
-- 这份全量测试不覆盖最后的完成照桥接和 CTA 文案修改；后者另有编译、定向两项方案复用测试和有限手动验证。
+- 最近一次全量 76 项原生测试结果是历史记录，早于完成照修复，本轮没有重跑全量。完成照另有 15 项 guide 逻辑测试、生产 dist 模拟 bridge smoke、iOS Debug 构建和有限模拟器验收；4 项原生定向测试属于此前引导修复，不覆盖本轮全部改动。
 - **没有成功安装到用户手机。** 原工作站遇到无线隧道断开、`No Accounts`、`No profiles for com.qszjlzz.smartpaw`。不能把模拟器安装说成手机安装。
 - App Store 尚不可提交：开发者账号、模型版权、隐私/支持资料、Xcode 26/iOS 26 SDK 以及真机验收等问题见 [上架背景](docs/app-store/README.md)。不把这些资料草稿当作已发布政策。
 
@@ -225,4 +246,4 @@ App target team 当前为 `46484446VW`，test target 为 `3S323K52DX`；新电�
 
 ## 10. 可直接粘给新对话
 
-> 请接手灵爪收纳：仓库 https://github.com/Qszjlzz/LingZhuaShouNa ，从分支 `codex/figma-ui-handoff-20261021` 最新提交开始，先检查 `git status` 并完整阅读根目录 `HANDOFF.md`。主任务仍是把全部正式 Figma 手机画板与真实 App 逐屏对齐，保留原动效和真实业务；尚未完成。已确认 Sarah Chen 个人页加徽章、第三栏“项目”使用个人分组的“我的计划”卡片设计、移除独立日历、社区由项目替换、保持 React + WKWebView。本轮真实模拟器主线已到待完成照、重启保持 100% 且未归档；先读 `docs/design/guide-progress-repair-20261021.md` 和 `docs/handoff/evidence/guide-20261021/`，补验完成照/归档及保存失败等边界，再核定 `2261:6479` 的 21 个 frame 顺序/版本、补齐正式画板清单和多物理区域数据。Figma 原分类插画尚缺，当前卡片不是精确视觉复刻。只有真正多版本不确定时带候选截图来问，不要重复问已确认项；不能把浏览器模拟、局部测试或构建成功说成全 App 完成。
+> 请接手灵爪收纳：仓库 https://github.com/Qszjlzz/LingZhuaShouNa ，从分支 `codex/figma-ui-handoff-20261021` 最新提交开始，先检查 `git status` 并完整阅读根目录 `HANDOFF.md`。主任务仍是把全部正式 Figma 手机画板与真实 App 逐屏对齐，保留原动效和真实业务；尚未完成。已确认 Sarah Chen 个人页加徽章、第三栏“项目”使用个人分组的“我的计划”卡片设计、移除独立日历、社区由项目替换、保持 React + WKWebView。本轮完成照暂存修复已覆盖普通主流程、项目页和进行中详情：15 项逻辑测试、生产 dist 模拟 bridge smoke、iOS Debug 构建和模拟器相册暂存/确认归档通过，证据在 `docs/handoff/evidence/completion-photo-20261021/`；真机相机和存储失败重试仍未验证。Figma 已现场核实 `2261:5717/6249`、`2261:3989/3719`、`2285:11376/11580`、`2261:3290`、`2261:5907`；截图和差异见本 HANDOFF 第 6 节、`docs/design/figma-full-inventory-20261021.md` 与 `docs/figma-screen-map.md`。接下来核实 `2261:3091`、`2261:3457`、`2276:1795` 及 `2261:6479` 其它 frame 的画布顺序、尺寸和版本，再覆盖其它空间/分类/个人与项目画板。已知主要差异包括真实多物理分区数据缺失、微调聊天不改实际步骤、加载状态和分类卡视觉待对齐。Figma 原分类插画尚缺；不得把局部验收或构建成功说成全 App 完成。

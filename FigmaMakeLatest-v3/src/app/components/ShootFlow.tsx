@@ -47,7 +47,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { Raccoon } from "./Raccoon";
 import { COFFEE, ORANGE, LINEN, BLUE, WHITE, SOFT } from "./theme";
-import { isUsableNativeHint, nativeRequest, type NativeState, type NativePlan, type NativeItem, type NativeHint } from "../nativeBridge";
+import { isUsableNativeHint, nativeRequest, type CompletionPhotoPreview, type NativeState, type NativePlan, type NativeItem, type NativeHint } from "../nativeBridge";
 import { completeGuideNativeStep, groupsForNativePlan, guidePhaseKey, guideStartIndex, type GuidePhase } from "../guideProgress";
 
 const ROOM_IMG =
@@ -449,7 +449,7 @@ export function ShootFlow({
           onFinish={() => setStep("reward")}
         />
       )}
-      {step === "reward" && <RewardStep photo={photo} itemCount={zoneList.reduce((sum, zone) => sum + zone.items, 0)} areaCount={zoneList.length} timeBudget={nativePlan?.timeBudget ?? zoneList.reduce((sum, zone) => sum + zone.mins, 0)} onClose={onFinish || onClose} />}
+      {step === "reward" && <RewardStep photo={photo} itemCount={zoneList.reduce((sum, zone) => sum + zone.items, 0)} areaCount={zoneList.length} timeBudget={nativePlan?.timeBudget ?? zoneList.reduce((sum, zone) => sum + zone.mins, 0)} onClose={onClose} onFinish={onFinish || onClose} />}
     </div>
   );
 }
@@ -4696,7 +4696,7 @@ function TaskStep({ plan, onBack, onComplete, onFinish }: {
 const AFTER_IMG =
   "https://images.unsplash.com/photo-1749705319317-f9a2bf24fe3d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080";
 
-function RewardStep({ photo, itemCount, areaCount, timeBudget, onClose }: { photo?: string; itemCount: number; areaCount: number; timeBudget: number; onClose: () => void }) {
+function RewardStep({ photo, itemCount, areaCount, timeBudget, onClose, onFinish }: { photo?: string; itemCount: number; areaCount: number; timeBudget: number; onClose: () => void; onFinish: () => void }) {
   const [afterPhoto, setAfterPhoto] = useState<string | null>(null);
   const [showComparison, setShowComparison] = useState(false);
   const [slider, setSlider] = useState(50);
@@ -4704,14 +4704,53 @@ function RewardStep({ photo, itemCount, areaCount, timeBudget, onClose }: { phot
   const [captureError, setCaptureError] = useState<string | null>(null);
   const [liveFeed, setLiveFeed] = useState(false);
   const [busy, setBusy] = useState(false);
+  const busyRef = useRef(false);
+  const beginBusy = () => {
+    if (busyRef.current) return false;
+    busyRef.current = true;
+    setBusy(true);
+    return true;
+  };
+  const endBusy = () => {
+    busyRef.current = false;
+    setBusy(false);
+  };
+  useEffect(() => () => { void nativeRequest("capture.after.cancel").catch(() => undefined); }, []);
+
   const chooseFromLibrary = async () => {
-    if (busy) return;
-    setBusy(true); setCaptureError(null);
+    if (!beginBusy()) return;
+    setCaptureError(null);
     try {
-      const shot = await nativeRequest<{ preview?: string }>("capture.open", { source: "photo", purpose: "after" });
+      const shot = await nativeRequest<CompletionPhotoPreview>("capture.open", { source: "photo", purpose: "after-preview" });
       if (shot.preview) setAfterPhoto(shot.preview); else setCaptureError("没有读取到照片，请重试");
-    } catch (error) { setCaptureError((error as Error).message); }
-    finally { setBusy(false); }
+    } catch (error) {
+      const message = (error as Error).message;
+      if (message !== "已取消") setCaptureError(message);
+    }
+    finally { endBusy(); }
+  };
+
+  const saveAfterPhoto = async () => {
+    if (!beginBusy()) return;
+    setCaptureError(null);
+    try {
+      await nativeRequest<NativeState>("capture.after.commit");
+      setShowComparison(true);
+    } catch (error) {
+      setCaptureError((error as Error).message || "完成照保存失败，请重试");
+    } finally { endBusy(); }
+  };
+
+  const retakeAfterPhoto = async () => {
+    if (!beginBusy()) return;
+    setCaptureError(null);
+    try {
+      await nativeRequest("capture.after.cancel");
+      setAfterPhoto(null);
+      setShowComparison(false);
+    } catch (error) {
+      setCaptureError((error as Error).message || "暂时无法重新拍摄，请重试");
+    } finally { endBusy(); }
   };
   const previewRef = useRef<HTMLDivElement>(null);
 
@@ -4723,23 +4762,30 @@ function RewardStep({ photo, itemCount, areaCount, timeBudget, onClose }: { phot
       : { x: 0, y: 0, width: window.innerWidth, height: window.innerHeight };
   };
 
-  const startPreview = async (): Promise<boolean> => {
+  const startPreview = async (isActive: () => boolean = () => true): Promise<boolean> => {
     for (let attempt = 0; attempt < 3; attempt++) {
+      if (!isActive()) return false;
       try {
         const res = await nativeRequest<{ ok: boolean; reason?: string }>("camera.preview.start", rectOf());
+        if (!isActive()) {
+          if (res.ok === true) void nativeRequest("camera.preview.stop", {}).catch(() => undefined);
+          return false;
+        }
         if (res.ok === true) { setLiveFeed(true); return true; }
         if (res.reason === "denied") { setLiveFeed(false); return false; }
       } catch { /* 下面统一重试 */ }
+      if (!isActive()) return false;
       await new Promise((r) => setTimeout(r, 600));
+      if (!isActive()) return false;
     }
-    setLiveFeed(false);
+    if (isActive()) setLiveFeed(false);
     return false;
   };
 
   useEffect(() => {
     if (afterPhoto) return;
     let stopped = false;
-    void (async () => { const ok = await startPreview(); if (!stopped && !ok) setCaptureError("相机还没准备好，点一下快门再试一次"); })();
+    void (async () => { const ok = await startPreview(() => !stopped); if (!stopped && !ok) setCaptureError("相机还没准备好，点一下快门再试一次"); })();
     const sync = () => { void nativeRequest("camera.preview.frame", rectOf()).catch(() => {}); };
     window.addEventListener("resize", sync);
     return () => {
@@ -4769,20 +4815,20 @@ function RewardStep({ photo, itemCount, areaCount, timeBudget, onClose }: { phot
   }, [liveFeed, afterPhoto]);
 
   const captureAfter = async () => {
-    if (busy) return;
-    setBusy(true);
+    if (!beginBusy()) return;
     setCaptureError(null);
+    setFlash(true);
     try {
+      await new Promise((resolve) => setTimeout(resolve, 220));
+      setFlash(false);
       if (!liveFeed) { await startPreview(); }
-      const shot = await nativeRequest<{ preview?: string }>("camera.capture", { purpose: "after" });
+      const shot = await nativeRequest<CompletionPhotoPreview>("camera.capture", { purpose: "after-preview" });
       if (!shot.preview) { setCaptureError("没有拿到照片，光线亮一点再试一次"); return; }
       setAfterPhoto(shot.preview);
     } catch (error) {
       const message = (error as Error).message;
       if (message !== "已取消") setCaptureError(message);
-    } finally {
-      setBusy(false);
-    }
+    } finally { setFlash(false); endBusy(); }
   };
 
   // Camera capture view
@@ -4793,7 +4839,7 @@ function RewardStep({ photo, itemCount, areaCount, timeBudget, onClose }: { phot
         className="relative h-full w-full overflow-hidden"
         style={{ backgroundColor: liveFeed ? "transparent" : "#1a1411" }}
       >
-        <button onClick={onClose} className="absolute top-14 left-5 z-20 px-3.5 py-2" style={{ backgroundColor: "rgba(255,255,255,0.92)", color: COFFEE, borderRadius: 999, fontSize: 11, fontWeight: 600 }}>稍后完成</button>
+        <button onClick={onClose} disabled={busy} className="absolute top-14 left-5 z-20 px-3.5 py-2" style={{ backgroundColor: "rgba(255,255,255,0.92)", color: COFFEE, borderRadius: 999, fontSize: 11, fontWeight: 600 }}>稍后完成</button>
         {/* 实时取景画面（相机画面垫在 WebView 底下，透明后透上来）；没起来时用整理前照片兜底 */}
         {!liveFeed && <div className="h-full w-full flex items-center justify-center" style={{ backgroundColor: "#1a1411", color: WHITE, fontSize: 12 }}>相机预览不可用，请重试</div>}
 
@@ -4850,13 +4896,8 @@ function RewardStep({ photo, itemCount, areaCount, timeBudget, onClose }: { phot
           )}
           <button onClick={() => void chooseFromLibrary()} disabled={busy} className="px-4 py-3" style={{ backgroundColor: "rgba(255,255,255,0.16)", color: WHITE, borderRadius: 999, fontSize: 12 }}>从相册选择</button>
           <button
-            onClick={() => {
-              setFlash(true);
-              setTimeout(() => {
-                setFlash(false);
-                void captureAfter();
-              }, 220);
-            }}
+            aria-label="拍摄完成照"
+            onClick={() => void captureAfter()}
             disabled={busy}
             className="h-20 w-20 rounded-full flex items-center justify-center"
             style={{
@@ -4887,7 +4928,7 @@ function RewardStep({ photo, itemCount, areaCount, timeBudget, onClose }: { phot
             >
               整理完成
             </span>
-            <button onClick={onClose} style={{ color: COFFEE, opacity: 0.7, fontSize: 11 }}>稍后完成</button>
+            <button onClick={onClose} disabled={busy} style={{ color: COFFEE, opacity: 0.7, fontSize: 11 }}>稍后完成</button>
           </div>
 
           {/* Title */}
@@ -5017,7 +5058,8 @@ function RewardStep({ photo, itemCount, areaCount, timeBudget, onClose }: { phot
           {/* Continue button */}
           <div className="px-6 mt-6">
             <button
-              onClick={() => setShowComparison(true)}
+              onClick={() => void saveAfterPhoto()}
+              disabled={busy}
               className="w-full py-4"
               style={{
                 backgroundColor: ORANGE,
@@ -5028,8 +5070,17 @@ function RewardStep({ photo, itemCount, areaCount, timeBudget, onClose }: { phot
                 boxShadow: "0 8px 24px rgba(250,136,58,0.35)",
               }}
             >
-              查看成就
+              {busy ? "保存中…" : "查看成就"}
             </button>
+            <button
+              onClick={() => void retakeAfterPhoto()}
+              disabled={busy}
+              className="w-full mt-3 py-3"
+              style={{ backgroundColor: "transparent", color: COFFEE, opacity: 0.62, border: "none", fontSize: 13, fontWeight: 500 }}
+            >
+              重新拍摄
+            </button>
+            {captureError && <p role="alert" className="mt-2 text-center" style={{ color: "#9A4230", fontSize: 12 }}>{captureError}</p>}
           </div>
         </div>
       </div>
@@ -5144,7 +5195,7 @@ function RewardStep({ photo, itemCount, areaCount, timeBudget, onClose }: { phot
               setTimeout(() => el.remove(), 700);
             });
 
-            setTimeout(onClose, 660);
+            setTimeout(onFinish, 660);
           }}
           className="w-full py-4 mt-6 flex items-center justify-center gap-2"
           style={{

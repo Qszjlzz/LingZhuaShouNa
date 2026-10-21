@@ -58,7 +58,7 @@ export default function App() {
       <div className="relative size-full overflow-hidden">
         {/* 拍摄时把首页整层卸载：拍摄页的取景靠"页面透明 + 原生相机画面从底下透出"，
             首页若还挂在底下，会不透明地盖住相机画面（截图里透出空间地图就是这个原因）。 */}
-        {!shooting && !relightSpace && (
+        {!shooting && !relightSpace && !demoFlow && (
           <>
             {tab === "spatial" && (
               <SpatialScreen
@@ -107,6 +107,12 @@ export default function App() {
         {demoFlow && (
           <ShootFlow
             onClose={() => setDemoFlow(null)}
+            onFinish={() => {
+              setDemoFlow(null);
+              setTab("spatial");
+              setScanDone(true);
+              void refresh();
+            }}
             demoStep={demoFlow as never}
           />
         )}

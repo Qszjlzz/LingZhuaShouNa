@@ -24,15 +24,17 @@
     "Resources/FigmaMakeLatestWeb/index.html",
     "FigmaMakeLatest-v3/src/app/App.tsx"
   ],
-  "web_asset": "index-Cym_NAvg.js",
-  "web_asset_sha256": "9d79b5dbf4223964e53ae20becca5d6b6581a2d43c77d15133f7603ea45ea31f",
+  "web_asset": "index-CXVElg32.js",
+  "web_asset_sha256": "ebdc97c2d6016eb84d44ae4b94ef17dcdac2fde9e0536ae4e6e43c331540642b",
+  "web_index_sha256": "1f7621fa6bbfb32434b792052839936c0f1d03e057f63a8b0822dca563375ce4",
   "latest_incremental_report": "docs/design/guide-progress-repair-20261021.md",
+  "latest_incremental_report_scope": "Earlier guide progress repair snapshot; completion photo follow-up is documented in HANDOFF.md and docs/handoff/evidence/completion-photo-20261021/",
   "latest_incremental_validation": {
     "guide_logic_tests": "15/15_passed",
     "production_web_ui_simulated_native_bridge": "passed_390x844_no_page_errors",
     "native_targeted_tests": "4/4_passed",
     "shootflow_motion_ast": "54_elements_and_compared_animation_attributes_unchanged",
-    "simulator_app": "mainline_verified_through_pending_after_photo; two_native_steps_done; force_quit_restart_preserved_100_percent_unarchived_state",
+    "simulator_app": "ordinary_mainline_verified_through_pending_after_photo_then_restart_preserved_unarchived_state; completion_photo_picker_staged_without_archiving; explicit_confirm_archived_once",
     "simulator_evidence": [
       "docs/handoff/evidence/guide-20261021/08-native-cleaning.png",
       "docs/handoff/evidence/guide-20261021/09-native-classify.png",
@@ -42,14 +44,41 @@
       "docs/handoff/evidence/guide-20261021/13-native-checklist.png",
       "docs/handoff/evidence/guide-20261021/14-native-restarted.png"
     ],
+    "completion_photo_evidence": [
+      "docs/handoff/evidence/completion-photo-20261021/native-progress-preview.png",
+      "docs/handoff/evidence/completion-photo-20261021/native-archived.png",
+      "docs/handoff/evidence/completion-photo-20261021/web-reward-preview.png",
+      "docs/handoff/evidence/completion-photo-20261021/web-reward-archived.png",
+      "docs/handoff/evidence/completion-photo-20261021/web-commit-failure.png",
+      "docs/handoff/evidence/completion-photo-20261021/web-smoke-result.json"
+    ],
     "simulator_pending_checks": [
-      "after_photo_capture_and_archive",
+      "real_device_camera_capture",
+      "native_archive_write_failure_retry",
       "relight_flow",
       "new_flow_native_save_failure_rollback",
       "preflight_localstorage_restore_after_process_restart"
     ],
     "simulator_photo_source": "Resources/ExternalScanTests/external-cluttered-study-pexels.jpg via simulator photo library; not a real-device camera test",
     "real_device_camera": "not_tested"
+  },
+  "latest_source_audit": {
+    "plan_deck": "PlanDeckStep 固定读取 plans[0]；虽接收数组，但界面只呈现一项",
+    "confirm_action": "方案页确认按钮先进入 zones；原生 plan.generate 在区域页继续操作时调用",
+    "tune_action": "chat.send 回复仅显示为聊天内容；确认时只改方案 name/vibe，不改 changes、时长、图片或原生步骤",
+    "figma_verified_2026_10_21": {
+      "2261:5717": "快速整理方案首屏",
+      "2261:3989": "选择整理分区，未选区域",
+      "2261:3719": "选择整理分区，桌面区域已选中",
+      "2261:6249": "方案微调聊天",
+      "2285:11376": "识别加载状态",
+      "2285:11580": "规划整理方式加载状态",
+      "2261:3290": "拍摄完成照",
+      "2261:5907": "空间地图上的加入我的家成就弹窗"
+    },
+    "figma_parity_status": "这些节点身份及390x844尺寸已核实；其它画板映射和实际App逐屏验收未完成",
+    "completion_photo_fix": "普通整理/项目详情/进行中详情均先预览；after-preview暂存；确认时commit归档，重拍/稍后退出cancel；15项逻辑测试、production dist simulated-bridge smoke、iOS Debug构建及模拟器相册暂存/归档已通过；真机相机和原生写入失败重试未验收",
+    "source": "FigmaMakeLatest-v3/src/app/components/ShootFlow.tsx；Figma 只读现场选择；screenshots: app-analysis/figma-reference/detailed-flow-20261021/"
   },
   "historical_native_tests": {
     "total": 76,
@@ -72,10 +101,11 @@
   "phone_install": "not_completed",
   "figma_full_parity": "not_completed",
   "first_next_actions": [
-    "补验新整理引导的完成照拍摄/归档、保存失败回滚及前置阶段跨进程恢复；主线到待完成照与 100% 未归档重启状态已有模拟器证据",
-    "核实详细整理组2261:6479全部frame的画布顺序、尺寸和版本",
+    "按已现场核实的 Figma 节点补正式手机画板清单，并逐屏对照实际 App；不要把已核实节点身份误写为已完成 UI parity",
+    "按已核实的Figma节点继续补逐屏映射：尤其是区域选择双物理分区和区域二真实步骤；勿将示例区域或目的地标签当物理分区",
+    "现场核实详细整理组2261:6479其余 frame（特别是2261:3091、2261:3457、2276:1795）的画布顺序、尺寸和版本",
     "补全剩余根节点、Frame 7及Page 2版本关系",
-    "逐屏映射真实App状态",
+    "逐屏映射并实现真实 App 状态，保留原动效；先处理双物理分区真实数据模型和方案微调落地行为",
     "找到或补齐Figma分类插画素材，并实现真实多物理区域流程；保留真实进度和动效",
     "构建安装、逐屏截图和主要交互验收"
   ],

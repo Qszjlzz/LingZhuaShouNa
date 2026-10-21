@@ -31,6 +31,7 @@ export type NativeState = {
   followedAuthors: string[]; schedules: any[]; message?: string;
   scanDiagnostics?: Record<string, string>;
 };
+export type CompletionPhotoPreview = { preview?: string };
 
 type NativeResponse<T = unknown> = { requestId: string; status: "success" | "error" | "cancelled"; data?: T; error?: string };
 type Pending = { resolve: (value: any) => void; reject: (reason: Error) => void; timer?: number };

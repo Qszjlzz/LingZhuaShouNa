@@ -8,15 +8,34 @@ Latest handoff: [HANDOFF.md](../HANDOFF.md). The full Figma audit is incomplete;
 
 Process complete phone frames from the canvas top row to bottom row, left to right. A text layer named `分类`, `拍摄`, or `执行` is not itself a screen; the surrounding 390 x 844 frame is the unit of implementation.
 
-## First-row records
+## Historical First-row Records
+
+These are early mapping notes, not the verified canvas order. The `/tmp` and `Documents` references are historical local files and do not travel with a GitHub clone. The newer node-based records below supersede their screen identities where explicitly stated.
 
 | Order | Screen | Evidence | App route | Status |
 | --- | --- | --- | --- | --- |
-| 1 | 拍摄/扫描完成照片 | Desktop Figma `ShootFlow`, 390 x 844 frame | `RootView → CurrentFigmaMakeWebView → ShootFlow` | Earlier native `CaptureView` evidence is historical; current route uses the bundled React flow and native camera bridge. Full frame parity has not been reverified here. |
+| 1 | Earlier label: 拍摄/扫描完成照片 | Desktop Figma `ShootFlow`, 390 x 844 frame | `RootView → CurrentFigmaMakeWebView → ShootFlow` | The old label does not establish a completion-photo frame. The selected Figma `ShootFlow` node `2354:32` is actually the item-classification guide; see the inventory. Earlier native `CaptureView` evidence is historical. |
 | 2 | 对比整理前后 | `/tmp/figma-first-row.png`, middle phone | pending | pending |
-| 3 | 区域完成 / 新徽章 | `/Users/qszjlzz/Documents/Container.png` | `-SmartPawShowCompletion` | Native prototype built |
+| 3 | Earlier label: 区域完成 / 新徽章 | `/Users/qszjlzz/Documents/Container.png` | `-SmartPawShowCompletion` (historical prototype) | Native prototype build evidence only; not the live React route or current Figma parity. Current verified design-source node `2261:5907` is listed below. |
 
 Each row must be updated only after its matching Figma frame is selected and its simulator screenshot is captured.
+
+## Detailed Flow: Verified Design Sources
+
+Source group: `2261:6479`. These entries record eight selected Figma frames and their saved design references, separately from implementation acceptance. All eight selected frames show 390 x 844. Canvas order for all 21 frame children is still incomplete. See the [inventory corrections](design/figma-full-inventory-20261021.md#近距选中后的用途修正) for visible controls, position relationships and the remaining audit boundary.
+
+| Figma node | Actual screen/state | App route/state | Design reference | Implementation status |
+| --- | --- | --- | --- | --- |
+| `2261:5717` | 快速整理方案 | `ShootFlow: plandeck → PlanDeckStep` | [Plan](../app-analysis/figma-reference/detailed-flow-20261021/2261-5717-plan-quick.jpg) | Design-source identity verified; same-state simulator comparison pending. Current component selects `plans[0]`; the right-side arrow's intended action remains to be verified. |
+| `2261:6249` | 方案微调聊天 | `ShootFlow: tune` | [Plan tuning](../app-analysis/figma-reference/detailed-flow-20261021/2261-6249-plan-tuning-chat.jpg) | Design-source identity verified. Current confirmation changes the plan name/vibe, not real execution steps; same-state comparison and real-step edit behavior pending. |
+| `2261:3989` | 选择整理分区，未选区 | `ShootFlow: zones → ZoneSelectStep` | [No zones selected](../app-analysis/figma-reference/detailed-flow-20261021/2261-3989-zones-unselected.jpg) | Design-source identity verified; the start action is disabled. The actual app currently has no physical-region segmentation model. |
+| `2261:3719` | 选择整理分区，桌面区域选中 | `ShootFlow: zones → ZoneSelectStep` | [Selected zones](../app-analysis/figma-reference/detailed-flow-20261021/2261-3719-zones-selected.jpg) | Its layer name “方案生成” is misleading. Figma shows two physical zones; current fixed single-zone model does not cover it. Full parity pending. |
+| `2285:11376` | 识别加载 | `ShootFlow: generating → GeneratingStep`, recognition phase | [Recognition loading](../app-analysis/figma-reference/detailed-flow-20261021/2285-11376-recognition-loading.jpg) | A complete loading state, previously mistaken for a sketch. Same-state simulator and runtime-stage verification pending. |
+| `2285:11580` | 正在规划整理方式 | `ShootFlow: generating → GeneratingStep`, planning phase | [Planning loading](../app-analysis/figma-reference/detailed-flow-20261021/2285-11580-planning-loading.jpg) | A second loading state, not an alternate plan sketch. Same-state simulator and runtime-stage verification pending. |
+| `2261:3290` | 拍摄整理完成照 | `ShootFlow: reward → RewardStep`, capture state | [Completion photo](../app-analysis/figma-reference/detailed-flow-20261021/2261-3290-completion-photo.jpg) | A full-screen camera view with a completion-photo prompt and orange shutter. Simulator photo-library selection has verified staged preview before archive; the following node's ID is not independently proven by this screenshot. Native camera capture/retake and same-state pixel parity remain pending. See [completion-photo evidence](handoff/evidence/completion-photo-20261021/). |
+| `2261:5907` | 空间地图遮罩上的成就弹窗 | `ShootFlow: reward → RewardStep`, achievement state (candidate mapping) | [Achievement modal](../app-analysis/figma-reference/detailed-flow-20261021/2261-5907-achievement-modal.jpg) | Figma has “加入我的家”; its adjacent comparison frame has “查看成就”. Simulator photo-library flow verified that explicit confirmation archives once, but the current standalone achievement layout is not evidence of map-modal parity. Real camera and visual parity remain pending; see [completion-photo evidence](handoff/evidence/completion-photo-20261021/). |
+
+The new references are browser canvas screenshots with surrounding Figma UI, not exported artboards. Their selection outline and size label establish the frame identity and dimensions; they are not a substitute for native screenshots or exact typography/spacing measurements. The selected Figma sources remain read-only.
 
 ## Personal And Project Modules
 

@@ -371,10 +371,7 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
             // purpose=after 是「整理后打卡照」，只回缩略图；其余一律按扫描用途处理。
             let purpose = payload["purpose"] as? String
             if purpose == "after-preview" {
-                guard let space = viewModel.spaces.first(where: { $0.id == viewModel.selectedSpaceID }),
-                      let plan = space.activePlan, !plan.steps.isEmpty, plan.steps.allSatisfy({ $0.status == .done }) else { return fail(requestID, "请先完成方案中的整理步骤") }
-                pendingProofImage = (image, space.id, plan.id)
-                respond(requestID, data: ["preview": Self.thumbnailDataURL(for: image) as Any])
+                stageCompletionPhoto(image, requestID: requestID)
                 return
             }
             let isAfter = purpose == "after"
@@ -511,6 +508,10 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
             // 只回传小图：网页只做展示，识别用的是原生侧的原图。
             // 之前这里回传全分辨率 JPEG 的 base64，几张连拍就能把 WebView 撑到被系统杀掉。
             let preview = images.first.flatMap { Self.thumbnailDataURL(for: $0) }
+            if capturePurpose == "after-preview", let image = images.first {
+                stageCompletionPhoto(image, requestID: requestID)
+                return
+            }
             if capturePurpose == "after", let image = images.first {
                 guard finishPlan(with: image) else { return fail(requestID, viewModel.message ?? "请先完成整理步骤") }
                 respond(requestID, data: ["preview": preview as Any, "state": stateObject()]); return
@@ -523,6 +524,19 @@ struct CurrentFigmaMakeWebView: UIViewRepresentable {
                 if let captureID { photoScanResults[captureID] = items }
                 respond(requestID, data: ["preview": preview as Any, "state": stateObject(), "items": nativeItemObjects(items, captureID: captureID)])
             }
+        }
+
+        private func stageCompletionPhoto(_ image: UIImage, requestID: String) {
+            guard let space = viewModel.spaces.first(where: { $0.id == viewModel.selectedSpaceID }),
+                  let plan = space.activePlan, !plan.steps.isEmpty,
+                  plan.steps.allSatisfy({ $0.status == .done }) else {
+                return fail(requestID, "请先完成方案中的整理步骤")
+            }
+            guard let preview = Self.thumbnailDataURL(for: image) else {
+                return fail(requestID, "照片预览生成失败，请重试")
+            }
+            pendingProofImage = (image, space.id, plan.id)
+            respond(requestID, data: ["preview": preview])
         }
 
         private func finishPlan(with image: UIImage) -> Bool {

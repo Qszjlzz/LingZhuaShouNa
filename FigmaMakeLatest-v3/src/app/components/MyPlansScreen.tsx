@@ -3,6 +3,7 @@ import { ArrowLeft, Check, Clock, Plus, Play, Pause, MoreHorizontal, X } from "l
 import { COFFEE, ORANGE, LINEN, BLUE, WHITE, SOFT } from "./theme";
 import { nativeRequest, type NativeState } from "../nativeBridge";
 import { plansFromState, type ProjectPlan } from "../projectPlans";
+import { CompletionPhotoReview, useCompletionPhoto } from "./CompletionPhotoReview";
 import closetCover from "../../../../Resources/Assets.xcassets/FigmaProfilePlanCloset.imageset/closet.png";
 import livingCover from "../../../../Resources/Assets.xcassets/FigmaProfilePlanLiving.imageset/living.png";
 import cabinetCover from "../../../../Resources/Assets.xcassets/FigmaProfilePlanCabinet.imageset/cabinet.png";
@@ -42,6 +43,7 @@ export function MyPlansScreen({ onBack, nativeState, onNativeChange, isTabRoot =
   const activeCount = plans.filter((plan) => plan.status === "active" || plan.status === "paused" || plan.status === "awaitingPhoto").length;
   const plannedMinutes = plans.reduce((total, plan) => total + (plan.status === "done" ? 0 : plan.value?.timeBudget ?? 0), 0);
   const update = (state: NativeState) => { setLocalState(state); onNativeChange?.(); };
+  const completionPhoto = useCompletionPhoto(update);
 
   const openPlan = async (plan: ProjectPlan) => {
     if (busy) return;
@@ -76,15 +78,7 @@ export function MyPlansScreen({ onBack, nativeState, onNativeChange, isTabRoot =
   };
   const saveCompletionPhoto = async () => {
     if (busy || !current?.spaceID) return;
-    setBusy(true); setError("");
-    try {
-      await nativeRequest("space.select", { id: current.spaceID });
-      const result = await nativeRequest<{ state?: NativeState }>("capture.open", { purpose: "after", source: "library" });
-      if (result.state) update(result.state); else onNativeChange?.();
-    } catch (cause) {
-      const message = cause instanceof Error ? cause.message : "完成照保存失败，请重试。";
-      if (message !== "已取消") setError(message);
-    } finally { setBusy(false); }
+    await completionPhoto.choose(current.spaceID);
   };
 
   const toggleSchedule = async () => {
@@ -137,9 +131,10 @@ export function MyPlansScreen({ onBack, nativeState, onNativeChange, isTabRoot =
       {current.value && <><p className="mt-2" style={{ opacity: 0.6, fontSize: 12 }}>预计 {current.value.timeBudget} 分钟{current.value.toolList.length ? ` · ${current.value.toolList.join("、")}` : ""}</p>
       <div className="mt-5 space-y-3">{current.value.steps.map((step, index) => <article key={step.id} className="p-4 rounded-2xl" style={{ backgroundColor: LINEN }}><h3 className="flex items-start gap-2" style={{ fontWeight: 600, fontSize: 14 }}><span className="flex-1">{index + 1}. {step.title}</span>{step.status === "done" && <Check size={17} color="#6A997C" />}</h3><p className="mt-2" style={{ opacity: 0.7, fontSize: 13, lineHeight: 1.7 }}>{step.detail}</p>{current.status !== "done" && current.status !== "paused" && step.status === "active" && <button type="button" disabled={busy} onClick={() => void completeStep(step.id)} className="mt-3 px-4 py-2 rounded-full disabled:opacity-40" style={{ backgroundColor: ORANGE, color: WHITE, fontSize: 12 }}>{busy ? "保存中…" : "标记此步完成"}</button>}</article>)}</div></>}
       {current.status === "scheduled" && <><p className="mt-2" style={{ opacity: 0.6, fontSize: 12 }}>{current.dueText}</p>{current.note && <p className="mt-3" style={{ opacity: 0.7, fontSize: 13, lineHeight: 1.7 }}>{current.note}</p>}<button type="button" disabled={busy} onClick={() => void toggleSchedule()} className="w-full mt-5 py-3 rounded-full disabled:opacity-40" style={{ backgroundColor: ORANGE, color: WHITE, fontSize: 13, fontWeight: 600 }}>{busy ? "保存中…" : "标记计划完成"}</button></>}
-      {current.status === "awaitingPhoto" && <div className="mt-5"><p style={{ opacity: 0.7, fontSize: 12, lineHeight: 1.7 }}>步骤已完成。选择一张真实的整理后照片，保存这次成果。</p><button type="button" disabled={busy} onClick={() => void saveCompletionPhoto()} className="w-full mt-3 py-3 rounded-full disabled:opacity-40" style={{ backgroundColor: ORANGE, color: WHITE, fontSize: 13, fontWeight: 600 }}>{busy ? "正在保存…" : "选择完成照并保存"}</button></div>}
+      {current.status === "awaitingPhoto" && <div className="mt-5"><p style={{ opacity: 0.7, fontSize: 12, lineHeight: 1.7 }}>步骤已完成。选择真实的整理后照片，预览确认后保存这次成果。</p><button type="button" disabled={busy || completionPhoto.busy} onClick={() => void saveCompletionPhoto()} className="w-full mt-3 py-3 rounded-full disabled:opacity-40" style={{ backgroundColor: ORANGE, color: WHITE, fontSize: 13, fontWeight: 600 }}>{completionPhoto.busy ? "正在读取…" : "选择完成照"}</button>{completionPhoto.error && !completionPhoto.preview && <p role="alert" className="mt-3" style={{ color: "#9A4230", fontSize: 12 }}>{completionPhoto.error}</p>}</div>}
       {current.status === "done" && <p className="mt-5 text-center" style={{ color: "#6A997C", fontSize: 13 }}>本次计划已完成并归档。</p>}
       {error && <p role="alert" className="mt-4" style={{ color: "#9A4230", fontSize: 12 }}>{error}</p>}
     </div></div>}
+    <CompletionPhotoReview preview={completionPhoto.preview} busy={completionPhoto.busy} error={completionPhoto.error} onLater={() => void completionPhoto.discard()} onReselect={() => void completionPhoto.reselect()} onCommit={() => void completionPhoto.commit()} />
   </div>;
 }

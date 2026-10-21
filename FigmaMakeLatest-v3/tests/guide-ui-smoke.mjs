@@ -43,18 +43,27 @@ function stateFor(activePlan, detectedItems) {
     achievements: [], communityCases: [], comments: {}, liked: [], favorites: [], followedAuthors: [], schedules: [],
   };
 }
-async function setup(state) {
+async function setup(state, flow = "arguide", options = {}) {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1 });
   await context.route("https://images.unsplash.com/**", (route) => route.fulfill({ path: path.join(project, "../Resources/ExternalScanTests/external-cluttered-study-pexels.jpg"), contentType: "image/jpeg" }));
-  await context.addInitScript(({ initialState }) => {
+  await context.addInitScript(({ initialState, options }) => {
     const fixture = window.__guideFixture = {
       state: JSON.parse(localStorage.getItem("test.guide.native-state") || "null") || initialState,
       calls: [], failNext: false, savedSteps: 0,
+      cancelNextPicker: false, failNextProofCommit: false,
+      proofStaged: false, proofCancels: 0, proofCommits: 0, archivedProofs: 0,
+      previewDelay: options.previewDelay || 0,
     };
     window.webkit = { messageHandlers: { smartpaw: { postMessage(message) {
       fixture.calls.push(message);
+      if (message.command === "camera.preview.start" && fixture.previewDelay) {
+        setTimeout(() => window.__smartPawReceive?.({ requestId: message.requestId, status: "success", data: { ok: false, reason: "unavailable" } }), fixture.previewDelay);
+        return;
+      }
       queueMicrotask(() => {
         let error;
+        let status = "success";
+        let data;
         if (message.command === "plan.step.complete") {
           const plan = fixture.state.spaces[0].activePlan;
           const step = plan.steps.find((candidate) => candidate.status === "active");
@@ -67,14 +76,46 @@ async function setup(state) {
             fixture.savedSteps += 1;
             localStorage.setItem("test.guide.native-state", JSON.stringify(fixture.state));
           }
+        } else if (message.command === "camera.preview.start") {
+          data = { ok: true };
+        } else if (message.command === "camera.preview.stop" || message.command === "camera.preview.frame") {
+          data = { ok: true };
+        } else if (message.command === "camera.capture") {
+          fixture.proofStaged = true;
+          data = { preview: "https://images.unsplash.com/photo-1749705319317-f9a2bf24fe3d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080" };
+        } else if (message.command === "capture.open") {
+          if (fixture.cancelNextPicker) {
+            fixture.cancelNextPicker = false;
+            status = "cancelled";
+          } else {
+            fixture.proofStaged = true;
+            data = { preview: "https://images.unsplash.com/photo-1749705319317-f9a2bf24fe3d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080" };
+          }
+        } else if (message.command === "capture.after.cancel") {
+          fixture.proofCancels += 1;
+          fixture.proofStaged = false;
+          data = { cancelled: true };
+        } else if (message.command === "capture.after.commit") {
+          fixture.proofCommits += 1;
+          if (fixture.failNextProofCommit) {
+            fixture.failNextProofCommit = false;
+            error = "测试完成照保存失败，请重试";
+          } else {
+            fixture.archivedProofs += 1;
+            fixture.proofStaged = false;
+            const space = fixture.state.spaces[0];
+            space.completedPlans.push(space.activePlan);
+            delete space.activePlan;
+          }
         }
-        window.__smartPawReceive?.({ requestId: message.requestId, status: error ? "error" : "success", error, data: structuredClone(fixture.state) });
+        data ??= structuredClone(fixture.state);
+        window.__smartPawReceive?.({ requestId: message.requestId, status: error ? "error" : status, error, data });
       });
     } } } };
-  }, { initialState: state });
+  }, { initialState: state, options });
   const page = await context.newPage();
   page.on("pageerror", (error) => errors.push(error.message));
-  await page.goto(`${address}/?flow=arguide`);
+  await page.goto(flow ? `${address}/?flow=${flow}` : address);
   return { context, page };
 }
 async function visibleText(page, text) {
@@ -165,6 +206,104 @@ try {
   await screenshot(resumed.page, "07-restored-last-group.png");
   await resumed.context.close();
   checks.push("Eleven groups retain readable cards without page overflow; resuming the final group scrolls its active card into view.");
+
+  const rewardPlan = structuredClone(plan);
+  rewardPlan.steps.forEach((step) => { step.status = "done"; });
+  const rewardState = stateFor(rewardPlan, items);
+  const reward = await setup(rewardState, "reward");
+  await visibleText(reward.page, "拍摄完成后的照片");
+  await reward.page.evaluate(() => { window.__guideFixture.cancelNextPicker = true; });
+  await reward.page.getByRole("button", { name: "从相册选择", exact: true }).click();
+  await reward.page.getByRole("button", { name: "拍摄完成照", exact: true }).waitFor({ state: "visible" });
+  assert.equal(await reward.page.getByText("已取消", { exact: true }).count(), 0);
+  assert.equal(await reward.page.evaluate(() => window.__guideFixture.archivedProofs), 0);
+
+  await reward.page.getByRole("button", { name: "拍摄完成照", exact: true }).evaluate((button) => {
+    button.click();
+    button.click();
+  });
+  await reward.page.getByRole("button", { name: "查看成就", exact: true }).waitFor({ state: "visible" });
+  assert.equal(await reward.page.evaluate(() => window.__guideFixture.proofStaged), true);
+  assert.equal(await reward.page.evaluate(() => window.__guideFixture.archivedProofs), 0);
+  assert.equal(await reward.page.evaluate(() => window.__guideFixture.calls.filter((call) => call.command === "camera.capture").length), 1);
+  await screenshot(reward.page, "08-reward-photo-preview.png");
+  await reward.page.getByRole("button", { name: "重新拍摄", exact: true }).click();
+  await reward.page.getByRole("button", { name: "拍摄完成照", exact: true }).waitFor({ state: "visible" });
+  assert.equal(await reward.page.evaluate(() => window.__guideFixture.proofStaged), false);
+  assert.equal(await reward.page.evaluate(() => window.__guideFixture.proofCancels), 1);
+
+  await reward.page.getByRole("button", { name: "从相册选择", exact: true }).click();
+  await reward.page.getByRole("button", { name: "查看成就", exact: true }).waitFor({ state: "visible" });
+  assert.equal(await reward.page.evaluate(() => window.__guideFixture.archivedProofs), 0);
+  await reward.page.evaluate(() => { window.__guideFixture.failNextProofCommit = true; });
+  await reward.page.getByRole("button", { name: "查看成就", exact: true }).evaluate((button) => { button.click(); button.click(); });
+  await visibleText(reward.page, "测试完成照保存失败，请重试");
+  assert.equal(await reward.page.evaluate(() => window.__guideFixture.proofStaged), true);
+  assert.equal(await reward.page.evaluate(() => window.__guideFixture.archivedProofs), 0);
+  await screenshot(reward.page, "09-reward-commit-failure.png");
+  await reward.page.getByRole("button", { name: "查看成就", exact: true }).click();
+  await visibleText(reward.page, "这一轮整理完成");
+  assert.equal(await reward.page.evaluate(() => window.__guideFixture.proofStaged), false);
+  assert.equal(await reward.page.evaluate(() => window.__guideFixture.archivedProofs), 1);
+  assert.equal(await reward.page.evaluate(() => window.__guideFixture.proofCommits), 2);
+  const completionCommands = await reward.page.evaluate(() => window.__guideFixture.calls.filter((call) => call.command === "camera.capture" || call.command === "capture.open").map((call) => call.payload.purpose));
+  assert.deepEqual(completionCommands, ["after-preview", "after-preview", "after-preview"]);
+  await screenshot(reward.page, "10-reward-archived.png");
+  checks.push("Reward flow: picker cancel is silent; camera and library photos stay staged; retake cancels staging; failed archive can retry; only 查看成就 archives once.");
+  await reward.context.close();
+
+  const later = await setup(rewardState, "reward");
+  await visibleText(later.page, "拍摄完成后的照片");
+  await later.page.getByRole("button", { name: "从相册选择", exact: true }).click();
+  await visibleText(later.page, "对比整理前后");
+  assert.equal(await later.page.evaluate(() => window.__guideFixture.proofStaged), true);
+  await later.page.getByRole("button", { name: "稍后完成", exact: true }).click();
+  await later.page.waitForFunction(() => window.__guideFixture.proofCancels >= 1);
+  assert.equal(await later.page.evaluate(() => window.__guideFixture.archivedProofs), 0);
+  assert.equal(await later.page.evaluate(() => window.__guideFixture.proofStaged), false);
+  checks.push("Leaving an already staged reward preview with 稍后完成 cancels proof without archiving.");
+  await later.context.close();
+
+  const delayed = await setup(rewardState, "reward", { previewDelay: 350 });
+  await visibleText(delayed.page, "拍摄完成后的照片");
+  await delayed.page.getByRole("button", { name: "稍后完成", exact: true }).click();
+  await delayed.page.waitForTimeout(1300);
+  assert.equal(await delayed.page.evaluate(() => window.__guideFixture.calls.filter((call) => call.command === "camera.preview.start").length), 1);
+  await delayed.context.close();
+  checks.push("A delayed camera start cannot retry after leaving the completion-photo screen.");
+
+  for (const entry of ["project", "progress"]) {
+    const route = await setup(rewardState, null);
+    if (entry === "project") {
+      await route.page.getByRole("button", { name: "项目", exact: true }).click();
+      await route.page.getByRole("button", { name: "打开项目：流程测试", exact: true }).click();
+      await route.page.getByRole("button", { name: "选择完成照", exact: true }).click();
+    } else {
+      await route.page.getByRole("button", { name: /测试书桌 · 待保存完成照/ }).click();
+      await route.page.getByRole("button", { name: "保存完成照", exact: true }).click();
+    }
+    const review = route.page.getByRole("dialog", { name: "确认完成照", exact: true });
+    await review.waitFor({ state: "visible" });
+    assert.equal(await route.page.evaluate(() => window.__guideFixture.archivedProofs), 0);
+    await review.getByRole("button", { name: "稍后完成", exact: true }).click();
+    assert.equal(await route.page.evaluate(() => window.__guideFixture.proofStaged), false);
+    if (entry === "project") await route.page.getByRole("button", { name: "选择完成照", exact: true }).click();
+    else await route.page.getByRole("button", { name: "保存完成照", exact: true }).click();
+    await review.waitFor({ state: "visible" });
+    await route.page.evaluate(() => { window.__guideFixture.failNextProofCommit = true; });
+    await review.getByRole("button", { name: "确认并保存", exact: true }).evaluate((button) => { button.click(); button.click(); });
+    await visibleText(route.page, "测试完成照保存失败，请重试");
+    assert.equal(await route.page.evaluate(() => window.__guideFixture.proofStaged), true);
+    assert.equal(await route.page.evaluate(() => window.__guideFixture.proofCommits), 1);
+    await screenshot(route.page, `11-${entry}-completion-preview.png`);
+    await review.getByRole("button", { name: "确认并保存", exact: true }).click();
+    await review.waitFor({ state: "hidden" });
+    assert.equal(await route.page.evaluate(() => window.__guideFixture.archivedProofs), 1);
+    assert.equal(await route.page.evaluate(() => window.__guideFixture.calls.filter((call) => call.command === "capture.open").every((call) => call.payload.purpose === "after-preview")), true);
+    await route.context.close();
+  }
+  checks.push("Project and in-progress photo entry points stage, cancel, retry failed commits, and archive only after explicit confirmation; double commit clicks submit once.");
+
   assert.deepEqual(errors, []);
   const result = { status: "passed", viewport: "390x844", source: "production dist with simulated native bridge; not a Swift persistence or real-camera test", checks, pageErrors: errors };
   await writeFile(path.join(evidence, "result.json"), `${JSON.stringify(result, null, 2)}\n`);
