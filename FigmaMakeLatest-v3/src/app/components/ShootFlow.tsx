@@ -4552,12 +4552,21 @@ function TaskStep({ plan, onBack, onComplete, onFinish }: {
   const submitting = useRef(false);
   const active = plan?.steps.find((task) => task.status === "active");
   const taskZones = [...new Set(plan?.steps.map((task) => task.zone) ?? [])];
-  const currentZone = active?.zone ?? taskZones[taskZones.length - 1];
+  const [viewZone, setViewZone] = useState(active?.zone ?? taskZones[0] ?? "");
+  const activeZone = active?.zone ?? taskZones[taskZones.length - 1] ?? "";
+  const currentZone = viewZone || activeZone;
   const tasks = plan?.steps.filter((task) => task.zone === currentZone) ?? [];
   const completedCount = plan?.steps.filter((task) => task.status === "done").length ?? 0;
   const allDone = !!plan?.steps.length && completedCount === plan.steps.length;
+  const currentDone = tasks.filter((task) => task.status === "done").length;
+  const currentIsActive = currentZone === activeZone;
+
+  useEffect(() => {
+    if (activeZone) setViewZone(activeZone);
+  }, [activeZone]);
+
   const completeCurrent = async () => {
-    if (!active || submitting.current || plan?.isPaused) return;
+    if (!active || !currentIsActive || submitting.current || plan?.isPaused) return;
     submitting.current = true;
     setSaving(true);
     setError(null);
@@ -4576,40 +4585,28 @@ function TaskStep({ plan, onBack, onComplete, onFinish }: {
         >
           <ArrowLeft size={20} color={COFFEE} />
         </button>
-        <p style={{ color: COFFEE, fontSize: 14, fontWeight: 600 }}>清扫中</p>
+        <p style={{ color: COFFEE, fontSize: 14, fontWeight: 600 }}>整理项目</p>
         <div className="w-11" />
       </div>
 
-      <div className="px-6 mt-4 flex items-center overflow-x-auto flex-shrink-0">
+      <div className="mx-6 mt-4 px-1 py-1 flex items-center gap-1 flex-shrink-0" style={{ backgroundColor: WHITE, borderRadius: 999 }}>
         {taskZones.map((zone, i) => (
-          <div key={zone} className="flex items-center flex-1 last:flex-none">
-            <div className="flex flex-col items-center">
-              <div
-                className="h-9 w-9 rounded-full flex items-center justify-center"
-                style={{
-                  backgroundColor: zone === currentZone ? ORANGE : SOFT,
-                  color: zone === currentZone ? WHITE : COFFEE,
-                  fontSize: 13,
-                  fontWeight: 600,
-                }}
-              >
-                {i + 1}
-              </div>
-              <span
-                style={{
-                  color: COFFEE,
-                  fontSize: 10,
-                  marginTop: 4,
-                  opacity: zone === currentZone ? 1 : 0.5,
-                }}
-              >
-                {zone}
-              </span>
-            </div>
-            {i < taskZones.length - 1 && (
-              <div className="flex-1 h-[2px] mx-2 mb-4" style={{ backgroundColor: SOFT }} />
-            )}
-          </div>
+          <button
+            key={zone}
+            type="button"
+            onClick={() => setViewZone(zone)}
+            className="flex-1 min-w-0 py-2 px-3"
+            style={{
+              backgroundColor: zone === currentZone ? LINEN : WHITE,
+              color: COFFEE,
+              borderRadius: 999,
+              fontSize: 12,
+              fontWeight: zone === currentZone ? 600 : 400,
+              boxShadow: zone === currentZone ? "0 3px 10px rgba(123,92,72,0.12)" : "none",
+            }}
+          >
+            {zone || `区域${i + 1}`}
+          </button>
         ))}
       </div>
 
@@ -4626,13 +4623,14 @@ function TaskStep({ plan, onBack, onComplete, onFinish }: {
             className="px-3 py-1"
             style={{ backgroundColor: ORANGE, color: WHITE, borderRadius: 999, fontSize: 11 }}
           >
-            {allDone ? "步骤已完成" : "当前区域"}
+            {allDone ? "步骤已完成" : currentIsActive ? "当前区域" : "已完成区域"}
           </span>
-          <span style={{ color: COFFEE, opacity: 0.55, fontSize: 12 }}>{completedCount}/{plan?.steps.length ?? 0} 步</span>
+          <span style={{ color: COFFEE, opacity: 0.55, fontSize: 12 }}>{currentDone}/{tasks.length} 项</span>
         </div>
         <p style={{ color: COFFEE, fontSize: 22, fontWeight: 600 }}>{currentZone || "还没有整理方案"}</p>
-        <p style={{ color: COFFEE, opacity: 0.6, fontSize: 12, marginTop: 4 }}>{plan ? `${tasks.length} 个整理步骤` : "先选择整理区域，生成可执行的计划。"}</p>
+        <p style={{ color: COFFEE, opacity: 0.6, fontSize: 12, marginTop: 4 }}>{plan ? `${tasks.length} 个快速任务` : "先选择整理区域，生成可执行的计划。"}</p>
         {plan?.isPaused && <p className="mt-3" style={{ color: ORANGE, fontSize: 12 }}>方案已暂停，请先在「项目」中继续计划。</p>}
+        {!currentIsActive && !allDone && <p className="mt-3" style={{ color: COFFEE, opacity: 0.6, fontSize: 12 }}>当前正在整理 {activeZone}，先查看当前区域的下一项。</p>}
         {error && <p role="alert" className="mt-3" style={{ color: "#9A4230", fontSize: 12 }}>{error}</p>}
 
         <div className="space-y-2 mt-5">
@@ -4641,7 +4639,7 @@ function TaskStep({ plan, onBack, onComplete, onFinish }: {
               key={task.id}
               type="button"
               onClick={() => void completeCurrent()}
-              disabled={task.status !== "active" || saving || plan?.isPaused}
+              disabled={task.status !== "active" || !currentIsActive || saving || plan?.isPaused}
               className="w-full text-left flex items-center gap-3 px-4 py-3"
               style={{ backgroundColor: LINEN, borderRadius: 14 }}
             >
@@ -4672,7 +4670,7 @@ function TaskStep({ plan, onBack, onComplete, onFinish }: {
 
       <div className="mt-auto px-6 pt-6 pb-8">
         <button
-          onClick={!plan ? onBack : allDone ? onFinish : () => void completeCurrent()}
+          onClick={!plan ? onBack : allDone ? onFinish : !currentIsActive ? () => setViewZone(activeZone) : () => void completeCurrent()}
           disabled={!!plan && !allDone && (!active || saving || plan.isPaused)}
           className="w-full py-4"
           style={{
@@ -4684,7 +4682,7 @@ function TaskStep({ plan, onBack, onComplete, onFinish }: {
             boxShadow: "0 8px 24px rgba(250,136,58,0.35)",
           }}
         >
-          {!plan ? "选择整理区域" : allDone ? "保存完成照" : saving ? "保存中…" : "完成当前步骤"}
+          {!plan ? "选择整理区域" : allDone ? "保存完成照" : !currentIsActive ? "回到当前区域" : saving ? "保存中…" : "完成当前任务"}
         </button>
       </div>
     </div>

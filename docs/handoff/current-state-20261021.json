@@ -24,17 +24,17 @@
     "Resources/FigmaMakeLatestWeb/index.html",
     "FigmaMakeLatest-v3/src/app/App.tsx"
   ],
-  "web_asset": "index-CghoGBxs.js",
-  "web_asset_sha256": "ba5e2fb3303131098d2b2018c0631edd0f496118d0dad32cde50a9747d503969",
-  "web_index_sha256": "b581524de250b32500b8d4b50536b3f05223c7a144b520b85e5d0ca1bfadcecc",
-  "latest_incremental_report": "docs/design/completion-flow-parity-20261021.md",
-  "latest_incremental_report_scope": "Latest completion-flow layout/routing and Figma identity verification; earlier guide/native archive evidence remains scoped separately.",
+  "web_asset": "index-D2k5Ko03.js",
+  "web_asset_sha256": "66a538a78b1a6fb8eb6e6f3afb70e3476eedc7eb3ec21e12f5579d505856084d",
+  "web_index_sha256": "520e6bc03ad1d9c10f02224e0d6db47b174548b3fe92d6b7323766513ad8a8e2",
+  "latest_incremental_report": "docs/design/task-checklist-parity-20261021.md",
+  "latest_incremental_report_scope": "TaskStep checklist progress, 21/21 detailed-flow source identity checks, fresh production-web smoke, and a rebuilt simulator package; this is not whole-app Figma parity.",
   "latest_incremental_validation": {
     "guide_logic_tests": "15/15_passed",
-    "production_web_ui_simulated_native_bridge": "passed_390x844_no_page_errors",
+    "production_web_ui_simulated_native_bridge": "passed_390x844_no_page_errors; inactive task disabled and emits no completion call",
     "native_targeted_tests": "4/4_passed_in_earlier_guide_snapshot_not_rerun_for_latest_web_route",
     "shootflow_motion_ast": "Earlier guide snapshot:54_elements_attributes_unchanged; latest reward burst/button parameters preserved by relocation; full AST comparison not rerun",
-    "simulator_app": "Latest Debug installed and launched to spatial map; latest completion-to-map route not re-exercised in native simulator. Earlier native mainline/restart and photo-library staging/archive evidence retained separately.",
+    "simulator_app": "Fresh Debug build with index-D2k5Ko03.js installed and launched on iPhone 16 Pro / iOS 18.5; current screenshot shows the spatial map only. TaskStep and latest completion-to-map route were not re-exercised natively.",
     "simulator_evidence": [
       "docs/handoff/evidence/guide-20261021/08-native-cleaning.png",
       "docs/handoff/evidence/guide-20261021/09-native-classify.png",
@@ -59,7 +59,9 @@
       "new_flow_native_save_failure_rollback",
       "preflight_localstorage_restore_after_process_restart",
       "latest_completion_to_map_modal_route",
-      "real_touch_edge_swipe_exit"
+      "real_touch_edge_swipe_exit",
+      "latest_task_checklist_native_route",
+      "physical_zone_assignment_and_step_persistence"
     ],
     "simulator_photo_source": "Resources/ExternalScanTests/external-cluttered-study-pexels.jpg via simulator photo library; not a real-device camera test",
     "real_device_camera": "not_tested",
@@ -71,6 +73,12 @@
       "docs/handoff/evidence/completion-flow-20261021/web-smoke-result.json",
       "docs/handoff/evidence/completion-flow-20261021/native-launch-space.png",
       "docs/handoff/evidence/completion-flow-20261021/manifest.json"
+    ],
+    "task_checklist_evidence": [
+      "docs/handoff/evidence/task-checklist-parity-20261021/00-task-checklist.png",
+      "docs/handoff/evidence/task-checklist-parity-20261021/result.json",
+      "docs/handoff/evidence/task-checklist-parity-20261021/native-launch-space.png",
+      "docs/handoff/evidence/task-checklist-parity-20261021/manifest.json"
     ]
   },
   "latest_source_audit": {
@@ -88,13 +96,24 @@
       "2261:5907": "空间地图上的加入我的家成就弹窗",
       "2261:3091": "整理前后对比，查看成就CTA",
       "2261:3457": "区域一完成，加载下一区域",
-      "2276:1795": "区域二完成，收纳任务完成；图层名仍是区域1完成"
+      "2276:1795": "区域二完成，收纳任务完成；图层名仍是区域1完成",
+      "2277:32": "区域一桌面整理项目清单，5项",
+      "2276:1531": "区域二桌下整理项目清单，3项",
+      "2276:2950": "区域一清理垃圾，Step 1/5",
+      "2276:3245": "区域一物品分类，Step 2/5",
+      "2276:3547": "区域一化妆品区，Step 3/5",
+      "2276:3840": "区域一工作区，Step 4/5",
+      "2276:4129": "区域一生活用品区，Step 5/5",
+      "2276:2057": "区域二清空地面，Step 1/3",
+      "2276:2352": "区域二数据线分类，Step 2/3",
+      "2276:2639": "区域二桌下数据线整理，Step 3/3；390×844，图层名不是画面用途"
     },
-    "figma_parity_status": "这些节点身份及390x844尺寸已核实；其它画板映射和实际App逐屏验收未完成",
+    "figma_parity_status": "详细整理组21/21节点身份及390x844尺寸已核实；完整画布顺序/版本关系和App逐屏视觉交互验收未完成",
     "completion_photo_fix": "普通整理/项目详情/进行中详情均先预览；after-preview暂存；确认时commit归档，重拍/稍后退出cancel；15项逻辑测试、production dist simulated-bridge smoke、iOS Debug构建及模拟器相册暂存/归档已通过；真机相机和原生写入失败重试未验收",
     "source": "FigmaMakeLatest-v3/src/app/components/ShootFlow.tsx；Figma 只读现场选择；screenshots: app-analysis/figma-reference/detailed-flow-20261021/",
-    "figma_detailed_flow_verified_frames": 11,
+    "figma_detailed_flow_verified_frames": 21,
     "figma_detailed_flow_total_frames": 21,
+    "task_checklist_status": "TaskStep按真实NativePlan steps显示目的地分组；NativeStep.zone不是桌面/桌下physical zone。Web smoke确认非活动待办禁用且不发完成请求；原生计划数据模型与physical-zone持久化尚未实现。",
     "completion_flow_latest": "RewardStep commit succeeds -> original fragment burst/button spring -> spatial map achievement modal; separate full-screen reward card removed. Camera layout simplified; library from camera badge; edge exit guarded by busyRef. Latest web smoke passed; latest native route/touch not verified."
   },
   "historical_native_tests": {
@@ -109,19 +128,20 @@
   "handoff_validation": {
     "fresh_web_build": "passed",
     "bundle_identity": "passed",
-    "native_rebuild": "passed_and_installed_in_simulator",
+    "native_rebuild": "passed; installed and launched on iPhone 16 Pro / iOS 18.5 Simulator",
     "release_preflight": {
       "failures": 2,
       "warnings": 2
     }
   },
   "phone_install": "not_completed",
+  "simulator_install": "latest_debug_bundle_installed_and_launched; evidence docs/handoff/evidence/task-checklist-parity-20261021/native-launch-space.png",
   "figma_full_parity": "not_completed",
   "first_next_actions": [
-    "完整阅读HANDOFF、最新完成流程报告和screen map，检查分支及工作区；11/21仅表示设计身份已核实",
-    "核实详细整理组剩余10个frame的画布顺序、尺寸和版本，优先2276:1531、2277:32；不要用层名猜用途",
+    "先建立可信physicalZoneID与识别物品、plan、step的原生持久化合同；清单分区不能读取目标归位zone",
+    "在最新原生App中进入TaskStep，重走活动/非活动分组、失败重试和完成照路线并保存同尺寸截图",
+    "补齐详细整理组完整画布顺序及版本关系；21/21目前只表示源画面和尺寸已确认",
     "在最终原生包重走完成照到地图弹窗、重拍/取消、真实触摸侧滑；真机相机另验收",
-    "建立可靠的照片双物理区域及对应真实步骤模型，勿把目的地当物理分区",
     "使方案微调真正改变执行步骤，并保留真实UUID、持久化和失败回滚",
     "补齐分类独立插画，继续空间/分类/个人/项目逐屏视觉与交互验证",
     "补全剩余根节点、Frame 7及Page 2版本关系；持续更新交接及证据"

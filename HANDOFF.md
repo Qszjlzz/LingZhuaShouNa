@@ -4,7 +4,7 @@
 
 **当前任务：逐张核实 Figma 的正式手机画板，让实际 iOS App 的对应界面与设计一致，并保留原有动效和真实业务。任务尚未完成。** 当前分支是工作进度快照，存在已知差异和未通过的识别测试，不能称为最终定稿或 App Store 可提交版。
 
-接手时先切到下方交接分支并检查工作区，再读用户决定、当前缺口和最新[完成流程报告](docs/design/completion-flow-parity-20261021.md)。详细整理组目前只核实了 **11 / 21 个 frame 的设计身份及尺寸**，不表示 11 个页面已验收。第 6 节列出继续工作的顺序。
+接手时先切到下方交接分支并检查工作区，再读用户决定、当前缺口和最新[整理项目清单对齐进展](docs/design/task-checklist-parity-20261021.md)。详细整理组的 **21 / 21 个 frame 来源画面及 390 × 844 尺寸均已现场核实**；`2276:2639` 是桌下数据线整理 Step 3/3。画布完整顺序/版本关系及 App 逐屏实现验收仍未完成。第 6 节列出继续工作的顺序。
 
 ## 1. 从哪份代码接手
 
@@ -52,9 +52,10 @@ Figma：[ui界面 / Page 1](https://www.figma.com/design/cHyKGPXFlSnNcjBWw9MNxE/
 3. [拍摄与整理流程差异](docs/design/shootflow-parity-20261021.md)：接下来最明确的界面和多区域问题。
 4. [整理引导进度修复与增量验收](docs/design/guide-progress-repair-20261021.md)：本轮清理/分类/复核恢复、真实 UUID 推进、测试证据与剩余边界。
 5. [完成流程对齐与最新验证](docs/design/completion-flow-parity-20261021.md)：完成照取景、对比到地图成就弹窗、三张新增画板及最新资源。
-6. [重拍路由](docs/design/reshoot-route-verification-20261021.md) 与 [空间数据](docs/design/spatial-flow-data-verification-20261021.md)：数据接线与验收范围。
-7. [76 项原生测试结果](docs/design/native-test-results-20261021.md)：旧全量识别测试失败原因和量化结果；本轮未重跑全量。
-8. [画板到 App 状态的映射入口](docs/figma-screen-map.md)：继续按实际画布顺序补齐。
+6. [整理项目清单对齐进展](docs/design/task-checklist-parity-20261021.md)：9 张整理清单/步骤画板核实、TaskStep 改动和 physical-zone 数据缺口。
+7. [重拍路由](docs/design/reshoot-route-verification-20261021.md) 与 [空间数据](docs/design/spatial-flow-data-verification-20261021.md)：数据接线与验收范围。
+8. [76 项原生测试结果](docs/design/native-test-results-20261021.md)：旧全量识别测试失败原因和量化结果；本轮未重跑全量。
+9. [画板到 App 状态的映射入口](docs/figma-screen-map.md)：继续按实际画布顺序补齐。
 
 | 证据目录 | 内容 | 使用边界 |
 | --- | --- | --- |
@@ -102,7 +103,7 @@ App/SmartPawApp.swift
 - 本轮真实原生方案补回清理 → 分类 → 复核 → 真实归位步骤入口。清理和分类是前置指引，不计入原生完成步数；跳过仅作用于这两个前置阶段。归位步骤按真实 UUID 调用原生保存，确认最新状态为 `done` 后才推进；保存失败留在当前步骤。
 - 普通整理和重新点亮生成后都会把最新原生物品送入分类 UI；卡片按步骤 `itemIDs` 配对，key 使用步骤 UUID，不按数组位置猜测。多于三组可横向浏览并在恢复时滚到当前组。
 - 本轮前置阶段以 plan UUID 隔离保存到 WKWebView `localStorage`。浏览器 reload 和原生 active/done 优先逻辑已测；WKWebView 被系统杀掉后的本机 localStorage 恢复尚未单独实测。
-- 当前内嵌网页资源为 `Resources/FigmaMakeLatestWeb/assets/index-CghoGBxs.js`，SHA-256 为 `ba5e2fb3303131098d2b2018c0631edd0f496118d0dad32cde50a9747d503969`；`index.html` SHA-256 为 `b581524de250b32500b8d4b50536b3f05223c7a144b520b85e5d0ca1bfadcecc`。源 dist、内嵌资源及本次 App 包字节一致，见[资源清单](docs/handoff/evidence/completion-flow-20261021/manifest.json)。此前报告中的其它 JS 名指较早快照。
+- 当前内嵌网页资源为 `Resources/FigmaMakeLatestWeb/assets/index-D2k5Ko03.js`，SHA-256 为 `66a538a78b1a6fb8eb6e6f3afb70e3476eedc7eb3ec21e12f5579d505856084d`；`index.html` SHA-256 为 `520e6bc03ad1d9c10f02224e0d6db47b174548b3fe92d6b7323766513ad8a8e2`。fresh dist 与内嵌资源一致；包含该资源的 Debug App 已构建、安装并启动到 iPhone 16 Pro / iOS 18.5 模拟器空间地图，截图在[本轮证据](docs/handoff/evidence/task-checklist-parity-20261021/native-launch-space.png)。这没有证明 TaskStep 的原生路由或全屏 parity。
 - 之前整理引导修复比较到 54 个 JSX motion 元素及相同动画属性序列；这是历史快照。本次将完成碎片庆祝和按钮弹性参数迁至归档确认按钮后，未重跑全文件 AST 比较，不能继续称当前全文件动效声明完全不变。
 
 ### 本轮整理引导验收
@@ -146,6 +147,14 @@ App/SmartPawApp.swift
 
 完整证据、剩余差异与复跑命令见[完成流程报告](docs/design/completion-flow-parity-20261021.md)和[本批证据](docs/handoff/evidence/completion-flow-20261021/)。
 
+### 整理清单与逐步引导：设计身份已核实，模型未对齐
+
+本次从 Figma 现场核实区域一桌面 5 项、区域二桌下 3 项清单，以及区域一 5 个步骤、区域二 3 个步骤。随后直接选中最后一张 `2276:2639`，确认为桌下数据线整理 Step 3/3，尺寸为 390 × 844。详细整理组现在 21/21 张画板身份/尺寸已核实；完整画布顺序和版本关系仍需整理。
+
+`TaskStep` 已开始采用“整理项目”清单卡布局，按当前真实 plan steps 显示和切换，查看非活动组时禁止完成别组步骤；归位仍调用原生 UUID 并保留失败重试。15 项逻辑测试与 390 × 844 生产网页模拟 bridge smoke 通过。smoke 直接断言非活动组待办按钮禁用、点击不发出完成请求，截图及完整结果见 [TaskStep evidence](docs/handoff/evidence/task-checklist-parity-20261021/)。
+
+**该页面仍未与 Figma 一模一样。** 现有 `NativeStep.zone` 表示目标收纳位置（如书架、充电区），并不表示照片中的桌面/桌下物理分区；不能拿它冒充“区域一/区域二”。需要先为识别物品建立可靠且唯一的实体区归属，贯通 bridge 与原生 plan 的持久化，再让清单和执行步骤按该物理区筛选。本轮 Debug App 已在模拟器启动到空间地图，但没有进入 TaskStep 的原生截图或逐屏像素验收。
+
 ### 动效已知证据
 
 徽章与原 MakePreview 的 AST 比对：16 个 motion 元素、43 组动效参数保留；之前整理引导快照中，ShootFlow 的 54 个 motion 元素、SpatialScreen 的 23 个 motion 元素与当时 Git HEAD 动效属性一致（计入 AnimatePresence 时空间共 30 个节点）。本次迁移动画后没有重做全文件比较。浏览器中徽章钻石的 transform 两次取样有变化。这些证明指定声明和一处运行动画，不能替代全部动效、真实路由触发或真机帧率验收。
@@ -154,11 +163,13 @@ App/SmartPawApp.swift
 
 ### A. 先补全正式画板清单和版本关系
 
-- [ ] 完成详细整理分组 [`2261:6479`](https://www.figma.com/design/cHyKGPXFlSnNcjBWw9MNxE/ui%E7%95%8C%E9%9D%A2?node-id=2261-6479) 的 21 个 frame 子层：实际画布顺序、尺寸与全部状态归属。右上两张浅色画板已核实为识别、规划加载态；图层堆叠顺序不能当实施顺序。
+- [x] 现场选中核实最后一张 [`2276:2639`](https://www.figma.com/design/cHyKGPXFlSnNcjBWw9MNxE/ui%E7%95%8C%E9%9D%A2?node-id=2276-2639)：桌下数据线整理 Step 3/3，390 × 844。21/21 张设计源身份及尺寸现已核实；画布完整顺序和版本关系仍要整理。
+- [ ] 重建详细整理组 21 张 frame 的完整画布顺序和版本关系；源身份/尺寸核实不等于已确认实施顺序。
 - [ ] 补齐剩余根节点、Frame 7、Page 2、独立 RelightCompleteStep / SpatialScreen、旧 Container 的版本关系。不能只按节点 ID 新旧判断最终版。
 - [ ] 本次现场确认 Frame 9、10、11 是比赛展板，不作为独立手机页面；其内容可帮助定位，但不能把展板内重复手机再累加。
 - [ ] 为每个正式画板记录：节点链接、画布位置/尺寸、页面/弹层/状态、主要控件、对应 App 离散状态、素材来源、待确认点、Figma 截图、模拟器截图和差异。
 - [ ] 若有多套都像正式稿，截出候选图向用户确认。先继续不依赖该选择的部分，不要自行缩小全量范围。
+- [ ] 建立照片中桌面/桌下区域的真实 item assignment 和 `physicalZoneID` 持久化，再复刻区域一 5 项、区域二 3 项清单与相应执行/完成步骤；不能用 `suggestedZone`、类别或演示数组伪装来源区域。
 
 ### B. 修复已经找到的差异，再逐屏验证
 
@@ -261,4 +272,4 @@ App target team 当前为 `46484446VW`，test target 为 `3S323K52DX`；新电�
 
 ## 10. 可直接粘给新对话
 
-> 请接手灵爪收纳：仓库 https://github.com/Qszjlzz/LingZhuaShouNa ，切到 `codex/figma-ui-handoff-20261021` 最新提交，先检查 `git status`，完整阅读根目录 `HANDOFF.md`，再读 `docs/design/completion-flow-parity-20261021.md`、`docs/figma-screen-map.md` 和 `docs/handoff/current-state-20261021.json`。主任务是全部正式 Figma 手机画板与实际 App 逐屏对齐，保留原动效和真实业务，尚未完成。已确认 Sarah Chen 个人页加徽章；第三栏“项目”采用个人分组“我的计划”卡片；不要独立日历；原社区入口由项目替换；沿用 React + WKWebView。详细整理组已核实 11/21 个 frame 的身份和 390×844 尺寸，不代表 UI 全部验收。最新“查看成就”确认归档后播放原碎片过渡并进入空间地图成就弹窗；15 项逻辑测试、生产网页模拟 bridge smoke、iOS Debug 构建及启动通过，最新路线尚未在原生模拟器重走。此前相册暂存和确认归档有独立有限验收。下一步核实剩余 frame，优先 `2276:1531`、`2277:32` 的实际用途及相邻关系，再处理真实双物理区域和微调实际步骤；继续空间、分类、个人/项目各正式画板。缺口和测试失败都已写进仓库，不要把局部通过或构建成功说成全 App 完成。
+> 请接手灵爪收纳：仓库 https://github.com/Qszjlzz/LingZhuaShouNa ，切到 `codex/figma-ui-handoff-20261021` 最新提交，先检查 `git status`，完整阅读根目录 `HANDOFF.md`，再读 `docs/design/task-checklist-parity-20261021.md`、`docs/design/completion-flow-parity-20261021.md`、`docs/figma-screen-map.md` 和 `docs/handoff/current-state-20261021.json`。主任务是全部正式 Figma 手机画板与实际 App 逐屏对齐，保留原动效和真实业务，尚未完成。已确认 Sarah Chen 个人页加徽章；第三栏“项目”采用个人分组“我的计划”卡片；不要独立日历；原社区入口由项目替换；沿用 React + WKWebView。详细整理组现已核实 21/21 个 frame 来源及 390×844 尺寸，不代表页面实现或验收完成；`2276:2639` 为桌下数据线整理 Step 3/3。TaskStep 当前按真实 plan step 显示，但 `NativeStep.zone` 是目标归位位置，不是桌面/桌下物理区域；15 项逻辑测试、生产网页模拟 bridge smoke、Debug 构建、iPhone 16 Pro / iOS 18.5 模拟器安装和启动均通过，原生截图只到空间地图。下一步先建立可靠 physical-zone 到 item/plan/step 的真实数据和持久化，再按 Figma 实现区域一 5 项、区域二 3 项清单及逐步引导；也要继续解决微调改变实际步骤、空间/分类/个人/项目的逐屏差异。完成照到地图弹窗最新路线尚未在原生模拟器重走。缺口和测试失败都写在仓库，不要把局部通过或构建成功说成全 App 完成。

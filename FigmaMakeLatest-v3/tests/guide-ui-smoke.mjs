@@ -129,6 +129,22 @@ try {
     ...(process.env.SMARTPAW_CHROME_PATH ? { executablePath: process.env.SMARTPAW_CHROME_PATH } : {}),
     headless: true,
   });
+  const taskPreview = await setup(stateFor(structuredClone(plan), items), "task");
+  await visibleText(taskPreview.page, "整理项目");
+  await taskPreview.page.getByRole("button", { name: "书架", exact: true }).waitFor({ state: "visible" });
+  await screenshot(taskPreview.page, "00-task-checklist.png");
+  await taskPreview.page.getByRole("button", { name: "充电区", exact: true }).click();
+  const inactiveTask = taskPreview.page.getByRole("button", { name: /设备集中归位/ });
+  assert.equal(await inactiveTask.isEnabled(), false);
+  await inactiveTask.evaluate((button) => button.click());
+  assert.equal(await taskPreview.page.evaluate(() => window.__guideFixture.calls.filter((call) => call.command === "plan.step.complete").length), 0);
+  await taskPreview.page.getByRole("button", { name: "回到当前区域", exact: true }).click();
+  await taskPreview.page.getByRole("button", { name: "完成当前任务", exact: true }).click();
+  await taskPreview.page.getByRole("button", { name: "充电区", exact: true }).waitFor({ state: "visible" });
+  assert.equal(await savedSteps(taskPreview.page), 1);
+  checks.push("Task checklist: an inactive zone's pending task is disabled and emits no completion call; returning to the active zone completes only its native UUID and advances to the next saved zone.");
+  await taskPreview.context.close();
+
   const { context, page } = await setup(stateFor(plan, items));
   await visibleText(page, "清理收纳区域");
   await visibleText(page, "Step 1/5");

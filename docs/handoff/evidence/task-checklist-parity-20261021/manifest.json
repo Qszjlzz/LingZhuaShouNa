@@ -1,0 +1,23 @@
+{
+  "date": "2026-10-21",
+  "viewport": "390x844",
+  "source": "production dist with simulated native bridge",
+  "web_asset": "Resources/FigmaMakeLatestWeb/assets/index-D2k5Ko03.js",
+  "web_asset_sha256": "66a538a78b1a6fb8eb6e6f3afb70e3476eedc7eb3ec21e12f5579d505856084d",
+  "web_index_sha256": "520e6bc03ad1d9c10f02224e0d6db47b174548b3fe92d6b7323766513ad8a8e2",
+  "result": "passed",
+  "checks": [
+    "Inactive-zone pending task button is disabled and emits no plan.step.complete call.",
+    "Returning to the active group completes only the active native step UUID and advances to the next persisted group."
+  ],
+  "not_verified": [
+    "Physical tabletop and under-desk zone assignment",
+    "Swift persistence or native simulator route",
+    "Figma pixel parity"
+  ],
+  "screenshot": "00-task-checklist.png",
+  "smoke_result": "result.json",
+  "native_launch_screenshot": "native-launch-space.png",
+  "native_simulator": "iPhone 16 Pro / iOS 18.5; Debug installed and launched",
+  "native_route_verified": "launch to space map only; TaskStep native route not exercised"
+}
