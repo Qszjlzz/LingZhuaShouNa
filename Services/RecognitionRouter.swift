@@ -1,12 +1,8 @@
 import Foundation
 import UIKit
 
-/// 识别总入口：本地 CoreML 管线 + 云端多模态大模型。
-///
-/// 本地模型给出精确的分割轮廓（AR 叠加要用到），但它在真机上会因为
-/// 模型编译失败、阈值过严或场景不匹配而返回空结果——这正是"拍完认不出东西"
-/// 的直接原因。云端多模态模型负责给出可靠的中文物品名与类别。
-/// 两者的结果在这里合并：名称与类别以云端为准，轮廓沿用本地的精确 mask。
+/// 照片使用已授权的大模型识别；失败或未配置时才运行设备端模型。
+/// AR 实时预览仍使用本地模型。大模型给出的框是粗定位，不冒充真实分割。
 final class RecognitionRouter: ScanService, @unchecked Sendable {
     static let shared = RecognitionRouter()
 
@@ -14,14 +10,21 @@ final class RecognitionRouter: ScanService, @unchecked Sendable {
     var settingsProvider: (() -> LLMSettings)?
 
     private let local = YOLOSegmentationScanService()
-    private let cloud = CloudVisionRecognitionService()
+    private let stillLocalScan: (UIImage) async throws -> [DetectedItem]
+    private let cloudScan: (UIImage, LLMSettings) async throws -> [DetectedItem]
     /// 开放词表语义层：本地 YOLO 词表里没有耳机 / 鼠标垫 / 发夹这类小物件，
     /// 由它对已检出的候选框重新命名（仍是设备端模型，不联网）。
     private let semantic = SemanticRecognitionScanService()
     private let lock = NSLock()
     private var report: [String: String] = [:]
 
-    private init() {}
+    init(
+        localScan: @escaping (UIImage) async throws -> [DetectedItem] = { try await YOLOSegmentationScanService().scanImage($0) },
+        cloudScan: @escaping (UIImage, LLMSettings) async throws -> [DetectedItem] = { try await CloudVisionRecognitionService().recognize(image: $0, settings: $1) }
+    ) {
+        self.stillLocalScan = localScan
+        self.cloudScan = cloudScan
+    }
 
     var diagnostics: [String: String] {
         lock.lock(); defer { lock.unlock() }
@@ -34,17 +37,43 @@ final class RecognitionRouter: ScanService, @unchecked Sendable {
         try await scanImage(image, allowsCloud: true)
     }
 
-    /// 连拍时云端只跑一次：多模态模型看一张就能概括整个空间，
-    /// 其余照片交给本地模型补充，避免每张都等一次网络往返。
+    /// 每张照片有独立视角，不能用首张的识别结果代替之后的照片。
     func scanImage(_ image: UIImage, allowsCloud: Bool) async throws -> [DetectedItem] {
         let settings = settingsProvider?() ?? .default
         let useCloud = allowsCloud && settings.canRequestVision
-        async let localItems = localItems(for: image)
-        async let cloudItems = useCloud ? cloudItems(for: image, settings: settings) : [DetectedItem]()
-        let (local, cloud) = await (localItems, cloudItems)
-        return Self.combine(local: local, cloud: cloud, live: false) { [weak self] summary in
-            self?.record(summary, cloudEnabled: useCloud)
+        if useCloud {
+            do {
+                let items = try await cloudScan(image, settings)
+                try Task.checkCancellation()
+                record([
+                    "source": "大模型", "本地": "未运行", "云端": "\(items.count)",
+                    "返回": "\(items.count)", "云端状态": "成功", "定位": "大模型粗框（非分割）"
+                ], cloudEnabled: true)
+                // A valid empty scene stays empty. Local predictions must not add
+                // objects rejected or absent from a successful cloud response.
+                return items
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                try Task.checkCancellation()
+                let items = await localItems(for: image)
+                try Task.checkCancellation()
+                record([
+                    "source": "本地降级", "本地": "\(items.count)", "云端": "0",
+                    "返回": "\(items.count)", "云端状态": "失败",
+                    "云端错误": error.localizedDescription
+                ], cloudEnabled: true)
+                return items
+            }
         }
+        try Task.checkCancellation()
+        let items = await localItems(for: image)
+        try Task.checkCancellation()
+        record([
+            "source": "本地", "本地": "\(items.count)", "云端": "未启用",
+            "返回": "\(items.count)", "云端状态": "未配置、未授权或显式本地"
+        ], cloudEnabled: false)
+        return items
     }
 
     // MARK: - AR 实时扫描
@@ -74,26 +103,25 @@ final class RecognitionRouter: ScanService, @unchecked Sendable {
 
     // MARK: - 结果合并
 
-    private static func combine(
+    static func combine(
         local: [DetectedItem],
         cloud: [DetectedItem],
         live: Bool,
         record: ([String: String]) -> Void
     ) -> [DetectedItem] {
-        let limit = live ? 8 : 12
+        // A still photo can contain more than twelve possessions. Keep the full
+        // detector result for planning; only live AR needs a display budget.
+        let limit = live ? 8 : Int.max
         if cloud.isEmpty {
             record([
                 "source": local.isEmpty ? "空" : "本地",
                 "本地": "\(local.count)",
                 "云端": "0",
+                "返回": "\(min(local.count, limit))",
+                "截断": "\(max(0, local.count - limit))",
             ])
             return Array(local.prefix(limit))
         }
-        record([
-            "source": local.isEmpty ? "云端" : "本地+云端",
-            "本地": "\(local.count)",
-            "云端": "\(cloud.count)",
-        ])
         var merged: [DetectedItem] = []
         var usedLocal = Set<Int>()
         for var item in cloud {
@@ -113,6 +141,13 @@ final class RecognitionRouter: ScanService, @unchecked Sendable {
             .filter { !usedLocal.contains($0.offset) && $0.element.confidence >= 0.45 }
             .map(\.element)
         merged.append(contentsOf: extras)
+        record([
+            "source": local.isEmpty ? "云端" : "本地+云端",
+            "本地": "\(local.count)",
+            "云端": "\(cloud.count)",
+            "返回": "\(min(merged.count, limit))",
+            "截断": "\(max(0, merged.count - limit))",
+        ])
         return Array(merged.prefix(limit))
     }
 
@@ -128,7 +163,11 @@ final class RecognitionRouter: ScanService, @unchecked Sendable {
         for (index, candidate) in local.enumerated() where !used.contains(index) {
             var score = 0.0
             if let hint = item.arHint, let candidateHint = candidate.arHint {
-                score += Self.intersectionOverUnion(hint, candidateHint)
+                let overlap = Self.intersectionOverUnion(hint, candidateHint)
+                // Two cups at opposite ends of a desk are separate objects.
+                // Shared category/name must not move one label to the other's mask.
+                guard overlap >= 0.1 else { continue }
+                score += overlap
             }
             if candidate.category == item.category { score += 0.25 }
             if candidate.name == item.name {
@@ -191,23 +230,9 @@ final class RecognitionRouter: ScanService, @unchecked Sendable {
 
     private func localItems(for image: UIImage) async -> [DetectedItem] {
         do {
-            return try await local.scanImage(image)
+            return try await stillLocalScan(image)
         } catch {
             print("SMARTPAW_SCAN local-error \(error.localizedDescription)")
-            return []
-        }
-    }
-
-    private func cloudItems(for image: UIImage, settings: LLMSettings) async -> [DetectedItem] {
-        do {
-            let items = try await cloud.recognize(image: image, settings: settings)
-            print("SMARTPAW_SCAN cloud=\(items.count) names=\(items.map(\.name).joined(separator: "、"))")
-            return items
-        } catch {
-            print("SMARTPAW_SCAN cloud-error \(error.localizedDescription)")
-            lock.lock()
-            report["云端错误"] = error.localizedDescription
-            lock.unlock()
             return []
         }
     }

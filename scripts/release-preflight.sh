@@ -132,6 +132,12 @@ else
   pass "llm-defaults.json is not an app resource"
 fi
 
+if grep -Eq 'image-generation(\.example|-import)?\.json' "$PBX"; then
+  fail "image-generation configuration must not be referenced by the Xcode project"
+else
+  pass "image-generation configuration is excluded from app resources"
+fi
+
 if [ -f Resources/llm-defaults.json ]; then
   warn "local ignored Resources/llm-defaults.json exists; remove it before archiving and revoke any key it contained"
 fi

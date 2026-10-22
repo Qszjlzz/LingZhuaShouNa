@@ -248,7 +248,10 @@ final class CameraEngine: NSObject, ObservableObject {
 
 extension CameraEngine: AVCapturePhotoCaptureDelegate {
     func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
-        let image = error == nil ? photo.fileDataRepresentation().flatMap(UIImage.init(data:)) : nil
+        let image: UIImage? = autoreleasepool {
+            guard error == nil, let data = photo.fileDataRepresentation() else { return nil }
+            return UIImage.downsampled(data: data)
+        }
         let id = photo.resolvedSettings.uniqueID
         Task { @MainActor [weak self] in self?.deliverCapture(image, id: id) }
     }

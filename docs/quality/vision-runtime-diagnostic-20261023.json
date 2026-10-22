@@ -1,0 +1,73 @@
+{
+  "diagnostics": [
+    {
+      "stage": "scan",
+      "state": "started"
+    },
+    {
+      "outputCount": 1,
+      "stage": "imageNormalization",
+      "state": "completed"
+    },
+    {
+      "stage": "visualRegions",
+      "state": "started"
+    },
+    {
+      "stage": "foregroundSegmentation",
+      "state": "started"
+    },
+    {
+      "errorCode": 9,
+      "errorDomain": "com.apple.Vision",
+      "stage": "foregroundSegmentation",
+      "state": "failed"
+    },
+    {
+      "stage": "saliencyAndRectangles",
+      "state": "started"
+    },
+    {
+      "observationCount": 1,
+      "outputCount": 0,
+      "stage": "saliencyAndRectangles",
+      "state": "completed"
+    },
+    {
+      "outputCount": 0,
+      "stage": "visualRegions",
+      "state": "completed"
+    },
+    {
+      "stage": "classification",
+      "state": "started"
+    },
+    {
+      "eligibleObservationCount": 5,
+      "observationCount": 1303,
+      "outputCount": 0,
+      "stage": "classification",
+      "state": "completed"
+    },
+    {
+      "stage": "textRecognition",
+      "state": "started"
+    },
+    {
+      "observationCount": 2,
+      "outputCount": 0,
+      "stage": "textRecognition",
+      "state": "completed"
+    },
+    {
+      "outputCount": 0,
+      "stage": "scan",
+      "state": "completed"
+    }
+  ],
+  "finalItemCount": 0,
+  "scope": "iPhone16Pro simulator iOS18.5 bundled messyDesk only; not photo quality acceptance",
+  "network_requests": 0,
+  "camera_used": false,
+  "local_xcresult": "/tmp/smartpaw-runtime-diagnostics-20261023.xcresult"
+}

@@ -1,0 +1,35 @@
+{
+  "status": "draft_not_frozen",
+  "target_real_images": 50,
+  "proposed_composition": {
+    "desk": 35,
+    "coffee_table": 15
+  },
+  "composition_is_user_mandated": false,
+  "user_goal": {
+    "scope": "desk_and_coffee_table_10_core_item_classes",
+    "accuracy_goal": 0.9,
+    "stretch_goal": 0.95,
+    "metric_definition_confirmed": false
+  },
+  "class_catalog": [],
+  "matching": {
+    "one_to_one": true,
+    "name_synonyms_status": "unfrozen",
+    "bbox_origin": "top_left_normalized_0_to_1",
+    "bbox_iou_threshold": null,
+    "bbox_iou_threshold_status": "must_freeze_before_predictions",
+    "mask_matching_status": "separate_if_claimed"
+  },
+  "annotations": {
+    "exhaustive_in_scope_instances_required": true,
+    "second_reviewer_required": true,
+    "ignore_policy_status": "unfrozen"
+  },
+  "evaluation_modes": [
+    "local_offline",
+    "cloud_enabled",
+    "local_fallback"
+  ],
+  "results": null
+}

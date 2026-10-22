@@ -1,0 +1,56 @@
+{
+  "environment": "Desktop Chromium, synthetic SVG photos and native bridge fixture; no real network provider or iPhone",
+  "checks": [
+    {
+      "width": 390,
+      "check": "Relight tune renders without error, retains before photo, sends all preferences and requires current preview",
+      "passed": true
+    },
+    {
+      "width": 390,
+      "check": "Relight tune ignores cancelled stale result, shows retryable failure and advances only on explicit confirmation",
+      "passed": true
+    },
+    {
+      "width": 390,
+      "check": "Relight new plan supports manual regions, full request, original comparison and region cache restoration without extra generate",
+      "passed": true
+    },
+    {
+      "width": 390,
+      "check": "Relight rejects changed selected space before native generation",
+      "passed": true
+    },
+    {
+      "width": 390,
+      "check": "Unconfigured service offers explicit text-plan continuation without claiming image confirmation or uploading",
+      "passed": true
+    },
+    {
+      "width": 320,
+      "check": "Relight tune renders without error, retains before photo, sends all preferences and requires current preview",
+      "passed": true
+    },
+    {
+      "width": 320,
+      "check": "Relight tune ignores cancelled stale result, shows retryable failure and advances only on explicit confirmation",
+      "passed": true
+    },
+    {
+      "width": 320,
+      "check": "Relight new plan supports manual regions, full request, original comparison and region cache restoration without extra generate",
+      "passed": true
+    },
+    {
+      "width": 320,
+      "check": "Relight rejects changed selected space before native generation",
+      "passed": true
+    },
+    {
+      "width": 320,
+      "check": "Unconfigured service offers explicit text-plan continuation without claiming image confirmation or uploading",
+      "passed": true
+    }
+  ],
+  "errors": []
+}

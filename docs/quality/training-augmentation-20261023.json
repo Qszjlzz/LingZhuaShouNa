@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "updated": "2026-10-23",
+  "user_authorized": "AI-generated images may supplement training and development data",
+  "training_started": false,
+  "deployed_model_weights_changed": false,
+  "new_paid_requests": 0,
+  "policy": {
+    "synthetic_allowed_splits": [
+      "training",
+      "development_regression"
+    ],
+    "real_holdout_excludes_synthetic": true,
+    "group_variants_with_source_scene": true,
+    "annotation_required_after_generation": true,
+    "do_not_reuse_input_labels_without_review": true
+  },
+  "candidates": [
+    {
+      "id": "synthetic-desk-20261023-001",
+      "path": "outputs/image-api-smoke-20261023-controlled/organized-desk.png",
+      "source_type": "ai_generated_edit",
+      "split": "training_candidate",
+      "status": "unlabelled_not_trained",
+      "sha256": "28653353145ceec354420008e731ea789ccbffffacb46fbe4f4134da89334aec",
+      "provider": "beeapi.dev",
+      "model": "gpt-image-2",
+      "source_scene_group": "external-cluttered-study-pexels",
+      "issues": [
+        "objects removed or reshaped",
+        "aspect ratio changed",
+        "source image licence not yet verified for redistribution/training"
+      ],
+      "eligible_for_50_real_holdout": false,
+      "cloud_upload_or_redistribution_authorized_by_this_record": false
+    }
+  ]
+}

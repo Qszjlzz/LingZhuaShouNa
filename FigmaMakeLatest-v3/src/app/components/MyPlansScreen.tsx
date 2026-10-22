@@ -12,9 +12,9 @@ const tabs = ["全部", "活跃的", "预定的", "完成"] as const;
 
 function planCover(plan: ProjectPlan, index: number): string {
   const content = `${plan.space} ${plan.title}`;
-  if (/客厅|沙发|电视|living/i.test(content)) return livingCover;
+  if (/客厅|茶几|沙发|电视|living/i.test(content)) return livingCover;
   if (/厨房|餐具|碗柜|kitchen/i.test(content)) return cabinetCover;
-  if (/书房|衣柜|卧室|wardrobe|closet/i.test(content)) return closetCover;
+  if (/书房|衣柜|卧室|床|wardrobe|closet/i.test(content)) return closetCover;
   return [closetCover, cabinetCover, livingCover][index % 3];
 }
 

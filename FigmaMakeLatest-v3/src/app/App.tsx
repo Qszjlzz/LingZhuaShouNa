@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { SpatialScreen } from "./components/SpatialScreen";
 import { ClassificationScreen } from "./components/ClassificationScreen";
 import { MineScreen } from "./components/MineScreen";
@@ -19,7 +19,39 @@ export default function App() {
   );
   const [relitSpaceId, setRelitSpaceId] = useState<string | null>(null);
   const [nativeState, setNativeState] = useState<NativeState | null>(null);
-  const refresh = () => getNativeState().then(setNativeState).catch(() => undefined);
+  const stateRequestVersion = useRef(0);
+  const changingDataScope = useRef(false);
+  const isBrowserPreview = !window.webkit?.messageHandlers?.smartpaw;
+  const isPresentationMode = nativeState?.isPresentationMode ?? isBrowserPreview;
+  const dataScope = nativeState ? isPresentationMode ? "presentation" : "personal" : isBrowserPreview ? "browser-preview" : "loading";
+  const refresh = async () => {
+    if (changingDataScope.current) return;
+    const version = ++stateRequestVersion.current;
+    try {
+      const state = await getNativeState();
+      if (version === stateRequestVersion.current) setNativeState(state);
+    } catch { /* Browser previews keep their local sample data. */ }
+  };
+
+  const changePresentationMode = async (enabled: boolean) => {
+    if (changingDataScope.current) return;
+    changingDataScope.current = true;
+    const version = ++stateRequestVersion.current;
+    try {
+      const state = isBrowserPreview ? enabled ? null : {
+        isPresentationMode: false, spaces: [], scannedItems: [], achievements: [],
+        communityCases: [], comments: {}, liked: [], favorites: [], followedAuthors: [], schedules: [],
+      } satisfies NativeState : await nativeRequest<NativeState>("presentation.mode.set", { enabled });
+      if (version !== stateRequestVersion.current) return;
+      setShooting(false);
+      setReusePlan(false);
+      setScanDone(false);
+      setDemoFlow(null);
+      setRelightSpace(null);
+      setRelitSpaceId(null);
+      setNativeState(state);
+    } finally { changingDataScope.current = false; }
+  };
 
   // dev/演示：?relight=choice|tune|proof|complete 直接挂载点亮链路（不带参数不影响正常流程）
   useEffect(() => {
@@ -55,7 +87,7 @@ export default function App() {
       }
       style={{ backgroundColor: shooting || relightSpace ? "transparent" : "#EDE5DA" }}
     >
-      <div className="relative size-full overflow-hidden">
+      <div key={dataScope} className="relative size-full overflow-hidden">
         {/* 拍摄时把首页整层卸载：拍摄页的取景靠"页面透明 + 原生相机画面从底下透出"，
             首页若还挂在底下，会不透明地盖住相机画面（截图里透出空间地图就是这个原因）。 */}
         {!shooting && !relightSpace && !demoFlow && (
@@ -63,6 +95,7 @@ export default function App() {
             {tab === "spatial" && (
               <SpatialScreen
                 nativeSpaces={nativeState?.spaces}
+                isPresentationMode={isPresentationMode}
                 selectedSpaceID={nativeState?.selectedSpaceID}
                 onNativeChange={refresh}
                 onReshoot={(mode, space) => {
@@ -85,7 +118,7 @@ export default function App() {
             )}
             {tab === "classification" && <ClassificationScreen nativeState={nativeState} onNativeChange={refresh} onCamera={openShoot} />}
             {tab === "project" && <MyPlansScreen nativeState={nativeState} onNativeChange={refresh} onBack={() => setTab("mine")} isTabRoot onAddPlan={openShoot} />}
-            {tab === "mine" && <MineScreen nativeState={nativeState} onNativeChange={refresh} onOpenProjects={() => setTab("project")} />}
+            {tab === "mine" && <MineScreen nativeState={nativeState} onNativeChange={refresh} onOpenProjects={() => setTab("project")} onPresentationModeChange={changePresentationMode} onBrowseFlow={() => setDemoFlow("plandeck")} />}
 
             <BottomNav active={tab} onChange={setTab} onCamera={openShoot} />
           </>

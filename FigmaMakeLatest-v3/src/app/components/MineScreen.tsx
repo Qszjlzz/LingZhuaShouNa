@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronRight, Settings, FolderKanban, Users, Bookmark, HelpCircle, LogOut, Lock } from "lucide-react";
+import { ChevronRight, Settings, FolderKanban, Users, Bookmark, HelpCircle, LogOut, Lock, Play, GalleryVerticalEnd, LoaderCircle } from "lucide-react";
 import profileAvatar from "../../assets/profile-avatar.png";
 import { COFFEE, ORANGE, LINEN, WHITE, BLUE, SOFT } from "./theme";
 import { SavedPostsScreen } from "./SavedPostsScreen";
@@ -9,20 +9,28 @@ import { AISettingsScreen } from "./AISettingsScreen";
 import type { NativeState } from "../nativeBridge";
 import { plansFromState } from "../projectPlans";
 
-export function MineScreen({ nativeState, onNativeChange, onOpenProjects }: { nativeState?: NativeState | null; onNativeChange?: () => void; onOpenProjects?: () => void } = {}) {
+export function MineScreen({ nativeState, onNativeChange, onOpenProjects, onPresentationModeChange, onBrowseFlow }: {
+  nativeState?: NativeState | null;
+  onNativeChange?: () => void;
+  onOpenProjects?: () => void;
+  onPresentationModeChange?: (enabled: boolean) => Promise<void>;
+  onBrowseFlow?: () => void;
+} = {}) {
   const [openSaved, setOpenSaved] = useState(false);
   const [openFriends, setOpenFriends] = useState(false);
   const [openBadges, setOpenBadges] = useState(false);
   const [initialBadgeId, setInitialBadgeId] = useState<string | null>(null);
   const [openSettings, setOpenSettings] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [changingMode, setChangingMode] = useState(false);
   const isBrowserPreview = !nativeState && !window.webkit?.messageHandlers?.smartpaw;
+  const isPresentationMode = nativeState?.isPresentationMode ?? isBrowserPreview;
   const badges = badgesFromState(nativeState);
   const earnedBadges = badges.filter((badge) => !badge.locked);
   const displayedBadges = earnedBadges.length ? earnedBadges : badges;
   const stats = [
-    { label: "已追踪物品", value: nativeState ? nativeState.profileStats?.trackedItemCount ?? nativeState.spaces.reduce((count, space) => count + space.detectedItems.length, 0) : isBrowserPreview ? 248 : 0 },
-    { label: "已整理空间", value: nativeState ? nativeState.profileStats?.organizedSpaceCount ?? nativeState.spaces.filter((space) => space.completedPlans.length > 0).length : isBrowserPreview ? 12 : 0 },
+    { label: "已追踪物品", value: isPresentationMode ? 248 : nativeState ? nativeState.profileStats?.trackedItemCount ?? nativeState.spaces.reduce((count, space) => count + space.detectedItems.length, 0) : 0 },
+    { label: "已整理空间", value: isPresentationMode ? 12 : nativeState ? nativeState.profileStats?.organizedSpaceCount ?? nativeState.spaces.filter((space) => space.completedPlans.length > 0).length : 0 },
     { label: "已获得徽章", value: earnedBadges.length },
   ];
 
@@ -34,6 +42,14 @@ export function MineScreen({ nativeState, onNativeChange, onOpenProjects }: { na
   const showNotice = (message: string) => {
     setNotice(message);
     window.setTimeout(() => setNotice((current) => current === message ? null : current), 1800);
+  };
+
+  const changeMode = async (enabled: boolean) => {
+    if (enabled === isPresentationMode || changingMode || !onPresentationModeChange) return;
+    setChangingMode(true);
+    try { await onPresentationModeChange(enabled); }
+    catch (cause) { showNotice(cause instanceof Error ? cause.message : "数据切换失败，请重试"); }
+    finally { setChangingMode(false); }
   };
 
   if (openSaved) return <SavedPostsScreen nativeState={nativeState} onNativeChange={onNativeChange} onBack={() => setOpenSaved(false)} />;
@@ -72,6 +88,9 @@ export function MineScreen({ nativeState, onNativeChange, onOpenProjects }: { na
 
       {/* Stats row */}
       <div className="px-6">
+        {isPresentationMode && (
+          <p className="text-center mb-2" style={{ color: COFFEE, opacity: 0.5, fontSize: 10 }}>样例数据</p>
+        )}
         <div
           className="flex items-center justify-around py-5"
           style={{ borderTop: `1px solid ${SOFT}`, borderBottom: `1px solid ${SOFT}` }}
@@ -148,6 +167,36 @@ export function MineScreen({ nativeState, onNativeChange, onOpenProjects }: { na
             </button>
           );
         })}
+        {onPresentationModeChange && (
+          <div className="flex items-center gap-4 py-4" style={{ borderTop: `1px solid ${SOFT}` }}>
+            <div className="h-10 w-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: LINEN }}>
+              {changingMode ? <LoaderCircle size={18} color={COFFEE} className="animate-spin" /> : <GalleryVerticalEnd size={18} color={COFFEE} />}
+            </div>
+            <p className="flex-1 text-left" style={{ color: COFFEE, fontSize: 14, fontWeight: 500 }}>展示数据</p>
+            <div className="flex p-0.5 rounded-lg" role="group" aria-label="数据来源" style={{ backgroundColor: LINEN }}>
+              {[{ label: "样例", enabled: true }, { label: "我的数据", enabled: false }].map((mode) => (
+                <button
+                  key={mode.label}
+                  type="button"
+                  aria-pressed={isPresentationMode === mode.enabled}
+                  disabled={changingMode}
+                  onClick={() => { void changeMode(mode.enabled); }}
+                  className="px-3 py-2 rounded-md"
+                  style={{ backgroundColor: isPresentationMode === mode.enabled ? WHITE : "transparent", color: COFFEE, fontSize: 11, fontWeight: isPresentationMode === mode.enabled ? 600 : 400, opacity: changingMode ? 0.6 : 1 }}
+                >
+                  {mode.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        {isPresentationMode && onBrowseFlow && (
+          <button type="button" onClick={onBrowseFlow} className="w-full flex items-center gap-4 py-4" style={{ borderTop: `1px solid ${SOFT}` }}>
+            <div className="h-10 w-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: LINEN }}><Play size={18} color={COFFEE} /></div>
+            <p className="flex-1 text-left" style={{ color: COFFEE, fontSize: 14, fontWeight: 500 }}>浏览整理流程</p>
+            <ChevronRight size={18} color={COFFEE} opacity={0.4} />
+          </button>
+        )}
       </div>
       {notice && <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-full" style={{ backgroundColor: COFFEE, color: WHITE, fontSize: 12 }} role="status">{notice}</div>}
     </div>

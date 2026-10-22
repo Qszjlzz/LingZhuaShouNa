@@ -1,0 +1,36 @@
+{
+  "environment": "Desktop Chromium, synthetic SVG photos and native bridge fixture; no real network provider or iPhone",
+  "checks": [
+    {
+      "width": 390,
+      "check": "All preferences enter the real preview payload; confirmation requires displayed current image; before/after toggle",
+      "passed": true
+    },
+    {
+      "width": 390,
+      "check": "New preference invalidates old image; real generation error remains retryable",
+      "passed": true
+    },
+    {
+      "width": 390,
+      "check": "Late result from prior preference is ignored; only explicit confirmation advances to zones; no horizontal document overflow",
+      "passed": true
+    },
+    {
+      "width": 320,
+      "check": "All preferences enter the real preview payload; confirmation requires displayed current image; before/after toggle",
+      "passed": true
+    },
+    {
+      "width": 320,
+      "check": "New preference invalidates old image; real generation error remains retryable",
+      "passed": true
+    },
+    {
+      "width": 320,
+      "check": "Late result from prior preference is ignored; only explicit confirmation advances to zones; no horizontal document overflow",
+      "passed": true
+    }
+  ],
+  "errors": []
+}

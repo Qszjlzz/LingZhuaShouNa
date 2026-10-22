@@ -1,0 +1,66 @@
+{
+  "environment": "Desktop Chromium 390/320; synthetic SVG photo and native bridge fixture; production capture-to-relight route. No real model, provider network or iPhone.",
+  "checks": [
+    {
+      "width": 390,
+      "check": "Actual capture route waits beyond the old fake timer and displays only returned score, evidence and rectangle; explicit continue",
+      "passed": true
+    },
+    {
+      "width": 390,
+      "check": "Sixty recognized items retain visually tidy 8/100 result with no invented clutter markers",
+      "passed": true
+    },
+    {
+      "width": 390,
+      "check": "Unconfigured service displays no numeric fallback and supports explicit retry to real response",
+      "passed": true
+    },
+    {
+      "width": 390,
+      "check": "Cancel issues native cancellation, leaves page immediately and ignores delayed completion",
+      "passed": true
+    },
+    {
+      "width": 390,
+      "check": "A changed selected space while awaiting assessment rejects delayed result",
+      "passed": true
+    },
+    {
+      "width": 390,
+      "check": "Network failure, incomplete response and another-space result show unavailable and permit explicit skip without fake scoring",
+      "passed": true
+    },
+    {
+      "width": 320,
+      "check": "Actual capture route waits beyond the old fake timer and displays only returned score, evidence and rectangle; explicit continue",
+      "passed": true
+    },
+    {
+      "width": 320,
+      "check": "Sixty recognized items retain visually tidy 8/100 result with no invented clutter markers",
+      "passed": true
+    },
+    {
+      "width": 320,
+      "check": "Unconfigured service displays no numeric fallback and supports explicit retry to real response",
+      "passed": true
+    },
+    {
+      "width": 320,
+      "check": "Cancel issues native cancellation, leaves page immediately and ignores delayed completion",
+      "passed": true
+    },
+    {
+      "width": 320,
+      "check": "A changed selected space while awaiting assessment rejects delayed result",
+      "passed": true
+    },
+    {
+      "width": 320,
+      "check": "Network failure, incomplete response and another-space result show unavailable and permit explicit skip without fake scoring",
+      "passed": true
+    }
+  ],
+  "errors": []
+}

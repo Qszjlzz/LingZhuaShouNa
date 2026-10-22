@@ -1,26 +1,11 @@
 import { useRef, useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Plus, Sparkles, X, RotateCw, Pencil, ChevronRight, Play, Check, Camera, Trash2, CircleAlert } from "lucide-react";
+import { Sparkles, X, RotateCw, Pencil, ChevronRight, Play, Check, Camera, Trash2, CircleAlert, SlidersHorizontal, Undo2 } from "lucide-react";
 import { COFFEE, ORANGE, LINEN, BLUE, WHITE, SOFT } from "./theme";
 import { InProgressDetail } from "./InProgressDetail";
 import { nativeRequest, type NativeSpace, type NativeState } from "../nativeBridge";
-import bedArt from "../../assets/spaces/bed.png";
-import deskArt from "../../assets/spaces/desk.png";
-import kitchenArt from "../../assets/spaces/kitchen.png";
-import teatableArt from "../../assets/spaces/teatable.png";
-
-/* ------------------------------------------------------------------ *
- *  Space card artwork — hand-drawn room illustrations, one per kind.
- *  Card size keeps each artwork's aspect ratio; scale multiplies it.
- * ------------------------------------------------------------------ */
-type SkinKey = "bed" | "desk" | "kitchen" | "teatable";
-
-const SKINS: Record<SkinKey, { src: string; w: number; h: number }> = {
-  bed: { src: bedArt, w: 138, h: 138 },
-  desk: { src: deskArt, w: 143, h: 78 },
-  kitchen: { src: kitchenArt, w: 138, h: 138 },
-  teatable: { src: teatableArt, w: 139, h: 74 },
-};
+import { SpaceArtwork, SPACE_TEMPLATES, type SpaceKind, type SpaceShape } from "./SpaceArtwork";
+import { inferSpaceKind, normalizeSpaceLayout, parseSpaceLayouts, pointerDelta, spaceFootprint, SPACE_KINDS, type SpaceLayout } from "../spaceLayout";
 
 // curated, airy "premium" palette the user can recolour spaces with
 const PALETTE = ["#E29B7B", "#7FB0AA", "#A9B486", "#DFA6B0", "#ECC079", "#A6B2D6", "#C3AAD4", "#9DBBC9"];
@@ -69,17 +54,11 @@ function fade(days: number) {
 /* ------------------------------------------------------------------ *
  *  Data model
  * ------------------------------------------------------------------ */
-type Piece = {
+type Piece = SpaceLayout & {
   id: string;
   name: string;
-  vivid: string;
-  skin: SkinKey;
   items: number;
   lastDays: number;
-  x: number;
-  y: number;
-  rot: number;
-  scale: number;
   organized?: boolean;
 };
 
@@ -87,42 +66,41 @@ type Piece = {
 // “桌面”不作为首次进入空间地图时的默认区域；它仍保留在 NEW_TEMPLATES 中，
 // 因此用户后续通过重新收集/新增区域时仍可生成桌面区域。
 const initialPieces: Piece[] = [
-  { id: "p1", name: "床", vivid: "#A6B2D6", skin: "bed", items: 24, lastDays: 2, x: 40, y: 60, rot: 0, scale: 1 },
-  { id: "p3", name: "厨房", vivid: "#A9B486", skin: "kitchen", items: 9, lastDays: 30, x: 40, y: 194, rot: 0, scale: 1 },
-  { id: "p4", name: "茶几", vivid: "#DFA6B0", skin: "teatable", items: 31, lastDays: 15, x: 178, y: 144, rot: 0, scale: 1 },
+  { id: "p1", name: "床", vivid: SPACE_TEMPLATES.bed.color, skin: "bed", shape: "original", width: 138, height: 138, items: 24, lastDays: 2, x: 40, y: 60, rot: 0, scale: 1 },
+  { id: "p3", name: "厨房", vivid: SPACE_TEMPLATES.kitchen.color, skin: "kitchen", shape: "original", width: 138, height: 138, items: 9, lastDays: 30, x: 40, y: 194, rot: 0, scale: 1 },
+  { id: "p4", name: "茶几", vivid: SPACE_TEMPLATES.teatable.color, skin: "teatable", shape: "original", width: 139, height: 74, items: 31, lastDays: 15, x: 178, y: 144, rot: 0, scale: 1 },
 ];
 
-type PieceLayout = Pick<Piece, "x" | "y" | "rot" | "scale" | "vivid">;
 const LAYOUT_KEY = "smartpaw-space-map-layout-v1";
 
-function savedLayouts(): Record<string, PieceLayout> {
+function savedLayouts(storageKey: string): Record<string, Record<string, unknown>> {
   try {
-    const value = JSON.parse(localStorage.getItem(LAYOUT_KEY) || "{}");
-    return value && typeof value === "object" ? value : {};
+    return parseSpaceLayouts(localStorage.getItem(storageKey));
   } catch { return {}; }
 }
 
-function nativePieces(spaces: NativeSpace[], previous: Piece[] = []): Piece[] {
-  const layouts = savedLayouts();
+function previewPieces(storageKey: string): Piece[] {
+  const layouts = savedLayouts(storageKey);
+  return initialPieces.map((piece) => ({ ...piece, ...normalizeSpaceLayout(layouts[piece.id], piece) }));
+}
+
+function nativePieces(spaces: NativeSpace[], previous: Piece[] = [], storageKey = LAYOUT_KEY): Piece[] {
+  const layouts = savedLayouts(storageKey);
   return spaces.map((space, index) => {
     const old = previous.find((piece) => piece.id === space.id);
     const slot = initialPieces[index % initialPieces.length];
-    const skin: SkinKey = /厨房|餐|kitchen/i.test(space.name) ? "kitchen"
-      : /床|卧室|衣柜|bed/i.test(space.name) ? "bed"
-      : /茶|客厅|浴室|沙发|living/i.test(space.name) ? "teatable" : "desk";
-    const layout = old || layouts[space.id];
+    const skin = inferSpaceKind(space.name);
+    const template = SPACE_TEMPLATES[skin];
+    const layout = normalizeSpaceLayout(old || layouts[space.id], {
+      skin, shape: "original", width: template.w, height: template.h,
+      x: slot.x, y: slot.y, rot: 0, scale: 1, vivid: template.color,
+    });
     const organizedAt = space.lastOrganizedAt ? Date.parse(space.lastOrganizedAt) : NaN;
-    const validNumber = (value: unknown, fallback: number) => typeof value === "number" && Number.isFinite(value) ? value : fallback;
-    const scale = Math.max(0.72, Math.min(1.45, validNumber(layout?.scale, 1)));
     return {
-      id: space.id, name: space.name, skin, items: space.detectedItems.length,
+      ...layout,
+      id: space.id, name: space.name, items: space.detectedItems.length,
       lastDays: Number.isFinite(organizedAt) ? Math.max(0, Math.floor((Date.now() - organizedAt) / 86400000)) : 0,
       organized: Number.isFinite(organizedAt),
-      vivid: typeof layout?.vivid === "string" && /^#[0-9a-f]{6}$/i.test(layout.vivid) ? layout.vivid : slot.vivid,
-      x: Math.max(6, Math.min(352 - SKINS[skin].w * scale, validNumber(layout?.x, slot.x))),
-      y: Math.max(6, Math.min(402 - SKINS[skin].h * scale, validNumber(layout?.y, slot.y))),
-      rot: validNumber(layout?.rot, 0),
-      scale,
     };
   });
 }
@@ -130,8 +108,22 @@ function nativePieces(spaces: NativeSpace[], previous: Piece[] = []): Piece[] {
 const LONG_PRESS = 420;
 
 function effSize(p: Piece) {
-  const s = SKINS[p.skin];
-  return { w: s.w * p.scale, h: s.h * p.scale };
+  return { w: p.width * p.scale, h: p.height * p.scale };
+}
+
+function ArtworkThumbnail({ piece, size }: { piece: Piece; size: number }) {
+  const bounds = spaceFootprint(piece);
+  const fit = size / Math.max(bounds.width, bounds.height);
+  const { w, h } = effSize(piece);
+  return (
+    <div className="relative flex-shrink-0" style={{ width: bounds.width * fit, height: bounds.height * fit }}>
+      <SpaceArtwork
+        kind={piece.skin} shape={piece.shape} color={piece.vivid}
+        width={piece.width} height={piece.height}
+        style={{ position: "absolute", width: w * fit, height: h * fit, left: (bounds.width - w) * fit / 2, top: (bounds.height - h) * fit / 2, transform: `rotate(${piece.rot}deg)` }}
+      />
+    </div>
+  );
 }
 
 /* ------------------------------------------------------------------ *
@@ -168,6 +160,7 @@ function SpaceTile({
   const rStart = useRef({ px: 0, py: 0, s: 1 });
 
   const { w, h } = effSize(piece);
+  const bounds = spaceFootprint(piece);
 
   const f = fade(piece.lastDays);
 
@@ -184,29 +177,36 @@ function SpaceTile({
       pressTimer.current = null;
     }
   }
+  useEffect(() => () => clearPress(), []);
   function down(ev: React.PointerEvent) {
+    ev.stopPropagation();
     dragging.current = true;
     moved.current = false;
     start.current = { px: ev.clientX, py: ev.clientY, x: piece.x, y: piece.y };
-    (ev.target as HTMLElement).setPointerCapture(ev.pointerId);
+    ev.currentTarget.setPointerCapture(ev.pointerId);
     if (!editing) {
       clearPress();
       pressTimer.current = setTimeout(() => {
-        if (!moved.current) onEnterEdit();
+        if (!moved.current) {
+          moved.current = true;
+          onEnterEdit();
+        }
       }, LONG_PRESS);
     }
   }
   function move(ev: React.PointerEvent) {
     if (!dragging.current) return;
-    const dx = ev.clientX - start.current.px;
-    const dy = ev.clientY - start.current.py;
+    const board = boardRef.current;
+    const rect = board?.getBoundingClientRect();
+    const delta = pointerDelta(ev.clientX, ev.clientY, start.current.px, start.current.py, board?.clientWidth ?? 358, board?.clientHeight ?? 408, rect?.width ?? 358, rect?.height ?? 408);
+    const dx = delta.x;
+    const dy = delta.y;
     if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
       moved.current = true;
       clearPress();
     }
-    const board = boardRef.current;
-    const maxX = board ? board.clientWidth - w - 6 : 999;
-    const maxY = board ? board.clientHeight - h - 6 : 999;
+    const maxX = board ? board.clientWidth - bounds.width - 6 : 999;
+    const maxY = board ? board.clientHeight - bounds.height - 6 : 999;
     onMove(
       Math.max(6, Math.min(maxX, start.current.x + dx)),
       Math.max(6, Math.min(maxY, start.current.y + dy)),
@@ -215,19 +215,25 @@ function SpaceTile({
   function up() {
     dragging.current = false;
     clearPress();
-    if (!moved.current && !editing) onOpen();
+  }
+  function cancel() {
+    dragging.current = false;
+    clearPress();
   }
 
   function rDown(ev: React.PointerEvent) {
     ev.stopPropagation();
     resizing.current = true;
     rStart.current = { px: ev.clientX, py: ev.clientY, s: piece.scale };
-    (ev.target as HTMLElement).setPointerCapture(ev.pointerId);
+    ev.currentTarget.setPointerCapture(ev.pointerId);
   }
   function rMove(ev: React.PointerEvent) {
     if (!resizing.current) return;
     ev.stopPropagation();
-    const d = (ev.clientX - rStart.current.px + (ev.clientY - rStart.current.py)) / 2;
+    const board = boardRef.current;
+    const rect = board?.getBoundingClientRect();
+    const delta = pointerDelta(ev.clientX, ev.clientY, rStart.current.px, rStart.current.py, board?.clientWidth ?? 358, board?.clientHeight ?? 408, rect?.width ?? 358, rect?.height ?? 408);
+    const d = (delta.x + delta.y) / 2;
     onResize(Math.max(0.72, Math.min(1.45, rStart.current.s + d / 130)));
   }
   function rUp(ev: React.PointerEvent) {
@@ -240,17 +246,26 @@ function SpaceTile({
       onPointerDown={down}
       onPointerMove={move}
       onPointerUp={up}
-      onPointerCancel={up}
+      onPointerCancel={cancel}
+      onClick={(event) => {
+        event.stopPropagation();
+        if (!moved.current && !editing) onOpen();
+      }}
       className="absolute touch-none select-none"
-      style={{ left: piece.x, top: piece.y, width: w, height: h, zIndex: editing ? 30 : 1, cursor: editing ? "grab" : "pointer" }}
+      role="button"
+      tabIndex={0}
+      aria-label={`${piece.name}，${piece.items} 件物品`}
+      onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); onOpen(); } }}
+      style={{ left: piece.x, top: piece.y, width: bounds.width, height: bounds.height, zIndex: editing ? 30 : 1, cursor: editing ? "grab" : "pointer" }}
     >
       <motion.div
-        className="relative w-full h-full"
+        className="absolute"
+        style={{ width: w, height: h, left: (bounds.width - w) / 2, top: (bounds.height - h) / 2 }}
         initial={born ? { scale: 0, opacity: 0, y: 28 } : false}
         animate={{
           scale: editing ? 1.05 : 1,
           opacity: tileOpacity,
-          rotate: editing ? [-1.4, 1.4] : piece.rot,
+          rotate: editing ? [piece.rot - 1.4, piece.rot + 1.4] : piece.rot,
           y: 0,
         }}
         transition={{
@@ -273,10 +288,12 @@ function SpaceTile({
               : `drop-shadow(0 5px 12px rgba(90,70,55,${0.13 - f * 0.06}))`,
           }}
         >
-          <img
-            src={SKINS[piece.skin].src}
-            alt=""
-            draggable={false}
+          <SpaceArtwork
+            kind={piece.skin}
+            shape={piece.shape}
+            color={piece.vivid}
+            width={piece.width}
+            height={piece.height}
             className="absolute inset-0 w-full h-full pointer-events-none"
             style={{
               // 变暗 + 去饱和 + 转灰 + 略微透明（照设计稿"暗沉下去"的效果）
@@ -290,24 +307,24 @@ function SpaceTile({
               left: 11 * Math.min(piece.scale, 1.15),
               top: 6 * Math.min(piece.scale, 1.15),
               gap: 5,
-              maxWidth: w - 14,
+              maxWidth: w - 18,
             }}
           >
             <span
               style={{
-                color: "#4A3B2A",
-                fontSize: 13 * Math.min(piece.scale, 1.15),
-                fontWeight: 700,
-                letterSpacing: "0.02em",
+                color: COFFEE,
+                fontSize: 11,
+                fontWeight: 400,
+                letterSpacing: 0,
                 whiteSpace: "nowrap",
+                minWidth: 0,
                 overflow: "hidden",
                 textOverflow: "ellipsis",
-                textShadow: "0 1px 2px rgba(255,255,255,0.4)",
               }}
             >
               {piece.name}
             </span>
-            {piece.lastDays >= 14 && (() => {
+            {piece.lastDays >= 14 && w >= 130 && h >= 70 && (() => {
               // 照设计稿：15天档 = 浅底橙字，30天档 = 粉底红字
               const bad = piece.lastDays >= 30;
               const tone = bad ? "#D9534C" : "#E08A3C";
@@ -340,14 +357,14 @@ function SpaceTile({
                 left: "50%",
                 top: "52%",
                 transform: "translate(-50%, -50%)",
-                width: 46 * Math.min(piece.scale, 1.15),
-                height: 46 * Math.min(piece.scale, 1.15),
+                width: Math.min(46 * Math.min(piece.scale, 1.15), Math.min(w, h) * 0.55),
+                height: Math.min(46 * Math.min(piece.scale, 1.15), Math.min(w, h) * 0.55),
                 borderRadius: "50%",
                 backgroundColor: "rgba(255,255,255,0.92)",
                 boxShadow: "0 2px 10px rgba(120,30,20,0.18)",
               }}
             >
-              <CircleAlert size={34 * Math.min(piece.scale, 1.15)} color="#A83226" strokeWidth={2.1} />
+              <CircleAlert size={Math.min(34 * Math.min(piece.scale, 1.15), Math.min(w, h) * 0.4)} color="#A83226" strokeWidth={2.1} />
             </div>
           )}
           {/* born flash — warm bloom from within when a space joins */}
@@ -418,6 +435,7 @@ function SpaceTile({
               onPointerDown={rDown}
               onPointerMove={rMove}
               onPointerUp={rUp}
+              onPointerCancel={rUp}
               className="absolute flex items-center justify-center"
               style={{
                 right: -9, bottom: -9, width: 24, height: 24, borderRadius: 999, zIndex: 5,
@@ -448,6 +466,7 @@ export function SpatialScreen({
   relitSpaceId,
   onRelitAck,
   nativeSpaces,
+  isPresentationMode,
   selectedSpaceID,
   onNativeChange,
 }: {
@@ -458,10 +477,12 @@ export function SpatialScreen({
   relitSpaceId?: string | null;
   onRelitAck?: () => void;
   nativeSpaces?: NativeSpace[];
+  isPresentationMode?: boolean;
   selectedSpaceID?: string;
   onNativeChange?: () => void;
 } = {}) {
-  const [pieces, setPieces] = useState<Piece[]>(() => nativeSpaces ? nativePieces(nativeSpaces) : window.webkit?.messageHandlers?.smartpaw ? [] : initialPieces);
+  const layoutKey = isPresentationMode ? `${LAYOUT_KEY}:presentation` : LAYOUT_KEY;
+  const [pieces, setPieces] = useState<Piece[]>(() => nativeSpaces ? nativePieces(nativeSpaces, [], layoutKey) : window.webkit?.messageHandlers?.smartpaw ? [] : previewPieces(layoutKey));
   const [localSpaces, setLocalSpaces] = useState(nativeSpaces);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -476,21 +497,48 @@ export function SpatialScreen({
   const [bornPos, setBornPos] = useState<{ cx: number; cy: number } | null>(null);
   const [openProgress, setOpenProgress] = useState<string | null>(null);
   const [retidy, setRetidy] = useState(false);
+  const [artDraft, setArtDraft] = useState<Piece | null>(null);
   const [relitId, setRelitId] = useState<string | null>(null);
   const boardRef = useRef<HTMLDivElement>(null);
 
+  useEffect(() => { setArtDraft(null); }, [selected]);
+
   useEffect(() => {
     setLocalSpaces(nativeSpaces);
-    if (nativeSpaces) setPieces((previous) => nativePieces(nativeSpaces, previous));
-  }, [nativeSpaces]);
+    if (nativeSpaces) setPieces((previous) => nativePieces(nativeSpaces, previous, layoutKey));
+  }, [nativeSpaces, layoutKey]);
+
+  useEffect(() => {
+    const board = boardRef.current;
+    if (!board) return;
+    const fitPieces = () => {
+      if (!board.clientWidth || !board.clientHeight) return;
+      setPieces((previous) => {
+        let changed = false;
+        const fitted = previous.map((piece) => {
+          const layout = normalizeSpaceLayout(piece, piece, { width: board.clientWidth, height: board.clientHeight });
+          if (!(Object.keys(layout) as (keyof SpaceLayout)[]).some((key) => layout[key] !== piece[key])) return piece;
+          changed = true;
+          return { ...piece, ...layout };
+        });
+        return changed ? fitted : previous;
+      });
+    };
+    // Restored coordinates were created on a 358px board. Fit them to the
+    // actual board when spaces arrive and whenever the viewport changes.
+    fitPieces();
+    const observer = new ResizeObserver(fitPieces);
+    observer.observe(board);
+    return () => observer.disconnect();
+  }, [nativeSpaces, layoutKey, openProgress]);
 
   useEffect(() => {
     try {
-      const layouts = savedLayouts();
-      pieces.forEach(({ id, x, y, rot, scale, vivid }) => { layouts[id] = { x, y, rot, scale, vivid }; });
-      localStorage.setItem(LAYOUT_KEY, JSON.stringify(layouts));
+      const layouts = savedLayouts(layoutKey);
+      pieces.forEach(({ id, x, y, rot, scale, vivid, skin, shape, width, height }) => { layouts[id] = { x, y, rot, scale, vivid, skin, shape, width, height }; });
+      localStorage.setItem(layoutKey, JSON.stringify(layouts));
     } catch { /* A full or unavailable web store must not block native spaces. */ }
-  }, [pieces]);
+  }, [pieces, layoutKey]);
 
   // The native completion already saved this space. Reuse it for the reward
   // rather than creating an unrelated, randomly named second space.
@@ -499,7 +547,7 @@ export function SpatialScreen({
     let cancelled = false;
     void nativeRequest<NativeState>("state.get").then((state) => {
       if (cancelled) return;
-      const updatedPieces = nativePieces(state.spaces, pieces);
+      const updatedPieces = nativePieces(state.spaces, pieces, layoutKey);
       setLocalSpaces(state.spaces);
       setPieces(updatedPieces);
       const completed = state.spaces.find((space) => space.id === state.selectedSpaceID);
@@ -513,7 +561,7 @@ export function SpatialScreen({
 
   const updateNativeState = (state: NativeState) => {
     setLocalSpaces(state.spaces);
-    setPieces((previous) => nativePieces(state.spaces, previous));
+    setPieces((previous) => nativePieces(state.spaces, previous, layoutKey));
     onNativeChange?.();
   };
 
@@ -575,9 +623,7 @@ export function SpatialScreen({
 
   function claimReward() {
     if (!reward) return;
-    const s = SKINS[reward.skin];
-    const w = Math.round(s.w * reward.scale);
-    const h = Math.round(s.h * reward.scale);
+    const { width: w, height: h } = spaceFootprint(reward);
     setBornPos({ cx: reward.x + w / 2, cy: reward.y + h / 2 });
     setBornId(reward.id);
     setReward(null);
@@ -585,7 +631,48 @@ export function SpatialScreen({
   }
 
   function patch(id: string, d: Partial<Piece>) {
-    setPieces((prev) => prev.map((p) => (p.id === id ? { ...p, ...d } : p)));
+    const board = boardRef.current;
+    setPieces((prev) => prev.map((p) => (p.id === id ? {
+      ...p, ...d,
+      ...normalizeSpaceLayout({ ...p, ...d }, p, board ? { width: board.clientWidth, height: board.clientHeight } : undefined),
+    } : p)));
+  }
+
+  function editArtwork(piece: Piece) {
+    setRenaming(false);
+    setArtDraft({ ...piece });
+  }
+
+  function draftArtwork(change: Partial<Piece>) {
+    setArtDraft((previous) => previous ? { ...previous, ...change } : previous);
+  }
+
+  function chooseTemplate(skin: SpaceKind) {
+    const template = SPACE_TEMPLATES[skin];
+    draftArtwork({ skin, shape: "original", width: template.w, height: template.h, vivid: template.color, scale: 1 });
+  }
+
+  function resetArtwork() {
+    if (!artDraft) return;
+    const template = SPACE_TEMPLATES[artDraft.skin];
+    draftArtwork({ shape: "original", width: template.w, height: template.h, vivid: template.color, rot: 0, scale: 1 });
+  }
+
+  function saveArtwork() {
+    if (!artDraft) return;
+    const board = boardRef.current;
+    const layout = normalizeSpaceLayout(artDraft, artDraft, board ? { width: board.clientWidth, height: board.clientHeight } : undefined);
+    try {
+      const layouts = savedLayouts(layoutKey);
+      layouts[artDraft.id] = layout;
+      localStorage.setItem(layoutKey, JSON.stringify(layouts));
+    } catch {
+      setError("图案暂时无法保存，请腾出存储空间后重试。");
+      return;
+    }
+    setError("");
+    patch(artDraft.id, layout);
+    setArtDraft(null);
   }
 
   function saveName() {
@@ -625,7 +712,7 @@ export function SpatialScreen({
       <div className="px-6 pt-14 pb-1 flex items-end justify-between">
         <div>
           <p style={{ color: COFFEE, opacity: 0.5, fontSize: 12 }}>我的家</p>
-          <h1 style={{ color: COFFEE, fontSize: 25, fontWeight: 700, letterSpacing: "-0.01em" }}>空间地图</h1>
+          <h1 style={{ color: COFFEE, fontSize: 25, fontWeight: 700, letterSpacing: 0 }}>空间地图</h1>
         </div>
         <AnimatePresence>
           {editingId && (
@@ -862,23 +949,7 @@ export function SpatialScreen({
               <div className="mx-auto mb-4 rounded-full" style={{ width: 40, height: 4, backgroundColor: SOFT }} />
               {error && <p role="alert" className="mb-3" style={{ color: "#9A4230", fontSize: 12 }}>{error}</p>}
               <div className="flex items-center gap-3.5">
-                <div
-                  className="flex items-center justify-center flex-shrink-0 overflow-hidden"
-                  style={{
-                    width: 56,
-                    height: Math.round((56 * SKINS[current.skin].h) / SKINS[current.skin].w),
-                    borderRadius: 16,
-                    boxShadow: "0 2px 8px rgba(90,70,55,0.12)",
-                  }}
-                >
-                  <img
-                    src={SKINS[current.skin].src}
-                    alt=""
-                    className="w-full h-full"
-                    style={{ objectFit: "contain" }}
-                    draggable={false}
-                  />
-                </div>
+                <ArtworkThumbnail piece={current} size={56} />
                 <div className="flex-1 min-w-0">
                   {renaming ? (
                     <input
@@ -903,6 +974,17 @@ export function SpatialScreen({
                   <X size={18} color={COFFEE} />
                 </button>
               </div>
+
+              <button
+                onClick={() => editArtwork(current)}
+                className="w-full mt-4 flex items-center gap-2.5 py-3 text-left"
+                style={{ color: COFFEE, borderBottom: `1px solid ${SOFT}`, fontSize: 13 }}
+              >
+                <SlidersHorizontal size={17} strokeWidth={1.8} />
+                <span className="flex-1">调整图案</span>
+                <span style={{ opacity: 0.5, fontSize: 12 }}>{SPACE_TEMPLATES[current.skin].label}</span>
+                <ChevronRight size={16} style={{ opacity: 0.4 }} />
+              </button>
 
               {/* recolour — user picks the space's hue */}
               <div className="mt-5 flex items-center gap-2">
@@ -985,6 +1067,90 @@ export function SpatialScreen({
                   进入这个空间
                 </button>
               )}
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {artDraft && current?.id === artDraft.id && (
+          <>
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              onClick={() => setArtDraft(null)} className="absolute inset-0 z-[85]" style={{ backgroundColor: "rgba(42,32,26,0.4)" }} />
+            <motion.div
+              role="dialog" aria-modal="true" aria-label={`调整${current.name}的图案`}
+              initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
+              transition={{ type: "spring", stiffness: 320, damping: 32 }}
+              className="absolute left-0 right-0 bottom-0 z-[90] max-h-[92%] flex flex-col"
+              style={{ backgroundColor: WHITE, borderTopLeftRadius: 26, borderTopRightRadius: 26 }}
+            >
+              <div className="px-5 pt-3 pb-2 flex-shrink-0">
+                <div className="mx-auto mb-3 rounded-full" style={{ width: 40, height: 4, backgroundColor: SOFT }} />
+                <div className="flex items-center justify-between">
+                  <p style={{ color: COFFEE, fontSize: 17, fontWeight: 600 }}>调整图案</p>
+                  <button aria-label="取消调整" title="取消调整" onClick={() => setArtDraft(null)} className="h-8 w-8 flex items-center justify-center" style={{ color: COFFEE }}><X size={19} /></button>
+                </div>
+              </div>
+              <div className="overflow-y-auto px-5 pb-4" style={{ color: COFFEE }}>
+                {error && <p role="alert" className="mb-3" style={{ color: "#9A4230", fontSize: 12 }}>{error}</p>}
+                <div className="flex items-center justify-center mb-3" style={{ height: 112, backgroundColor: LINEN, borderRadius: 8 }}>
+                  <ArtworkThumbnail piece={artDraft} size={96} />
+                </div>
+                <p className="mb-2" style={{ fontSize: 12, opacity: 0.65 }}>空间类型</p>
+                <div className="grid grid-cols-4 gap-2">
+                  {SPACE_KINDS.map((kind) => {
+                    const template = SPACE_TEMPLATES[kind];
+                    const active = artDraft.skin === kind;
+                    return (
+                      <button key={kind} onClick={() => chooseTemplate(kind)} aria-pressed={active}
+                        className="flex flex-col items-center justify-center gap-1"
+                        style={{ height: 68, borderRadius: 8, border: `1.5px solid ${active ? ORANGE : SOFT}`, backgroundColor: active ? "#FFF5EC" : WHITE }}>
+                        <SpaceArtwork kind={kind} width={template.w} height={template.h} style={{ width: 44, height: 36 }} />
+                        <span style={{ fontSize: 11.5, lineHeight: 1.2 }}>{template.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="flex items-center justify-between mt-4 mb-2">
+                  <label htmlFor="space-art-shape" style={{ fontSize: 12, opacity: 0.65 }}>外形</label>
+                  <select id="space-art-shape" value={artDraft.shape} onChange={(event) => draftArtwork({ shape: event.target.value as SpaceShape })}
+                    style={{ color: COFFEE, fontSize: 13, backgroundColor: LINEN, borderRadius: 6, padding: "7px 28px 7px 10px", border: `1px solid ${SOFT}` }}>
+                    <option value="original">原始形状</option><option value="rectangle">矩形</option><option value="rounded">圆角矩形</option><option value="circle">椭圆形</option><option value="lshape">L 形</option>
+                  </select>
+                </div>
+                {([{ key: "width", label: "宽度", base: SPACE_TEMPLATES[artDraft.skin].w }, { key: "height", label: "高度", base: SPACE_TEMPLATES[artDraft.skin].h }] as const).map(({ key, label, base }) => (
+                  <label key={key} className="flex items-center gap-3 py-2.5" style={{ fontSize: 12 }}>
+                    <span style={{ width: 28, opacity: 0.65 }}>{label}</span>
+                    <input type="range" aria-label={`图案${label}`} min={56} max={240} step={1} value={artDraft[key]}
+                      onChange={(event) => draftArtwork({ [key]: Number(event.target.value) })} className="flex-1 min-w-0" style={{ accentColor: ORANGE }} />
+                    <output style={{ width: 38, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{Math.round(artDraft[key] / base * 100)}%</output>
+                  </label>
+                ))}
+                <div className="flex items-center justify-between mt-2">
+                  <span style={{ fontSize: 12, opacity: 0.65 }}>方向</span>
+                  <div className="flex gap-1" role="group" aria-label="图案方向">
+                    {[0, 90, 180, 270].map((rot) => (
+                      <button key={rot} onClick={() => draftArtwork({ rot })} aria-label={`旋转${rot}度`} aria-pressed={artDraft.rot === rot}
+                        className="flex flex-col items-center justify-center gap-0.5"
+                        style={{ width: 48, height: 42, borderRadius: 6, backgroundColor: artDraft.rot === rot ? LINEN : "transparent", color: COFFEE }}>
+                        <RotateCw size={15} style={{ transform: `rotate(${rot}deg)` }} /><span style={{ fontSize: 10.5 }}>{rot}°</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1.5 mt-4">
+                  <span className="flex-shrink-0" style={{ color: COFFEE, opacity: 0.65, fontSize: 12, width: 24 }}>配色</span>
+                  {[SPACE_TEMPLATES[artDraft.skin].color, ...PALETTE].map((color, index) => (
+                    <button key={`${color}:${index}`} onClick={() => draftArtwork({ vivid: color })} aria-label={index === 0 ? "原始配色" : `配色 ${color}`} title={index === 0 ? "原始配色" : `配色 ${index}`}
+                      className="rounded-full flex-shrink-0" style={{ width: 22, height: 22, backgroundColor: color, boxShadow: artDraft.vivid.toLowerCase() === color.toLowerCase() ? `0 0 0 2px ${WHITE}, 0 0 0 3px ${COFFEE}` : "inset 0 0 0 1px rgba(90,70,55,0.1)" }} />
+                  ))}
+                </div>
+                <button onClick={resetArtwork} className="mt-4 flex items-center gap-1.5 py-1" style={{ color: COFFEE, opacity: 0.65, fontSize: 12 }}><Undo2 size={14} />重置当前图案</button>
+              </div>
+              <div className="px-5 py-4 flex gap-3 flex-shrink-0" style={{ borderTop: `1px solid ${SOFT}` }}>
+                <button onClick={() => setArtDraft(null)} className="flex-1 py-3" style={{ color: COFFEE, backgroundColor: LINEN, borderRadius: 8, fontSize: 14 }}>取消</button>
+                <button onClick={saveArtwork} className="flex-1 py-3 flex items-center justify-center gap-1.5" style={{ color: WHITE, backgroundColor: ORANGE, borderRadius: 8, fontSize: 14, fontWeight: 600 }}><Check size={16} />保存</button>
+              </div>
             </motion.div>
           </>
         )}
@@ -1125,22 +1291,15 @@ export function SpatialScreen({
                   transition={{ type: "spring", stiffness: 250, damping: 15, delay: 0.12 }}
                   className="absolute inset-0 flex items-center justify-center overflow-hidden"
                   style={{
-                    width: 96, height: Math.round((96 * SKINS[reward.skin].h) / SKINS[reward.skin].w), margin: "auto",
-                    borderRadius: 18,
+                    width: 96, height: 96, margin: "auto",
                     filter: "drop-shadow(0 8px 16px rgba(90,70,55,0.2))",
                   }}
                 >
-                  <img
-                    src={SKINS[reward.skin].src}
-                    alt=""
-                    className="absolute inset-0 w-full h-full"
-                    style={{ objectFit: "contain" }}
-                    draggable={false}
-                  />
+                  <ArtworkThumbnail piece={reward} size={96} />
                 </motion.div>
               </div>
 
-              <p style={{ color: ORANGE, fontSize: 12, fontWeight: 700, letterSpacing: "0.08em" }}>点亮了一块新空间</p>
+              <p style={{ color: ORANGE, fontSize: 12, fontWeight: 700, letterSpacing: 0 }}>点亮了一块新空间</p>
               <h2 style={{ color: COFFEE, fontSize: 22, fontWeight: 700, marginTop: 6 }}>“{reward.name}”</h2>
               <p style={{ color: COFFEE, opacity: 0.55, fontSize: 13, marginTop: 8, lineHeight: 1.5 }}>
                 它已经拼进了你的家。长按任意空间即可移动、缩放<br />或删除,慢慢拼出属于你的地图。

@@ -2,6 +2,8 @@
 
 Source: `ui界面` (`cHyKGPXFlSnNcjBWw9MNxE`)
 
+2026-10-22 source scope: the user selected only the left vertical final-design area in their screenshot, plus its adjacent community group. See [final-region links and populated preview](design/populated-preview-20261022.md) for exact verified node links. Right-side Frame 7, presentation boards and scattered earlier drafts are excluded from the current work. Historical notes below do not expand that scope.
+
 Latest handoff: [HANDOFF.md](../HANDOFF.md). The full Figma audit is incomplete; see [inventory](design/figma-full-inventory-20261021.md), [ShootFlow differences](design/shootflow-parity-20261021.md), [completion-flow report](design/completion-flow-parity-20261021.md), and the latest [task checklist report](design/task-checklist-parity-20261021.md). Entries below retain source identity separately from app acceptance and are not a full-app parity claim.
 
 ## Processing rule

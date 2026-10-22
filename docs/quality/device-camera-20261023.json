@@ -1,0 +1,103 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-23",
+  "timezone": "Asia/Shanghai",
+  "app_version": "1.0.0",
+  "build": "11",
+  "scheme": "SmartPaw",
+  "test_target": "SmartPawTests",
+  "device": "iPhone 15 Pro Max",
+  "os": "26.7.1",
+  "bundle": "index-CRhu1Y-V.js",
+  "bundle_sha256": "14055244752abc56cd53a53e4b99e5e009dad17ca99f9b10fe88b5da8cea3c28",
+  "tests": [
+    {
+      "id": "real_scene_bridge",
+      "method": "testHardwareCameraSixCapturesThroughProductionBridge",
+      "result": "Passed",
+      "passed": 1,
+      "failed": 0,
+      "duration_seconds": 38.559,
+      "xcresult": "/tmp/smartpaw-build11-hardware-desk-20261023.xcresult",
+      "captures": 6,
+      "recognition_wait_after_each": true,
+      "cumulative_candidates": 18,
+      "isolation": "state store only; before defaults/documents injection"
+    },
+    {
+      "id": "production_react",
+      "method": "testHardwareReactPhotoRetakeDeleteAndLocalPlan",
+      "result": "Passed",
+      "passed": 1,
+      "failed": 0,
+      "duration_seconds": 23.66,
+      "xcresult": "/tmp/smartpaw-build11-hardware-react-20261023.xcresult",
+      "captures": 3,
+      "flow": [
+        "capture",
+        "retake_replace",
+        "delete_all",
+        "capture",
+        "submit",
+        "zone_select",
+        "guide"
+      ],
+      "isolation": "dedicated defaults/documents and in-memory state/credentials"
+    },
+    {
+      "id": "production_react_carousel",
+      "method": "testHardwareReactPhotoRetakeDeleteAndLocalPlan",
+      "result": "Passed",
+      "passed": 1,
+      "failed": 0,
+      "duration_seconds": 31.339,
+      "xcresult": "/tmp/smartpaw-build11-hardware-react-carousel-20261023.xcresult",
+      "captures": 4,
+      "flow": [
+        "capture",
+        "retake_replace",
+        "delete_all",
+        "capture",
+        "carousel_swipe",
+        "add_second_real_photo",
+        "delete_to_neighbor",
+        "submit",
+        "zone_select",
+        "guide"
+      ],
+      "isolation": "dedicated defaults/documents and in-memory state/credentials"
+    },
+    {
+      "id": "six_capture_queue",
+      "method": "testHardwareCameraBurstQueueThroughProductionBridge",
+      "result": "Passed",
+      "passed": 1,
+      "failed": 0,
+      "duration_seconds": 29.187,
+      "xcresult": "/tmp/smartpaw-build11-hardware-burst-20261023.xcresult",
+      "captures": 6,
+      "recognition_wait_after_each": false,
+      "all_capture_ids_ready": true,
+      "completed_candidates": 16,
+      "persisted": true,
+      "local_plan_steps": 3,
+      "restoration": "AppViewModel recreation using the same InMemoryStorageStore",
+      "isolation": "dedicated defaults/documents and in-memory state/credentials"
+    }
+  ],
+  "scope_notes": [
+    "Hosted XCTest triggers production React DOM; not independent XCUITest or manual touch acceptance",
+    "Bridge receiver is a small HTML harness",
+    "No inference accuracy conclusion; same scene photos are not independent holdout spaces",
+    "Private camera images remain local in xcresult attachments",
+    "No paid API calls in these hardware tests"
+  ],
+  "not_covered": [
+    "permission denied/reauthorization",
+    "background/lock recovery",
+    "WebContent termination recovery",
+    "peak memory/Jetsam",
+    "process kill and disk restore",
+    "complete physical cleanup and photo-gated archival"
+  ]
+}

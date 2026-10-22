@@ -31,7 +31,7 @@ const demoBadges: Badge[] = [
 ];
 
 export function badgesFromState(nativeState?: NativeState | null): Badge[] {
-  if (!nativeState && !window.webkit?.messageHandlers?.smartpaw) return demoBadges;
+  if (nativeState?.isPresentationMode || (!nativeState && !window.webkit?.messageHandlers?.smartpaw)) return demoBadges;
   const completedCount = nativeState?.spaces.reduce((count, space) => count + space.completedPlans.length, 0) ?? 0;
   const organizedSpaceCount = nativeState?.profileStats?.organizedSpaceCount
     ?? nativeState?.spaces.filter((space) => space.completedPlans.length > 0).length

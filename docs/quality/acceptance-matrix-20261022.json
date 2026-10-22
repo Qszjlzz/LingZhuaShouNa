@@ -1,0 +1,251 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-22",
+  "timezone": "Asia/Shanghai",
+  "scope": {
+    "product": "灵爪收纳",
+    "ui_design_frozen": true,
+    "this_artifact_runs_tests": false,
+    "inspected_git_head": "453a878d8f920f6d96e93db92dd70409b40c16d7",
+    "workspace_dirty": true
+  },
+  "overall_status": "NOT_VALIDATED_ON_CURRENT_DEVICE_BUILD",
+  "threshold_policy": "User asked for overall 90%+ quality and aspirational 95%, without defining precision or recall. Proposed engineering interpretation: initial precision >=90% AND recall >=90%, then improve toward 95%. Not an achieved result or an official App Store standard.",
+  "gates": [
+    {
+      "id": "G1",
+      "name": "end_to_end_and_recovery",
+      "status": "NOT_REVALIDATED",
+      "release_requirement": "all critical scenarios pass without data loss or false success",
+      "cases": [
+        "normal_capture_and_commit_after_explicit_confirmation",
+        "no_recognition_manual_entry_fallback",
+        "pause_background_lock_kill_restore",
+        "cancel_reshoot_double_tap_stale_result_isolation",
+        "permission_denied_network_auth_rate_limit_timeout_download_recovery",
+        "save_failure_rollback_and_idempotent_retry"
+      ],
+      "evidence_required": [
+        "current_build_manifest",
+        "native_test_result",
+        "web_test_result",
+        "real_device_flow_recording",
+        "persistence_before_after"
+      ],
+      "historical_evidence": [
+        "../design/native-test-results-20261021.md",
+        "../../HANDOFF.md"
+      ]
+    },
+    {
+      "id": "G2",
+      "name": "recognition_quality",
+      "status": "HISTORIC_BASELINE_FAILED_CURRENT_HOLDOUT_NOT_RUN",
+      "dataset": {
+        "kind": "real_held_out",
+        "required_images": 50,
+        "desks": 35,
+        "coffee_tables": 15,
+        "inventory_verified": false,
+        "generated_images_allowed": false,
+        "split_group": "person_household_space",
+        "exhaustive_target_annotations_required_for_precision": true,
+        "split_is_recommendation_not_user_mandate": true,
+        "user_confirmed_total_images": 50
+      },
+      "proposed_targets": {
+        "object_precision_min": 0.9,
+        "object_recall_min": 0.9,
+        "improvement_goal": 0.95,
+        "user_explicit_metric_definition": false
+      },
+      "metric_definitions": {
+        "precision": "TP/(TP+FP)",
+        "recall": "TP/(TP+FN)",
+        "matching": "one-to-one; pre-frozen class/name and IoU protocol",
+        "report": [
+          "per_scene_type",
+          "micro_and_per_image_distribution",
+          "sample_count",
+          "uncertainty_interval",
+          "offline_cloud_and_fallback_separately"
+        ]
+      },
+      "historical_result": {
+        "date": "2026-10-21",
+        "images": 6,
+        "annotated_targets": 16,
+        "matched_targets": 11,
+        "target_recall": 0.6875,
+        "mean_box_iou_of_matched_targets": 0.643,
+        "precision": null,
+        "precision_unavailable_reason": "annotations are sparse; unmatched predictions are not all false positives"
+      },
+      "known_measurement_risks": [
+        "real_photo_accuracy_not_measured",
+        "cloud_rectangle_raster_is_not_ground_truth_object_mask",
+        "dev_and_holdout_scene_leakage"
+      ],
+      "evidence_required": [
+        "frozen_dataset_manifest",
+        "annotation_protocol",
+        "reviewed_ground_truth",
+        "per_image_predictions",
+        "per_image_TP_FP_FN",
+        "hardware_model_policy_versions"
+      ],
+      "current_session_fixes": {
+        "still_merge_12_item_truncation_removed": true,
+        "same_name_disjoint_box_spatial_mismatch_prevented": true,
+        "targeted_tests_added": 8,
+        "real_photo_accuracy_evaluated_by_these_tests": false,
+        "cloud_parser_10_entry_cap_removed": true,
+        "cloud_prompt_lists_instances_separately": true,
+        "cloud_categories_updated_from_7_to_11": true,
+        "targeted_tests_passed": 8
+      }
+    },
+    {
+      "id": "G3",
+      "name": "image_edit_fidelity_and_delivery",
+      "status": "NOT_RUN",
+      "proposed_sampling": {
+        "heldout_scenes": 20,
+        "primary_outputs_per_scene": 1,
+        "repeat_scene_subset": 5,
+        "additional_outputs_per_repeated_scene": 2,
+        "planned_total_calls": 30,
+        "paid_requests_executed_by_this_document": 0
+      },
+      "hard_conditions": [
+        "preserve_space_geometry_and_viewpoint",
+        "preserve_user_locked_objects",
+        "physically_feasible_storage",
+        "no_unrequested_major_furniture_or_window_changes",
+        "text_plan_matches_edit"
+      ],
+      "proposed_targets": {
+        "primary_scenes_passing_all_hard_conditions_min": 18,
+        "severe_space_or_locked_object_failures_max": 0
+      },
+      "device_requirements": [
+        "ordinary_wifi_proxy_off_full_generation_download_local_save",
+        "cellular_proxy_off_full_generation_download_local_save",
+        "failure_or_cancel_preserves_local_plan"
+      ],
+      "evidence_required": [
+        "original_and_output_pairs",
+        "blinded_independent_review_sheets",
+        "latency_error_cost_summary",
+        "download_and_restart_proof"
+      ]
+    },
+    {
+      "id": "G4",
+      "name": "data_credentials_and_privacy",
+      "status": "NOT_REVALIDATED",
+      "release_requirement": "no project/photo/progress loss and no credential leakage across named scenarios",
+      "cases": [
+        "fresh_install_in_isolated_test_environment",
+        "upgrade_without_erasing_real_user_data",
+        "process_kill_restore",
+        "disk_write_failure_restore",
+        "generated_image_persists_after_external_link_expires",
+        "no_photo_request_in_local_only_mode",
+        "explicit_cloud_consent_obeyed",
+        "synthetic_secret_export_redaction_and_session_scoping"
+      ],
+      "evidence_required": [
+        "safe_redaction_fixture_result",
+        "archive_secret_scan_without_printing_secrets",
+        "upgrade_restore_state_checks"
+      ]
+    },
+    {
+      "id": "G5",
+      "name": "observed_beta_task_completion",
+      "status": "NOT_RUN",
+      "proposed_sample": {
+        "participants_min": 5,
+        "participants_max": 8,
+        "participants_should_be_unfamiliar_with_product": true
+      },
+      "proposed_targets": {
+        "unassisted_task_completion_min": 0.8,
+        "unresolved_crash_data_loss_privacy_defects_max": 0
+      },
+      "interpretation": "qualitative defect discovery; small sample does not establish population success or crash rate",
+      "evidence_required": [
+        "task_script",
+        "per_participant_outcome_and_blockers",
+        "consented_feedback",
+        "fixed_build_retest"
+      ]
+    }
+  ],
+  "feedback_export": {
+    "implemented_at_inspection": true,
+    "existing_building_block": "native state scanDiagnostics",
+    "default_destination": "local_only",
+    "photos_opt_in": true,
+    "exclude": [
+      "api_keys",
+      "authorization_headers",
+      "full_provider_error_bodies",
+      "signed_urls",
+      "photo_location_exif",
+      "other_project_data"
+    ],
+    "planned_files": [
+      "manifest.json",
+      "input.jpg",
+      "recognition.json",
+      "plan.json",
+      "output.jpg",
+      "events.json"
+    ],
+    "implementation": "scripts/collect-device-feedback.py",
+    "on_device_export_run": false,
+    "verification": "synthetic secret/path/metadata self-check passed",
+    "default_images": false,
+    "selection": "--session is a persisted space UUID; default latest completed date else last space, not guaranteed latest capture",
+    "files": [
+      "manifest.json",
+      "session.json",
+      "recognition-diagnostics.json",
+      "image_generation-diagnostics.json",
+      "before.jpg and after.jpg only with --include-images"
+    ],
+    "limitations": [
+      "current space and active/latest completed plan only",
+      "global latest diagnostics may not match selected space",
+      "generated image cache excluded; no reliable session link",
+      "raw source only in TemporaryDirectory, cleaned after export"
+    ]
+  },
+  "separate_app_store_blockers": [
+    "distribution_eligibility_and_signing",
+    "supported_submission_toolchain",
+    "model_and_asset_licenses",
+    "published_privacy_and_support_information"
+  ],
+  "current_session_api_evidence": {
+    "endpoint": "https://beeapi.dev/v1/models",
+    "authenticated": true,
+    "proxy_bypassed": true,
+    "http_status": 200,
+    "credential_present": true,
+    "credential_exposed": false,
+    "image_edit_or_generation_verified": false,
+    "phone_no_proxy_verified": false,
+    "source": "root parallel verification report 2026-10-22"
+  },
+  "current_session_device_observation": {
+    "device_model": "iPhone 15 Pro Max",
+    "surface": "iPhone Mirroring com.apple.ScreenContinuity",
+    "real_home_screen_observed": true,
+    "computer_click_and_scroll_available": true,
+    "full_app_flow_verified": false,
+    "camera_capture": "user handles phone; mirror/camera switching is subject to OS state"
+  }
+}

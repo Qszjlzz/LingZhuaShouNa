@@ -1,0 +1,515 @@
+{
+  "schema_version": 2,
+  "date": "2026-10-23",
+  "timezone": "Asia/Shanghai",
+  "overall_status": "INCOMPLETE_DEVELOPMENT_ACCEPTANCE",
+  "artifact_executes_tests": false,
+  "sources": [
+    "validation-results-20261023.md",
+    "device-camera-20261023.json",
+    "training-augmentation-20261023.md",
+    "recognition-holdout-status-20261023.md",
+    "real-output-cache-20261023.md",
+    "../design/make-intent-20261022.md",
+    "recognition-ai-dev-20261023/README.md",
+    "recognition-ai-dev-20261023/organized-desk-comparison.json",
+    "recognition-ai-dev-20261023/generation-review.json",
+    "free-folders-20261023.md",
+    "image-preview-ui-20261023/README.md",
+    "core-repair-20261023.md",
+    "integrated-offline-20261023.json",
+    "vision-runtime-diagnostic-20261023.json",
+    "recognition-ai-dev-20261023/generation-prompt-v2-failure.json",
+    "postcapture-library-20261023/README.md",
+    "tune-real-preview-20261023.md",
+    "relight-preview-ui-20261023/README.md",
+    "../design/make-history-remaining-20261023.md",
+    "ai-workflow-final-20261023.md",
+    "generation-independent-review-20261023.md",
+    "recognition-ai-dev-20261023/generation-diagnostic-v3-review.json",
+    "recognition-ai-dev-20261023/diagnostic-v3-fidelity-review-result.json",
+    "disorder-assessment-ui-20261023/results.json",
+    "production-image-preview-20261023/results.json"
+  ],
+  "workspace": {
+    "branch": "codex/figma-ui-handoff-20261021",
+    "continuation_base": "453a878",
+    "dirty": true,
+    "committed_or_pushed_by_this_task": true,
+    "temporary_evidence_is_on_github": false,
+    "synchronization_authorized": true,
+    "remote_head_must_be_verified": true
+  },
+  "user_priority": {
+    "recognition_is_core": true,
+    "prefers_large_model_direct": true,
+    "ai_images_and_simulator_first": true,
+    "necessary_phone_gates_last": true,
+    "old_unfinished_tasks_remain": true
+  },
+  "verified_device_build": {
+    "version": "1.0.0",
+    "build": 11,
+    "device": "iPhone 15 Pro Max",
+    "os": "26.7.1",
+    "scheme": "SmartPaw",
+    "target": "SmartPawTests",
+    "web_bundle": "index-CRhu1Y-V.js",
+    "web_sha256": "14055244752abc56cd53a53e4b99e5e009dad17ca99f9b10fe88b5da8cea3c28",
+    "latest_recognition_source_changes_covered": false
+  },
+  "observations": [
+    {
+      "id": "bridge_six_real_captures",
+      "status": "PASSED_LIMITED_SCOPE",
+      "passed": 1,
+      "seconds": 38.559,
+      "captures": 6,
+      "cumulative_candidates": 18,
+      "accuracy_measured": false,
+      "evidence": "device-camera-20261023.json",
+      "local_xcresult": "/tmp/smartpaw-build11-hardware-desk-20261023.xcresult"
+    },
+    {
+      "id": "production_react_camera",
+      "status": "PASSED_LIMITED_SCOPE",
+      "seconds": 23.66,
+      "flow": [
+        "capture",
+        "retake_replace",
+        "delete_all",
+        "submit",
+        "zone_select",
+        "guide"
+      ],
+      "local_xcresult": "/tmp/smartpaw-build11-hardware-react-20261023.xcresult"
+    },
+    {
+      "id": "production_react_carousel",
+      "status": "PASSED_LIMITED_SCOPE",
+      "seconds": 31.339,
+      "flow": [
+        "capture",
+        "retake_replace",
+        "delete_all",
+        "add_to_2_of_2",
+        "delete_to_neighbor_1_of_1",
+        "submit",
+        "zone_select",
+        "guide"
+      ],
+      "local_xcresult": "/tmp/smartpaw-build11-hardware-react-carousel-20261023.xcresult"
+    },
+    {
+      "id": "six_capture_queue",
+      "status": "PASSED_LIMITED_SCOPE",
+      "seconds": 29.187,
+      "captures": 6,
+      "recognition_wait_after_each": false,
+      "candidates": 16,
+      "accuracy_measured": false,
+      "restoration": "same InMemoryStorageStore AppViewModel recreation",
+      "local_xcresult": "/tmp/smartpaw-build11-hardware-burst-20261023.xcresult"
+    },
+    {
+      "id": "catalog_spatial_web",
+      "status": "PASSED_BROWSER_FIXTURE",
+      "checks": 30,
+      "page_errors": 0,
+      "node_passed": 29,
+      "phone_acceptance": false,
+      "evidence": "browser-catalog-spatial-20261023/README.md"
+    },
+    {
+      "id": "real_image_provider",
+      "status": "DELIVERY_PASSED_FIDELITY_NOT_PASSED",
+      "edit_requests": 1,
+      "http": 200,
+      "seconds": 112.67,
+      "mode": "b64_json",
+      "pixels": [
+        1254,
+        1254
+      ],
+      "phone_network_verified": false,
+      "real_https_image_download_verified": false,
+      "evidence": "image-provider-20261023.md"
+    },
+    {
+      "id": "real_output_cache",
+      "status": "PASSED_SIMULATOR_MANAGER_RECREATION",
+      "passed": 1,
+      "seconds": 0.641,
+      "network_requests": 0,
+      "real_provider_bytes": true,
+      "persisted_jpeg_bytes": 459742,
+      "app_process_restart": false,
+      "production_ui_restore": false,
+      "evidence": "real-output-cache-20261023.md"
+    },
+    {
+      "id": "completion_and_disk_restore",
+      "status": "HISTORIC_DEVICE_FAILED_TEST_ERRORS_DIAGNOSED",
+      "seconds": 59.272,
+      "failed_assertions": 10,
+      "local_xcresult": "/tmp/smartpaw-build11-hardware-completion-20261023.xcresult",
+      "observed_ui": "completion-photo save reached",
+      "suspected_test_issues": [
+        "recreated model did not select same spaceID",
+        "empty string incorrectly asserted nil"
+      ],
+      "suspicions_confirmed": true,
+      "post_assertion_success_prints_are_valid_evidence": false,
+      "diagnosis": "New AppViewModel defaults to first space; target second-space data survives. Empty afterImageName is a string, not nil."
+    },
+    {
+      "id": "json_completion_restore_fixture",
+      "status": "PASSED_SIMULATOR_PRODUCTION_JSON_STORE",
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "seconds": 2.69,
+      "network_requests": 0,
+      "camera_used": false,
+      "local_xcresult": "/tmp/smartpaw-json-space-restore-pass-20261023.xcresult",
+      "scope": [
+        "explicit persisted space selection",
+        "pause/resume",
+        "steps persisted",
+        "completion photo decodable",
+        "archive restored"
+      ],
+      "device_retest": false,
+      "app_process_restart": false
+    },
+    {
+      "id": "ai_scene_cloud_local_comparison",
+      "status": "PASSED_SINGLE_SYNTHETIC_DIAGNOSTIC",
+      "tests_executed": 20,
+      "tests_passed": 19,
+      "tests_skipped": 1,
+      "tests_failed": 0,
+      "local_candidates": 7,
+      "cloud_candidates": 26,
+      "cloud_requests_this_round": 1,
+      "cloud_seconds": 38.105,
+      "local_seconds": 28.359,
+      "accuracy_measured": false,
+      "real_holdout_credit": 0,
+      "evidence": "recognition-ai-dev-20261023/organized-desk-comparison.json",
+      "local_xcresult": "/tmp/smartpaw-ai-recognition-v2-20261023.xcresult"
+    },
+    {
+      "id": "ai_input_image_edit",
+      "status": "DELIVERY_PASSED_VISUAL_FIDELITY_FAILED",
+      "edit_requests": 1,
+      "seconds": 70.831,
+      "camera_used": false,
+      "input_pixels": [
+        1254,
+        1254
+      ],
+      "output_pixels": [
+        1254,
+        1254
+      ],
+      "findings": [
+        "black pens increased from 2 to 3",
+        "keypad device appearance redrawn"
+      ],
+      "evidence": "recognition-ai-dev-20261023/generation-review.json",
+      "local_xcresult": "/tmp/smartpaw-ai-preview-20261023.xcresult"
+    },
+    {
+      "id": "v80_free_folders_web",
+      "status": "PASSED_BROWSER_FIXTURE",
+      "checks": 20,
+      "page_errors": 0,
+      "node_passed": 9,
+      "widths": [
+        390,
+        320
+      ],
+      "phone_acceptance": false,
+      "cloud_sync": false,
+      "evidence": "browser-item-library-20261023/results.json"
+    },
+    {
+      "id": "whole_manual_photo_region_web",
+      "status": "PASSED_BROWSER_FIXTURE",
+      "checks": 6,
+      "page_errors": 0,
+      "widths": [
+        390,
+        320
+      ],
+      "real_provider_used": false,
+      "evidence": "image-preview-ui-20261023/results.json"
+    },
+    {
+      "id": "core_repair_offline",
+      "status": "PASSED_LIMITED_SCOPE",
+      "passed": 41,
+      "skipped": 2,
+      "failed": 0,
+      "local_xcresult": "/tmp/smartpaw-core-repair-offline-20261023.xcresult"
+    },
+    {
+      "id": "integrated_offline_before_repair",
+      "status": "FAILED_BASELINE_PRESERVED",
+      "passed": 118,
+      "failed_tests": 7,
+      "skipped": 5,
+      "assertion_failures": 20,
+      "evidence": "integrated-offline-20261023.json"
+    },
+    {
+      "id": "runtime_diagnostics",
+      "status": "INSTRUMENTATION_PASSED_NOT_QUALITY_ACCEPTANCE",
+      "passed": 13,
+      "evidence": "vision-runtime-diagnostic-20261023.json"
+    },
+    {
+      "id": "prompt_v2_real_edit",
+      "status": "FAILED_INVALID_RESPONSE",
+      "edit_requests": 1,
+      "output_image_available": false,
+      "evidence": "recognition-ai-dev-20261023/generation-prompt-v2-failure.json"
+    },
+    {
+      "id": "final_native_core_and_fidelity",
+      "status": "PASSED_LIMITED_SCOPE",
+      "total": 62,
+      "passed": 56,
+      "skipped": 6,
+      "failed": 0,
+      "local_xcresult": "/tmp/smartpaw-final-fidelity-offline-20261023.xcresult"
+    },
+    {
+      "id": "final_production_browser",
+      "status": "PASSED_FIXTURES_NOT_PROVIDER_QUALITY",
+      "checks": 36,
+      "page_errors": 0,
+      "widths": [
+        390,
+        320
+      ],
+      "components": {
+        "postcapture_import_and_preview": 8,
+        "main_tune": 6,
+        "relight_tune": 10,
+        "disorder": 12
+      }
+    },
+    {
+      "id": "real_ai_disorder",
+      "status": "SINGLE_SYNTHETIC_RESPONSE",
+      "score": 3,
+      "level": "tidy",
+      "clutter_region_count": 0,
+      "accuracy_measured": false,
+      "evidence": "recognition-ai-dev-20261023/diagnostic-v3-disorder-result.json"
+    },
+    {
+      "id": "real_diagnostic_v3_edit",
+      "status": "DECODED_BUT_FIDELITY_FAILED",
+      "edit_requests": 1,
+      "clipboard_clip_count_before": 1,
+      "clipboard_clip_count_after": 2,
+      "evidence": "recognition-ai-dev-20261023/generation-diagnostic-v3-review.json"
+    },
+    {
+      "id": "real_fidelity_bad_pair",
+      "status": "KNOWN_BAD_PAIR_REJECTED",
+      "review_requests": 1,
+      "verdict": "fail",
+      "review_is_guarantee": false,
+      "evidence": "recognition-ai-dev-20261023/diagnostic-v3-fidelity-review-result.json"
+    }
+  ],
+  "implementation_and_acceptance": [
+    {
+      "id": "cloud_first_recognition",
+      "implementation": "SOURCE_AND_SIMULATOR_TESTS_PASSED",
+      "details": [
+        "large model first per photo",
+        "cloud success excludes local false-positive merge",
+        "failure falls back locally",
+        "same-name instances not merged by name alone",
+        "valid empty cloud response remains empty; malformed response errors; cancellation does not fallback"
+      ],
+      "ai_image_cloud_local_comparison": "SINGLE_SYNTHETIC_DIAGNOSTIC_COMPLETE",
+      "accuracy": null
+    },
+    {
+      "id": "cleanup_archival_pause_restore",
+      "implementation": "EXISTING_ROUTES_AND_HISTORIC_LIMITED_TESTS",
+      "current_acceptance": "SIMULATOR_JSON_FIXTURE_PASSED_DEVICE_RETEST_DEFERRED",
+      "missing_implementation_not_inferred_from_missing_evidence": true
+    },
+    {
+      "id": "v80_user_folders",
+      "implementation": "CORE_LOCAL_LIFECYCLE_IMPLEMENTED_BROWSER_VERIFIED",
+      "browser_verified": [
+        "select subset into independent local library",
+        "long-press jiggle",
+        "drag reorder/create/enter folder",
+        "cross-category organization",
+        "rename",
+        "move in/out",
+        "manual name/image",
+        "dissolve preserves items",
+        "reload persistence",
+        "source-scan and mode isolation"
+      ],
+      "incomplete": [
+        "real cloud sync",
+        "phone touch and process-restart acceptance",
+        "complete Figma parity"
+      ],
+      "cloud_storage_verified": false
+    },
+    {
+      "id": "sarah_badges_projects",
+      "implementation": "EXISTING_CONNECTED_ROUTES",
+      "decisions": [
+        "Sarah and badges",
+        "projects tab",
+        "personal My Plans same route",
+        "no standalone calendar primary navigation"
+      ],
+      "current_full_visual_motion_acceptance": false
+    },
+    {
+      "id": "spatial_art_layout",
+      "implementation": "EXISTING_WITH_BROWSER_FIXTURE",
+      "figma_original_layers_and_svg_export_checked": false,
+      "phone_full_acceptance": false
+    },
+    {
+      "id": "whole_and_zone_images",
+      "implementation": "WHOLE_AND_MANUAL_QUADRANT_UI_IMPLEMENTED",
+      "per_physical_zone_complete": false,
+      "fidelity_passed": false,
+      "phone_network_and_process_restore_passed": false,
+      "manual_photo_regions_browser_verified": true,
+      "automatic_semantic_physical_zones_complete": false,
+      "source_outside_region_compositor_added": true,
+      "wrong_aspect_rejected_in_source": true,
+      "latest_native_guard_tests": "56_PASSED_6_OPTIN_SKIPS",
+      "semantic_review_before_cache": true,
+      "semantic_review_is_guarantee": false,
+      "known_bad_pair_rejected": true,
+      "generator_fidelity_passed": false,
+      "legacy_unreviewed_cache_isolated": "prompt_protocol_v3"
+    },
+    {
+      "id": "motion_and_final_visual",
+      "implementation": "ANIMATIONS_EXIST",
+      "complete_current_runtime_comparison": false
+    },
+    {
+      "id": "make_history",
+      "status": "PARTIAL",
+      "read": [
+        "59-68",
+        "73",
+        "77",
+        "78",
+        "80",
+        "associated restore records"
+      ],
+      "not_fully_read": [
+        "1-58",
+        "69-72",
+        "74-76"
+      ],
+      "history_titles_equal_message_body": false
+    },
+    {
+      "id": "disorder_visual_assessment",
+      "implementation": "REAL_VISUAL_SERVICE_AND_PRODUCTION_UI",
+      "count_formula_removed": true,
+      "fixed_regions_removed": true,
+      "failure_has_no_score": true,
+      "single_synthetic_real_response": true,
+      "phone_verified": false
+    },
+    {
+      "id": "tune_current_real_preview_confirmation",
+      "implementation": "MAIN_AND_RELIGHT_CONNECTED",
+      "all_preferences_in_request": true,
+      "explicit_text_plan_bypass": true,
+      "browser_checks": 16,
+      "provider_fidelity_passed": false
+    },
+    {
+      "id": "postcapture_subset_library",
+      "implementation": "PRODUCTION_PLAN_AND_LOCAL_LIBRARY",
+      "stable_source_ids": true,
+      "cloud_sync": false,
+      "scan_mutation": false
+    }
+  ],
+  "real_holdout": {
+    "required": 50,
+    "eligible_frozen": 0,
+    "complete_annotations": 0,
+    "ten_class_catalog_frozen": false,
+    "matching_rules_frozen": false,
+    "precision": null,
+    "recall": null,
+    "user_90_95_goal_achieved": false,
+    "ai_images_allowed": false,
+    "same_scene_bursts_independent": false,
+    "evidence": "recognition-holdout-status-20261023.md"
+  },
+  "ai_training_and_development": {
+    "training_candidate_images": 1,
+    "training_executed": false,
+    "coreml_weights_replaced": false,
+    "licenses_and_labels_cleared": false,
+    "ai_development_comparison_authorized": true,
+    "real_holdout_credit": 0,
+    "evidence": "training-augmentation-20261023.md"
+  },
+  "remaining_device_gates": [
+    "permission denial/reauthorization",
+    "background/lock recovery",
+    "WebContent termination recovery",
+    "peak memory/Jetsam",
+    "long stress",
+    "full completion-photo archival and disk/process restore after diagnosis"
+  ],
+  "handoff": {
+    "entry": "../../HANDOFF-20261023.md",
+    "key_setup": "../image-generation-setup.md",
+    "device_runner": "../../scripts/run-device-camera-regression.py",
+    "browser_runner": "../../FigmaMakeLatest-v3/tests/catalog-spatial-ui-smoke.mjs",
+    "private_images_and_keys_stay_local": true
+  },
+  "next_order": [
+    "expand AI scene diversity and positive/negative fidelity checks without calling it training or holdout",
+    "improve generator preservation; review gate does not fix generator",
+    "finish automatic semantic zones and real cloud backend",
+    "finish Make body/layer/motion coverage",
+    "freeze and annotate 50 real holdout separately",
+    "batch necessary final phone gates"
+  ],
+  "release_acceptance_passed": false,
+  "separate_release_blockers": [
+    "distribution eligibility/signing",
+    "submission toolchain",
+    "model and asset licenses",
+    "published privacy/support information"
+  ],
+  "current_source_web_bundle": {
+    "asset": "index-BjdXutEb.js",
+    "sha256": "e893d725c55823d36373345a1028c11d889c2b7caf4b54ebac04d5a78dd6a211",
+    "installed_on_phone": false,
+    "node_tests": {
+      "passed": 50,
+      "failed": 0
+    }
+  }
+}

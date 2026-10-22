@@ -23,7 +23,7 @@ PROJECT_PATH = File.join(ROOT, "#{PROJECT_NAME}.xcodeproj")
 DEPLOYMENT_TARGET = "18.0"
 # This file is deliberately ignored and may contain a developer's private key.
 # It must never become a PBX resource merely because it exists in a local checkout.
-SKIP_APP_RESOURCE_FILES = ["llm-defaults.json"].freeze
+SKIP_APP_RESOURCE_FILES = ["llm-defaults.json", "image-generation.json", "image-generation.example.json", "image-generation-import.json"].freeze
 
 # These six images are fixtures for local recognition evaluation. Keep them in
 # the Debug bundle for the existing Bundle.main tests, but exclude them from
@@ -111,7 +111,7 @@ app_target.build_configurations.each do |config|
   settings["INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents"] = "YES"
   settings["INFOPLIST_KEY_UILaunchScreen_Generation"] = "YES"
   settings["INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone"] = "UIInterfaceOrientationPortrait"
-  settings["CURRENT_PROJECT_VERSION"] = "1"
+  settings["CURRENT_PROJECT_VERSION"] = "11"
   settings["MARKETING_VERSION"] = "1.0.0"
   settings["CODE_SIGN_STYLE"] = "Automatic"
   if config.name == "Release"

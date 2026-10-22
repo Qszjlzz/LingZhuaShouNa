@@ -1,0 +1,1 @@
+sample_id,object_id,class_id,label,synonyms,bbox_x,bbox_y,bbox_width,bbox_height,visible_fraction,occlusion,ignore,ignore_reason,physical_region_id,mask_file,annotator,reviewer,adjudication,notes

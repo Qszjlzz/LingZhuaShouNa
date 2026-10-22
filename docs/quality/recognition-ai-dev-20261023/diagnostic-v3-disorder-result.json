@@ -1,0 +1,18 @@
+{
+  "camera_used" : false,
+  "clutterRegions" : [
+
+  ],
+  "elapsed_seconds" : 19.143064975738525,
+  "estimatedMinutes" : 0,
+  "evidence" : [
+    "桌面物品分区摆放，中间及物品之间留有明显空白",
+    "书本、笔记本和便签叠放有序，无散乱堆积",
+    "铅笔与笔并排放置，小物品各自独立摆放"
+  ],
+  "level" : "tidy",
+  "network_requests" : 1,
+  "real_holdout" : false,
+  "score" : 3,
+  "source_type" : "synthetic_development"
+}

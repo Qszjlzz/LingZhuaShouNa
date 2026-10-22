@@ -1,25 +1,27 @@
 import { useState } from "react";
-import { Search, Sparkles, Shirt, BookOpen, Coffee, Gamepad2, Pill, Wrench, Utensils, Sparkle, Smartphone, Pencil, Trash2, Package } from "lucide-react";
+import { Search, Sparkles } from "lucide-react";
 import { COFFEE, ORANGE, LINEN, BLUE, WHITE, SOFT } from "./theme";
 import { BooksCategoryScreen } from "./BooksCategoryScreen";
+import { ItemLibraryScreen } from "./ItemLibraryScreen";
 import type { NativeState } from "../nativeBridge";
 import { displayCategory } from "../itemCategories";
+import { CategoryArtwork } from "./CategoryArtwork";
 
 const categories = [
-  { id: "c1", name: "服饰", icon: Shirt, color: BLUE },
-  { id: "c2", name: "书籍", icon: BookOpen, color: "#D9C2A8" },
-  { id: "c3", name: "厨房", icon: Utensils, color: "#E8B894" },
-  { id: "c4", name: "饮品", icon: Coffee, color: "#C9A687" },
-  { id: "c5", name: "玩具", icon: Gamepad2, color: "#B4D4C9" },
-  { id: "c6", name: "健康", icon: Pill, color: "#D9B4C7" },
-  { id: "c7", name: "工具", icon: Wrench, color: "#A8B8CC" },
-  { id: "c8", name: "装饰", icon: Sparkle, color: "#E8D4B4" },
+  { id: "c1", name: "服饰", color: BLUE },
+  { id: "c2", name: "书籍", color: "#D9C2A8" },
+  { id: "c3", name: "厨房", color: "#E8B894" },
+  { id: "c4", name: "饮品", color: "#C9A687" },
+  { id: "c5", name: "玩具", color: "#B4D4C9" },
+  { id: "c6", name: "健康", color: "#D9B4C7" },
+  { id: "c7", name: "工具", color: "#A8B8CC" },
+  { id: "c8", name: "装饰", color: "#E8D4B4" },
 ];
 
 const legacyCategories = [
-  { id: "old-electronics", name: "电子产品", icon: Smartphone, color: "#A8B8CC" },
-  { id: "old-stationery", name: "文具", icon: Pencil, color: "#D9C2A8" },
-  { id: "old-discard", name: "待丢弃", icon: Trash2, color: "#C9A687" },
+  { id: "old-electronics", name: "电子产品", color: "#A8B8CC" },
+  { id: "old-stationery", name: "文具", color: "#D9C2A8" },
+  { id: "old-discard", name: "待丢弃", color: "#C9A687" },
 ];
 
 interface ClassificationScreenProps {
@@ -29,6 +31,7 @@ interface ClassificationScreenProps {
 }
 
 export function ClassificationScreen({ nativeState, onNativeChange, onCamera }: ClassificationScreenProps = {}) {
+  const [organizing, setOrganizing] = useState(false);
   const [openCategory, setOpenCategory] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const keyword = query.trim().toLowerCase();
@@ -39,6 +42,8 @@ export function ClassificationScreen({ nativeState, onNativeChange, onCamera }: 
     counts.set(name, (counts.get(name) ?? 0) + 1);
   });
 
+  if (organizing) return <ItemLibraryScreen nativeState={nativeState} onBack={() => setOrganizing(false)} />;
+
   if (openCategory) {
     return (
       <BooksCategoryScreen
@@ -46,6 +51,7 @@ export function ClassificationScreen({ nativeState, onNativeChange, onCamera }: 
         nativeState={nativeState}
         onNativeChange={onNativeChange}
         onCamera={onCamera}
+        onOrganize={() => { setOpenCategory(null); setOrganizing(true); }}
         onBack={() => setOpenCategory(null)}
       />
     );
@@ -54,7 +60,7 @@ export function ClassificationScreen({ nativeState, onNativeChange, onCamera }: 
   const known = new Set([...categories, ...legacyCategories].map((category) => category.name));
   const extraCategories = [
     ...legacyCategories.filter((category) => counts.has(category.name)),
-    ...Array.from(counts.keys()).filter((name) => !known.has(name)).map((name) => ({ id: `other-${name}`, name, icon: Package, color: BLUE })),
+    ...Array.from(counts.keys()).filter((name) => !known.has(name)).map((name) => ({ id: `other-${name}`, name, color: BLUE })),
   ];
   const filteredCategories = categories.filter((c) => c.name.toLowerCase().includes(keyword));
   const filteredExtra = extraCategories.filter((c) => c.name.toLowerCase().includes(keyword));
@@ -117,6 +123,8 @@ export function ClassificationScreen({ nativeState, onNativeChange, onCamera }: 
         </div>
       </div>
 
+      <button onClick={() => setOrganizing(true)} className="mx-6 mt-4 px-4 py-3 flex items-center justify-between gap-3 text-left" style={{ width: "calc(100% - 3rem)", backgroundColor: WHITE, borderRadius: 18, color: COFFEE }}><div><p style={{ fontSize: 14, fontWeight: 600 }}>我的文件夹 · 自由整理</p><p style={{ fontSize: 11, opacity: 0.6, marginTop: 3 }}>选择入库、跨类别建夹、添加图片 · 本机保存</p></div><span style={{ color: ORANGE, fontSize: 20 }}>›</span></button>
+
       {/* Categories grid */}
       <div className="px-6 mt-7 mb-3 flex items-center justify-between">
         <p style={{ color: COFFEE, fontSize: 16, fontWeight: 600 }}>分类</p>
@@ -125,27 +133,21 @@ export function ClassificationScreen({ nativeState, onNativeChange, onCamera }: 
 
       <div className="px-6 grid grid-cols-2 gap-3">
         {[...filteredCategories, ...filteredExtra].map((c) => {
-          const Icon = c.icon;
           return (
             <button
               key={c.id}
               onClick={() => setOpenCategory(c.name)}
-              className="p-4 flex items-center gap-3 text-left"
+              className="p-3 flex items-center gap-2.5 text-left"
               style={{
                 backgroundColor: WHITE,
                 borderRadius: 20,
                 boxShadow: "0 4px 16px rgba(123,92,72,0.04)",
               }}
             >
-              <div
-                className="h-11 w-11 rounded-2xl flex items-center justify-center"
-                style={{ backgroundColor: c.color }}
-              >
-                <Icon size={20} color={WHITE} />
-              </div>
+              <CategoryArtwork categoryName={c.name} color={c.color} size={48} />
               <div className="flex-1 min-w-0">
-                <p style={{ color: COFFEE, fontSize: 13, fontWeight: 600 }}>{c.name}</p>
-                <p style={{ color: COFFEE, opacity: 0.55, fontSize: 11 }}>{counts.get(c.name) ?? 0} 个物品</p>
+                <p className="break-words" style={{ color: COFFEE, fontSize: 13, fontWeight: 600, lineHeight: 1.25 }}>{c.name}</p>
+                <p className="break-words" style={{ color: COFFEE, opacity: 0.55, fontSize: 11, lineHeight: 1.25 }}>{counts.get(c.name) ?? 0} 个物品</p>
               </div>
             </button>
           );
@@ -171,12 +173,11 @@ export function ClassificationScreen({ nativeState, onNativeChange, onCamera }: 
               boxShadow: "0 4px 16px rgba(123,92,72,0.04)",
             }}
           >
-            <div
-              className="h-12 w-12 rounded-2xl flex items-center justify-center mb-2"
-              style={{ backgroundColor: SOFT, fontSize: 22 }}
-            >
-              <Package size={22} color={COFFEE} />
-            </div>
+            <CategoryArtwork
+              categoryName={displayCategory(item.category || "未分类")}
+              color={categories.find((category) => category.name === displayCategory(item.category || "未分类"))?.color ?? SOFT}
+              size={54}
+            />
             <p className="w-full truncate text-center" style={{ color: COFFEE, fontSize: 11, fontWeight: 600 }}>{item.name}</p>
             <span
               className="mt-1 px-2 py-0.5"

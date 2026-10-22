@@ -1,0 +1,78 @@
+{
+  "environment": "Chromium isolated React fixture at 390 and 320 CSS px; no phone, no network APIs, no cloud sync.",
+  "checks": [
+    {
+      "label": "390 picker responsive layout",
+      "viewport": 390,
+      "width": 390,
+      "overflow": []
+    },
+    {
+      "label": "390 selective save excludes unchosen instance and preserves source",
+      "passed": true
+    },
+    {
+      "label": "390 duplicate native IDs disabled; same-name different IDs retained",
+      "passed": true
+    },
+    {
+      "label": "390 imported items shared with free folders and persist after reload",
+      "passed": true
+    },
+    {
+      "label": "390 personal and presentation local libraries isolated",
+      "passed": true
+    },
+    {
+      "label": "390 quota failure retains selection, reports unsaved, retry succeeds",
+      "passed": true
+    },
+    {
+      "label": "390 empty picker layout",
+      "viewport": 390,
+      "width": 390,
+      "overflow": []
+    },
+    {
+      "label": "390 empty source gives actionable text and disabled save",
+      "passed": true
+    },
+    {
+      "label": "320 picker responsive layout",
+      "viewport": 320,
+      "width": 320,
+      "overflow": []
+    },
+    {
+      "label": "320 selective save excludes unchosen instance and preserves source",
+      "passed": true
+    },
+    {
+      "label": "320 duplicate native IDs disabled; same-name different IDs retained",
+      "passed": true
+    },
+    {
+      "label": "320 imported items shared with free folders and persist after reload",
+      "passed": true
+    },
+    {
+      "label": "320 personal and presentation local libraries isolated",
+      "passed": true
+    },
+    {
+      "label": "320 quota failure retains selection, reports unsaved, retry succeeds",
+      "passed": true
+    },
+    {
+      "label": "320 empty picker layout",
+      "viewport": 320,
+      "width": 320,
+      "overflow": []
+    },
+    {
+      "label": "320 empty source gives actionable text and disabled save",
+      "passed": true
+    }
+  ],
+  "errors": []
+}

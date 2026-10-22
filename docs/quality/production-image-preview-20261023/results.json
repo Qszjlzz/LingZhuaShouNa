@@ -1,0 +1,46 @@
+{
+  "environment": "Desktop Chromium, synthetic SVG photos and native bridge fixture; no real network provider or iPhone",
+  "checks": [
+    {
+      "width": 390,
+      "check": "Production postcapture plan imports a selected subset to the correct local mode with original source identity; no scan mutation or upload",
+      "passed": true
+    },
+    {
+      "width": 390,
+      "check": "Explicit source region, full request, user-triggered generation and before/after toggle",
+      "passed": true
+    },
+    {
+      "width": 390,
+      "check": "Changing region cancels and ignores stale result; failure remains retryable",
+      "passed": true
+    },
+    {
+      "width": 390,
+      "check": "Region-specific cache restores after switching and reload without new generate; no horizontal document overflow",
+      "passed": true
+    },
+    {
+      "width": 320,
+      "check": "Production postcapture plan imports a selected subset to the correct local mode with original source identity; no scan mutation or upload",
+      "passed": true
+    },
+    {
+      "width": 320,
+      "check": "Explicit source region, full request, user-triggered generation and before/after toggle",
+      "passed": true
+    },
+    {
+      "width": 320,
+      "check": "Changing region cancels and ignores stale result; failure remains retryable",
+      "passed": true
+    },
+    {
+      "width": 320,
+      "check": "Region-specific cache restores after switching and reload without new generate; no horizontal document overflow",
+      "passed": true
+    }
+  ],
+  "errors": []
+}

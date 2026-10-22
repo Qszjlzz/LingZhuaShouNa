@@ -1,0 +1,14 @@
+{
+  "status": "FAILED_REAL_PROVIDER_RESPONSE",
+  "error": "ImageGenerationError.invalidResponse",
+  "elapsed_seconds": 35.362,
+  "edit_requests": 1,
+  "output_image_available": false,
+  "source_type": "synthetic_development",
+  "real_holdout": false,
+  "camera_used": false,
+  "prompt_revision": "explicit move does not duplicate; per-instance count preservation",
+  "local_xcresult": "/tmp/smartpaw-prompt-v2-20261023.xcresult",
+  "response_shape_not_captured_in_this_run": true,
+  "earlier_visual_fidelity_failure_remains": true
+}

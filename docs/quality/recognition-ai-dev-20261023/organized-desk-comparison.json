@@ -1,0 +1,432 @@
+{
+  "source_type": "synthetic_development",
+  "real_holdout": false,
+  "input_sha256": "28653353145ceec354420008e731ea789ccbffffacb46fbe4f4134da89334aec",
+  "cloud_model": "gpt-6.1-sol",
+  "cloud_host": "beeapi.dev",
+  "cloud_requests": 1,
+  "local_duration_seconds": 28.359440088272095,
+  "cloud_duration_seconds": 38.10532903671265,
+  "camera_used": false,
+  "local_candidates": [
+    {
+      "box": {
+        "height": 0.5142931938171387,
+        "width": 0.17693710327148438,
+        "x": 0.9115314483642578,
+        "y": 0.7259801626205444
+      },
+      "category": "书籍",
+      "has_local_mask": true,
+      "model_score_not_calibrated_probability": 0.7277503609657288,
+      "name": "书本/资料"
+    },
+    {
+      "box": {
+        "height": 0.21661782264709473,
+        "width": 0.04758572578430176,
+        "x": 0.6949663758277893,
+        "y": 0.1483684778213501
+      },
+      "category": "文具",
+      "has_local_mask": true,
+      "model_score_not_calibrated_probability": 0.7057077884674072,
+      "name": "笔"
+    },
+    {
+      "box": {
+        "height": 0.3935490846633911,
+        "width": 0.4620543122291565,
+        "x": 0.23126138746738434,
+        "y": 0.19677454233169556
+      },
+      "category": "电子产品",
+      "has_local_mask": true,
+      "model_score_not_calibrated_probability": 0.692375123500824,
+      "name": "电脑设备"
+    },
+    {
+      "box": {
+        "height": 0.25349557399749756,
+        "width": 0.023909807205200195,
+        "x": 0.6865599155426025,
+        "y": 0.8506104350090027
+      },
+      "category": "文具",
+      "has_local_mask": true,
+      "model_score_not_calibrated_probability": 0.629633367061615,
+      "name": "笔"
+    },
+    {
+      "box": {
+        "height": 0.25023162364959717,
+        "width": 0.026177167892456055,
+        "x": 0.7110005617141724,
+        "y": 0.8533344268798828
+      },
+      "category": "文具",
+      "has_local_mask": true,
+      "model_score_not_calibrated_probability": 0.5703974962234497,
+      "name": "笔"
+    },
+    {
+      "box": {
+        "height": 0.1409044861793518,
+        "width": 0.16026663780212402,
+        "x": 0.9023877382278442,
+        "y": 0.38001054525375366
+      },
+      "category": "电子产品",
+      "has_local_mask": true,
+      "model_score_not_calibrated_probability": 0.40634503960609436,
+      "name": "手机"
+    },
+    {
+      "box": {
+        "height": 0.3018571138381958,
+        "width": 0.2142038345336914,
+        "x": 0.5032299757003784,
+        "y": 0.465048611164093
+      },
+      "category": "电子产品",
+      "has_local_mask": true,
+      "model_score_not_calibrated_probability": 0.37495651841163635,
+      "name": "手机"
+    }
+  ],
+  "cloud_candidates": [
+    {
+      "box": {
+        "height": 0.398,
+        "width": 0.464,
+        "x": 0.232,
+        "y": 0.199
+      },
+      "category": "电子产品",
+      "has_local_mask": false,
+      "model_score_not_calibrated_probability": 0.9,
+      "name": "笔记本电脑"
+    },
+    {
+      "box": {
+        "height": 0.124,
+        "width": 0.145,
+        "x": 0.521,
+        "y": 0.117
+      },
+      "category": "文具",
+      "has_local_mask": false,
+      "model_score_not_calibrated_probability": 0.9,
+      "name": "便利贴"
+    },
+    {
+      "box": {
+        "height": 0.137,
+        "width": 0.125,
+        "x": 0.547,
+        "y": 0.079
+      },
+      "category": "文具",
+      "has_local_mask": false,
+      "model_score_not_calibrated_probability": 0.9,
+      "name": "便利贴"
+    },
+    {
+      "box": {
+        "height": 0.124,
+        "width": 0.096,
+        "x": 0.632,
+        "y": 0.062
+      },
+      "category": "文具",
+      "has_local_mask": false,
+      "model_score_not_calibrated_probability": 0.9,
+      "name": "便利贴"
+    },
+    {
+      "box": {
+        "height": 0.218,
+        "width": 0.045,
+        "x": 0.694,
+        "y": 0.148
+      },
+      "category": "文具",
+      "has_local_mask": false,
+      "model_score_not_calibrated_probability": 0.9,
+      "name": "中性笔"
+    },
+    {
+      "box": {
+        "height": 0.321,
+        "width": 0.285,
+        "x": 0.857,
+        "y": 0.16
+      },
+      "category": "书籍",
+      "has_local_mask": false,
+      "model_score_not_calibrated_probability": 0.9,
+      "name": "书"
+    },
+    {
+      "box": {
+        "height": 0.219,
+        "width": 0.135,
+        "x": 0.863,
+        "y": 0.134
+      },
+      "category": "电子产品",
+      "has_local_mask": false,
+      "model_score_not_calibrated_probability": 0.9,
+      "name": "手机"
+    },
+    {
+      "box": {
+        "height": 0.144,
+        "width": 0.164,
+        "x": 0.902,
+        "y": 0.382
+      },
+      "category": "电子产品",
+      "has_local_mask": false,
+      "model_score_not_calibrated_probability": 0.9,
+      "name": "计算器"
+    },
+    {
+      "box": {
+        "height": 0.205,
+        "width": 0.097,
+        "x": 0.255,
+        "y": 0.443
+      },
+      "category": "健康",
+      "has_local_mask": false,
+      "model_score_not_calibrated_probability": 0.9,
+      "name": "眼镜"
+    },
+    {
+      "box": {
+        "height": 0.3,
+        "width": 0.215,
+        "x": 0.504,
+        "y": 0.465
+      },
+      "category": "电子产品",
+      "has_local_mask": false,
+      "model_score_not_calibrated_probability": 0.9,
+      "name": "平板电脑"
+    },
+    {
+      "box": {
+        "height": 0.221,
+        "width": 0.18,
+        "x": 0.09,
+        "y": 0.511
+      },
+      "category": "书籍",
+      "has_local_mask": false,
+      "model_score_not_calibrated_probability": 0.9,
+      "name": "笔记本"
+    },
+    {
+      "box": {
+        "height": 0.115,
+        "width": 0.107,
+        "x": 0.069,
+        "y": 0.506
+      },
+      "category": "文具",
+      "has_local_mask": false,
+      "model_score_not_calibrated_probability": 0.9,
+      "name": "便利贴"
+    },
+    {
+      "box": {
+        "height": 0.014,
+        "width": 0.029,
+        "x": 0.073,
+        "y": 0.444
+      },
+      "category": "文具",
+      "has_local_mask": false,
+      "model_score_not_calibrated_probability": 0.9,
+      "name": "长尾夹"
+    },
+    {
+      "box": {
+        "height": 0.023,
+        "width": 0.013,
+        "x": 0.13,
+        "y": 0.513
+      },
+      "category": "文具",
+      "has_local_mask": false,
+      "model_score_not_calibrated_probability": 0.9,
+      "name": "长尾夹"
+    },
+    {
+      "box": {
+        "height": 0.36,
+        "width": 0.235,
+        "x": 0.118,
+        "y": 0.81
+      },
+      "category": "书籍",
+      "has_local_mask": false,
+      "model_score_not_calibrated_probability": 0.9,
+      "name": "周计划本"
+    },
+    {
+      "box": {
+        "height": 0.3,
+        "width": 0.186,
+        "x": 0.334,
+        "y": 0.85
+      },
+      "category": "书籍",
+      "has_local_mask": false,
+      "model_score_not_calibrated_probability": 0.9,
+      "name": "笔记本"
+    },
+    {
+      "box": {
+        "height": 0.238,
+        "width": 0.217,
+        "x": 0.549,
+        "y": 0.881
+      },
+      "category": "书籍",
+      "has_local_mask": false,
+      "model_score_not_calibrated_probability": 0.9,
+      "name": "线圈本"
+    },
+    {
+      "box": {
+        "height": 0.07,
+        "width": 0.09,
+        "x": 0.563,
+        "y": 0.765
+      },
+      "category": "文具",
+      "has_local_mask": false,
+      "model_score_not_calibrated_probability": 0.9,
+      "name": "金属夹"
+    },
+    {
+      "box": {
+        "height": 0.26,
+        "width": 0.014,
+        "x": 0.679,
+        "y": 0.852
+      },
+      "category": "文具",
+      "has_local_mask": false,
+      "model_score_not_calibrated_probability": 0.9,
+      "name": "铅笔"
+    },
+    {
+      "box": {
+        "height": 0.26,
+        "width": 0.013,
+        "x": 0.691,
+        "y": 0.852
+      },
+      "category": "文具",
+      "has_local_mask": false,
+      "model_score_not_calibrated_probability": 0.9,
+      "name": "铅笔"
+    },
+    {
+      "box": {
+        "height": 0.25,
+        "width": 0.024,
+        "x": 0.711,
+        "y": 0.858
+      },
+      "category": "文具",
+      "has_local_mask": false,
+      "model_score_not_calibrated_probability": 0.9,
+      "name": "中性笔"
+    },
+    {
+      "box": {
+        "height": 0.094,
+        "width": 0.051,
+        "x": 0.771,
+        "y": 0.797
+      },
+      "category": "文具",
+      "has_local_mask": false,
+      "model_score_not_calibrated_probability": 0.9,
+      "name": "卷笔刀"
+    },
+    {
+      "box": {
+        "height": 0.496,
+        "width": 0.125,
+        "x": 0.938,
+        "y": 0.714
+      },
+      "category": "书籍",
+      "has_local_mask": false,
+      "model_score_not_calibrated_probability": 0.9,
+      "name": "笔记本"
+    },
+    {
+      "box": {
+        "height": 0.505,
+        "width": 0.169,
+        "x": 0.915,
+        "y": 0.733
+      },
+      "category": "书籍",
+      "has_local_mask": false,
+      "model_score_not_calibrated_probability": 0.9,
+      "name": "笔记本"
+    },
+    {
+      "box": {
+        "height": 0.495,
+        "width": 0.028,
+        "x": 0.835,
+        "y": 0.736
+      },
+      "category": "书籍",
+      "has_local_mask": false,
+      "model_score_not_calibrated_probability": 0.9,
+      "name": "笔记本"
+    },
+    {
+      "box": {
+        "height": 0.114,
+        "width": 0.116,
+        "x": 0.93,
+        "y": 0.564
+      },
+      "category": "文具",
+      "has_local_mask": false,
+      "model_score_not_calibrated_probability": 0.9,
+      "name": "便利贴"
+    }
+  ],
+  "counts": {
+    "local": 7,
+    "cloud": 26
+  },
+  "evaluation_type": "single_synthetic_scene_diagnostic_not_accuracy_benchmark",
+  "observations": [
+    "云端正确区分中间平板与右上手机，本地把中间平板及右侧黑色按键设备都叫手机，漏掉右上手机。",
+    "云端分别保留两支铅笔、两支黑笔及多个便签/本子候选；本地把两支相邻铅笔合为一个框，纸本主要只保留右侧一个组框。",
+    "云端返回的黑色按键设备名为计算器；初次独立视觉标注叫遥控器，AI生成器件标识模糊，现记为歧义，不凭预期认定谁正确。",
+    "透明黑帽小件、遮挡夹子与右侧笔记本确切本数仍需复核；26候选不代表26个确定正确独立物品。",
+    "模型未提供可校准置信度，0.9是解析默认值，不是90%准确率；云框是粗定位，没有本地分割mask。",
+    "旧10分钟规则只取前三类，返回26候选中的健康类眼镜没有进入三步方案；本轮已补齐末步组合类别的覆盖逻辑，待离线回归。"
+  ],
+  "test_result": {
+    "bundle": "/tmp/smartpaw-ai-recognition-v2-20261023.xcresult",
+    "executed": 20,
+    "passed": 19,
+    "skipped": 1,
+    "failed": 0,
+    "skip_reason": "真实生图另行显式启用；此轮只运行一次云视觉比较"
+  }
+}

@@ -24,6 +24,7 @@ export type NativeStep = {
 export type NativePlan = { id: string; style: string; timeBudget: number; summary: string; toolList: string[]; steps: NativeStep[]; isPaused?: boolean; completedAt?: string };
 export type NativeSpace = { id: string; name: string; subtitle: string; detectedItems: NativeItem[]; activePlan?: NativePlan; completedPlans: NativePlan[]; lastOrganizedAt?: string };
 export type NativeState = {
+  isPresentationMode: boolean;
   spaces: NativeSpace[]; selectedSpaceID?: string; scannedItems: NativeItem[];
   achievements: { id: string; title: string; subtitle: string; iconName: string; isUnlocked?: boolean }[];
   profileStats?: { trackedItemCount: number; organizedSpaceCount: number };
@@ -58,13 +59,16 @@ export function nativeRequest<T = unknown>(command: string, payload: Record<stri
   if (!handler) return Promise.reject(new Error("当前环境没有连接原生功能"));
   const requestId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   return new Promise<T>((resolve, reject) => {
-    // System pickers wait for the user's choice or cancel callback. Expiring
-    // here can hide a successful native save when the user takes time to choose.
-    const waitsForUser = command === "capture.open" || command === "scan.open";
+    // Pickers and upload consent wait for a user action. Image generation then
+    // uses the native service timeout, so this bridge must not expire first.
+    const waitsForUser = command === "capture.open" || command === "scan.open" || command === "image.preview.generate";
+    // A photo batch runs serially; native scan.await stops waiting at 300s and
+    // reports a retryable error before this bridge deadline expires.
+    const timeout = command === "scan.await" ? 330000 : command === "space.disorder.analyze" ? 120000 : 60000;
     const timer = waitsForUser ? undefined : window.setTimeout(() => {
       pending.delete(requestId);
       reject(new Error("原生操作超时，请重试"));
-    }, 60000);
+    }, timeout);
     pending.set(requestId, { resolve, reject, timer });
     handler.postMessage({ requestId, command, payload });
   });

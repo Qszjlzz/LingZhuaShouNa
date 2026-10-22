@@ -226,19 +226,82 @@ private func configureVisionForCurrentRuntime(_ request: VNRequest) {
 }
 
 struct VisionScanService: ScanService {
-    func scanImage(_ image: UIImage) async throws -> [DetectedItem] {
-        guard let cgImage = image.normalizedCGImage else {
-            throw ScanError.invalidImage
+    struct Diagnostic: Codable, Equatable, Sendable {
+        enum Stage: String, Codable, Sendable {
+            case scan, imageNormalization, visualRegions, foregroundSegmentation, foregroundMask
+            case saliencyAndRectangles, classification, textRecognition
         }
 
+        enum State: String, Codable, Sendable {
+            case started, completed, failed
+        }
+
+        let stage: Stage
+        let state: State
+        var observationCount: Int? = nil
+        var eligibleObservationCount: Int? = nil
+        var outputCount: Int? = nil
+        var errorDomain: String? = nil
+        var errorCode: Int? = nil
+
+        static func failure(stage: Stage, error: Error) -> Diagnostic {
+            let error = error as NSError
+            return Diagnostic(stage: stage, state: .failed, errorDomain: error.domain, errorCode: error.code)
+        }
+    }
+
+    private final class DiagnosticSink: @unchecked Sendable {
+        private let lock = NSRecursiveLock()
+        private let observer: @Sendable (Diagnostic) -> Void
+
+        init(observer: @escaping @Sendable (Diagnostic) -> Void) {
+            self.observer = observer
+        }
+
+        func record(_ diagnostic: Diagnostic) {
+            // A copied service may scan concurrently; serialize the optional observer.
+            lock.lock()
+            defer { lock.unlock() }
+            observer(diagnostic)
+        }
+    }
+
+    private let diagnosticSink: DiagnosticSink?
+
+    init(diagnosticObserver: (@Sendable (Diagnostic) -> Void)? = nil) {
+        diagnosticSink = diagnosticObserver.map { DiagnosticSink(observer: $0) }
+    }
+
+    func scanImage(_ image: UIImage) async throws -> [DetectedItem] {
+        diagnosticSink?.record(Diagnostic(stage: .scan, state: .started))
+        guard let cgImage = image.normalizedCGImage else {
+            diagnosticSink?.record(.failure(stage: .imageNormalization, error: ScanError.invalidImage))
+            diagnosticSink?.record(.failure(stage: .scan, error: ScanError.invalidImage))
+            throw ScanError.invalidImage
+        }
+        diagnosticSink?.record(Diagnostic(stage: .imageNormalization, state: .completed, outputCount: 1))
+
         return await Task.detached(priority: .userInitiated) {
-            let visualRegions = Self.visualRegions(in: cgImage)
-            let classifiedItems = (try? Self.classifyItems(in: cgImage, visualRegions: visualRegions)) ?? []
-            let textItems = (try? Self.recognizeTextItems(in: cgImage)) ?? []
+            let visualRegions = Self.visualRegions(in: cgImage, diagnostics: diagnosticSink)
+            let classifiedItems: [DetectedItem]
+            do {
+                classifiedItems = try Self.classifyItems(in: cgImage, visualRegions: visualRegions, diagnostics: diagnosticSink)
+            } catch {
+                diagnosticSink?.record(.failure(stage: .classification, error: error))
+                classifiedItems = []
+            }
+            let textItems: [DetectedItem]
+            do {
+                textItems = try Self.recognizeTextItems(in: cgImage, diagnostics: diagnosticSink)
+            } catch {
+                diagnosticSink?.record(.failure(stage: .textRecognition, error: error))
+                textItems = []
+            }
             let deduplicated = Self.attachMissingRegions(
                 to: Self.deduplicate(classifiedItems + textItems),
                 using: visualRegions
             )
+            diagnosticSink?.record(Diagnostic(stage: .scan, state: .completed, outputCount: deduplicated.count))
             if !deduplicated.isEmpty {
                 return deduplicated
             }
@@ -249,10 +312,11 @@ struct VisionScanService: ScanService {
         }.value
     }
 
-    private static func classifyItems(in cgImage: CGImage, visualRegions: [VisualRegion]) throws -> [DetectedItem] {
-        let observations = try classificationObservations(in: cgImage)
+    private static func classifyItems(in cgImage: CGImage, visualRegions: [VisualRegion], diagnostics: DiagnosticSink?) throws -> [DetectedItem] {
+        diagnostics?.record(Diagnostic(stage: .classification, state: .started))
+        let classification = try classificationObservations(in: cgImage)
 
-        return observations.enumerated().compactMap { index, observation -> DetectedItem? in
+        let items = classification.observations.enumerated().compactMap { index, observation -> DetectedItem? in
             let labels = observation.identifier
                 .split(separator: ",")
                 .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -266,20 +330,27 @@ struct VisionScanService: ScanService {
                 arMask: visualRegions[safe: index]?.mask ?? visualRegions.first?.mask
             )
         }
+        diagnostics?.record(Diagnostic(stage: .classification, state: .completed,
+                                       observationCount: classification.totalCount,
+                                       eligibleObservationCount: classification.observations.count,
+                                       outputCount: items.count))
+        return items
     }
 
-    private static func classificationObservations(in cgImage: CGImage) throws -> ArraySlice<VNClassificationObservation> {
+    private static func classificationObservations(in cgImage: CGImage) throws -> (observations: ArraySlice<VNClassificationObservation>, totalCount: Int) {
         let request = VNClassifyImageRequest()
         configureVisionForCurrentRuntime(request)
         let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
         try handler.perform([request])
 
-        return (request.results ?? [])
+        let observations = request.results ?? []
+        return (observations
             .filter { $0.confidence >= 0.08 }
-            .prefix(12)
+            .prefix(12), observations.count)
     }
 
-    private static func recognizeTextItems(in cgImage: CGImage) throws -> [DetectedItem] {
+    private static func recognizeTextItems(in cgImage: CGImage, diagnostics: DiagnosticSink?) throws -> [DetectedItem] {
+        diagnostics?.record(Diagnostic(stage: .textRecognition, state: .started))
         let request = VNRecognizeTextRequest()
         configureVisionForCurrentRuntime(request)
         request.recognitionLevel = .accurate
@@ -289,12 +360,16 @@ struct VisionScanService: ScanService {
         let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
         try handler.perform([request])
 
-        return (request.results ?? []).flatMap { observation -> [DetectedItem] in
+        let observations = request.results ?? []
+        let items = observations.flatMap { observation -> [DetectedItem] in
             guard let text = observation.topCandidates(1).first?.string.lowercased(), !text.isEmpty else {
                 return []
             }
             return keywordItems(in: text, arHint: Self.arHint(fromVisionBoundingBox: observation.boundingBox))
         }
+        diagnostics?.record(Diagnostic(stage: .textRecognition, state: .completed,
+                                       observationCount: observations.count, outputCount: items.count))
+        return items
     }
 
     private static func keywordItems(in text: String, arHint: ARHint? = nil) -> [DetectedItem] {
@@ -384,8 +459,9 @@ struct VisionScanService: ScanService {
         }?.0
     }
 
-    private static func visualRegions(in cgImage: CGImage) -> [VisualRegion] {
-        var regions = foregroundMaskRegions(in: cgImage)
+    private static func visualRegions(in cgImage: CGImage, diagnostics: DiagnosticSink?) -> [VisualRegion] {
+        diagnostics?.record(Diagnostic(stage: .visualRegions, state: .started))
+        var regions = foregroundMaskRegions(in: cgImage, diagnostics: diagnostics)
 
         let saliencyRequest = VNGenerateObjectnessBasedSaliencyImageRequest()
         configureVisionForCurrentRuntime(saliencyRequest)
@@ -396,7 +472,14 @@ struct VisionScanService: ScanService {
         rectangleRequest.minimumAspectRatio = 0.15
 
         let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
-        try? handler.perform([saliencyRequest, rectangleRequest])
+        diagnostics?.record(Diagnostic(stage: .saliencyAndRectangles, state: .started))
+        var didComplete = false
+        do {
+            try handler.perform([saliencyRequest, rectangleRequest])
+            didComplete = true
+        } catch {
+            diagnostics?.record(.failure(stage: .saliencyAndRectangles, error: error))
+        }
 
         let salientHints = (saliencyRequest.results ?? [])
             .flatMap { $0.salientObjects ?? [] }
@@ -413,24 +496,46 @@ struct VisionScanService: ScanService {
             }
         regions.append(contentsOf: rectangleHints)
 
-        return deduplicateRegions(regions).prefix(8).map { $0 }
+        if didComplete {
+            diagnostics?.record(Diagnostic(stage: .saliencyAndRectangles, state: .completed,
+                                           observationCount: (saliencyRequest.results?.count ?? 0) + (rectangleRequest.results?.count ?? 0),
+                                           outputCount: salientHints.count + rectangleHints.count))
+        }
+        let deduplicated = deduplicateRegions(regions).prefix(8).map { $0 }
+        diagnostics?.record(Diagnostic(stage: .visualRegions, state: .completed, outputCount: deduplicated.count))
+        return deduplicated
     }
 
-    private static func foregroundMaskRegions(in cgImage: CGImage) -> [VisualRegion] {
+    private static func foregroundMaskRegions(in cgImage: CGImage, diagnostics: DiagnosticSink?) -> [VisualRegion] {
+        diagnostics?.record(Diagnostic(stage: .foregroundSegmentation, state: .started))
         let request = VNGenerateForegroundInstanceMaskRequest()
         configureVisionForCurrentRuntime(request)
         let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
         do {
             try handler.perform([request])
-            guard let observation = request.results?.first else { return [] }
-            return observation.allInstances.compactMap { instanceIndex in
-                let instances = IndexSet(integer: instanceIndex)
-                guard let maskBuffer = try? observation.generateScaledMaskForImage(forInstances: instances, from: handler),
-                      let mask = mask(from: maskBuffer)
-                else { return nil }
-                return VisualRegion(hint: hint(fromMask: mask), mask: mask)
+            guard let observation = request.results?.first else {
+                diagnostics?.record(Diagnostic(stage: .foregroundSegmentation, state: .completed, observationCount: 0, outputCount: 0))
+                return []
             }
+            let regions = observation.allInstances.compactMap { instanceIndex -> VisualRegion? in
+                let instances = IndexSet(integer: instanceIndex)
+                diagnostics?.record(Diagnostic(stage: .foregroundMask, state: .started))
+                do {
+                    let maskBuffer = try observation.generateScaledMaskForImage(forInstances: instances, from: handler)
+                    let mask = mask(from: maskBuffer)
+                    diagnostics?.record(Diagnostic(stage: .foregroundMask, state: .completed, outputCount: mask == nil ? 0 : 1))
+                    guard let mask else { return nil }
+                    return VisualRegion(hint: hint(fromMask: mask), mask: mask)
+                } catch {
+                    diagnostics?.record(.failure(stage: .foregroundMask, error: error))
+                    return nil
+                }
+            }
+            diagnostics?.record(Diagnostic(stage: .foregroundSegmentation, state: .completed,
+                                           observationCount: observation.allInstances.count, outputCount: regions.count))
+            return regions
         } catch {
+            diagnostics?.record(.failure(stage: .foregroundSegmentation, error: error))
             return []
         }
     }
@@ -710,6 +815,7 @@ private enum OCRToolRecovery {
 struct YOLOSegmentationScanService: ScanService {
     private let fallback = CoreMLSegmentationScanService()
     private let edgeSAM = EdgeSAMSegmentationService()
+    private static let inferenceQueue = DispatchQueue(label: "smartpaw.yolo.inference", qos: .userInitiated)
 
     func scanImage(_ image: UIImage) async throws -> [DetectedItem] {
         guard let cgImage = image.normalizedCGImage else {
@@ -725,7 +831,7 @@ struct YOLOSegmentationScanService: ScanService {
             // used only for suspicious full-frame regions; tight masks stay
             // on the detector output to avoid a second coordinate transform.
             let refined = await edgeSAM.refine(recoveredItems, in: cgImage)
-            let cleaned = Array(Self.presentationItems(Self.cleanedItems(refined), mode: .still).prefix(10))
+            let cleaned = Self.photoPresentationItems(Self.cleanedItems(refined))
             if !cleaned.isEmpty {
                 return await SceneSemanticCalibration.calibrate(cleaned, in: image)
             }
@@ -743,7 +849,7 @@ struct YOLOSegmentationScanService: ScanService {
         }
         let fallbackItems = Self.cleanedItems(try await fallback.scanImage(image))
         let refined = await edgeSAM.refine(fallbackItems, in: cgImage)
-        let fallbackPresentation = Self.presentationItems(Self.cleanedItems(refined), mode: .still)
+        let fallbackPresentation = Self.photoPresentationItems(Self.cleanedItems(refined))
         if !fallbackPresentation.isEmpty {
             return await SceneSemanticCalibration.calibrate(fallbackPresentation, in: image)
         }
@@ -769,7 +875,7 @@ struct YOLOSegmentationScanService: ScanService {
         if strict.count >= 2 { return strict }
         // 轮廓层出得太少时补一层宽松口径：只用模型真实给出的检测框（不编位置、不编名字），
         // 只是不要求精确轮廓。这样"扫到了但没轮廓"的物体也能在画面上出标签。
-        let relaxed = Self.relaxedItems(detected, minConfidence: 0.18).filter { item in
+        let relaxed = Self.relaxedItems(detected, minConfidence: 0.18, limit: 6).filter { item in
             guard let hint = item.arHint else { return false }
             return !strict.contains { existing in
                 guard let existingHint = existing.arHint else { return false }
@@ -847,7 +953,7 @@ struct YOLOSegmentationScanService: ScanService {
 
     /// 放宽一层口径：不强制要求精确轮廓，只要有可信的检测框就呈现出来。
     /// 用在严格过滤后结果为空的场合，避免"拍了但什么都没识别到"。
-    private static func relaxedItems(_ items: [DetectedItem], minConfidence: Double = 0.25) -> [DetectedItem] {
+    static func relaxedItems(_ items: [DetectedItem], minConfidence: Double = 0.25, limit: Int? = nil) -> [DetectedItem] {
         var kept: [DetectedItem] = []
         for item in items.sorted(by: { $0.confidence > $1.confidence }) {
             guard item.confidence >= minConfidence, item.name != "待确认物体" else { continue }
@@ -858,19 +964,23 @@ struct YOLOSegmentationScanService: ScanService {
             }
             let duplicate = kept.contains { existing in
                 guard let existingHint = existing.arHint else { return false }
-                return existing.name == item.name || hintIoU(existingHint, hint) >= 0.7
+                let overlap = hintIoU(existingHint, hint)
+                return overlap >= 0.7 || (existing.name == item.name && overlap >= 0.3)
             }
             if !duplicate { kept.append(item) }
-            if kept.count >= 6 { break }
+            if let limit, kept.count >= limit { break }
         }
         return kept
     }
 
     // The capture view is a storage workflow rather than an open-ended scene
-    // catalog. Suppress furniture labels and retain one strongest grouped-books
-    // mask, so the overlay stays readable without guessing locations or
-    // fabricating any segmentation area. Clothes stay independent because a
-    // closet can contain several spatially distinct garment groups.
+    // catalog. Suppress furniture labels; only live AR groups books for its
+    // overlay budget. A still photo preserves distinct book instances and does
+    // not fabricate masks or infer new objects.
+    static func photoPresentationItems(_ items: [DetectedItem]) -> [DetectedItem] {
+        presentationItems(items, mode: .still)
+    }
+
     private static func presentationItems(_ items: [DetectedItem], mode: PresentationMode) -> [DetectedItem] {
         let furnitureLabels: Set<String> = ["椅子", "沙发/软包", "床铺区域", "桌面区域"]
         var groupedCategorySeen = Set<ItemCategory>()
@@ -883,7 +993,7 @@ struct YOLOSegmentationScanService: ScanService {
                 // the user's space and later drives the storage plan.
                 guard item.confidence >= mode.minimumConfidence(for: item) else { return false }
                 guard item.name != "待确认物体" || item.confidence >= (mode == .live ? 0.34 : 0.50) else { return false }
-                guard item.category == .books else { return true }
+                guard mode == .live, item.category == .books else { return true }
                 return groupedCategorySeen.insert(item.category).inserted
             }
     }
@@ -1022,44 +1132,62 @@ struct YOLOSegmentationScanService: ScanService {
         onlyGeneric: Bool = false,
         liveExtra: Bool = false
     ) async -> [DetectedItem] {
-        await Task.detached(priority: .userInitiated) {
-            guard !cachedModels.isEmpty else { return [] }
-            var mergedItems: [DetectedItem] = []
-            // Live AR and still capture have different budgets, but they must
-            // share the same target vocabulary. The old live path used only
-            // generic YOLO11, so pen/book/cup labels could disappear even
-            // though the final photo scan recognized them. Use the compact
-            // promptable model for live targets and the 640 generic model to
-            // recover common electronics without running the 1280 graph on
-            // every camera frame.
-            let models: [YOLOModel]
-            if live {
-                let promptable = cachedModels.filter { $0.sourceName == "yoloe-11s-seg" }
-                let realtimeGeneric = cachedModels.filter { $0.sourceName == "yolo11n-seg-640" }
-                // 补充词表：worldv2 覆盖平板 / 收纳盒 / 碗，context 覆盖成堆的书本与衣物。
-                // 这两个只在常规模型认得太少时才跑，避免每帧都付代价。
-                let extra = cachedModels.filter {
-                    $0.sourceName == "yolov8s-worldv2" || $0.sourceName == "yoloe-context-seg"
-                }
-                if onlyGeneric {
-                    models = realtimeGeneric
-                } else if onlyPrimary {
-                    models = promptable
-                } else if liveExtra {
-                    models = extra
-                } else {
-                    models = Array((promptable + realtimeGeneric).prefix(2))
-                }
-            } else {
-                models = cachedModels
+        await withCheckedContinuation { continuation in
+            // Still scans and live frames share cached MLModel instances.
+            inferenceQueue.async {
+                continuation.resume(returning: detectItemsSynchronously(
+                    in: cgImage, live: live, onlyPrimary: onlyPrimary,
+                    onlyGeneric: onlyGeneric, liveExtra: liveExtra
+                ))
             }
-            for model in models {
-                guard let letterbox = letterboxPixelBuffer(cgImage, inputSize: model.inputSize) else { continue }
+        }
+    }
+
+    private static func detectItemsSynchronously(
+        in cgImage: CGImage,
+        live: Bool,
+        onlyPrimary: Bool,
+        onlyGeneric: Bool,
+        liveExtra: Bool
+    ) -> [DetectedItem] {
+        guard !cachedModels.isEmpty else { return [] }
+        var mergedItems: [DetectedItem] = []
+        // Live AR and still capture have different budgets, but they must
+        // share the same target vocabulary. The old live path used only
+        // generic YOLO11, so pen/book/cup labels could disappear even
+        // though the final photo scan recognized them. Use the compact
+        // promptable model for live targets and the 640 generic model to
+        // recover common electronics without running the 1280 graph on
+        // every camera frame.
+        let models: [YOLOModel]
+        if live {
+            let promptable = cachedModels.filter { $0.sourceName == "yoloe-11s-seg" }
+            let realtimeGeneric = cachedModels.filter { $0.sourceName == "yolo11n-seg-640" }
+            // 补充词表：worldv2 覆盖平板 / 收纳盒 / 碗，context 覆盖成堆的书本与衣物。
+            // 这两个只在常规模型认得太少时才跑，避免每帧都付代价。
+            let extra = cachedModels.filter {
+                $0.sourceName == "yolov8s-worldv2" || $0.sourceName == "yoloe-context-seg"
+            }
+            if onlyGeneric {
+                models = realtimeGeneric
+            } else if onlyPrimary {
+                models = promptable
+            } else if liveExtra {
+                models = extra
+            } else {
+                models = Array((promptable + realtimeGeneric).prefix(2))
+            }
+        } else {
+            models = cachedModels
+        }
+        for model in models {
+            let detectedItems: [DetectedItem] = autoreleasepool {
+                guard let letterbox = letterboxPixelBuffer(cgImage, inputSize: model.inputSize) else { return [] }
                 do {
                     let input = try MLDictionaryFeatureProvider(dictionary: ["image": letterbox.pixelBuffer])
                     let output = try model.model.prediction(from: input)
                     let tensors = output.featureNames.compactMap { output.featureValue(for: $0)?.multiArrayValue }
-                    let detectedItems = model.kind == .worldDetection ? worldItems(
+                    return model.kind == .worldDetection ? worldItems(
                         from: tensors,
                         transform: letterbox.transform,
                         classNames: model.classNames
@@ -1068,17 +1196,14 @@ struct YOLOSegmentationScanService: ScanService {
                         transform: letterbox.transform,
                         classNames: model.classNames
                     )
-                    // Keep the first model's candidates authoritative, then use
-                    // later models only to recover spatially distinct objects.
-                    // YOLOE is ordered first for its storage-focused vocabulary;
-                    // YOLO11/640 fills recall gaps without duplicating overlays.
-                    mergedItems.append(contentsOf: detectedItems)
                 } catch {
-                    continue
+                    return []
                 }
             }
-            return mergeModelCandidates(mergedItems)
-        }.value
+            // Release each model's large output tensors before the next graph.
+            mergedItems.append(contentsOf: detectedItems)
+        }
+        return mergeModelCandidates(mergedItems)
     }
 
     /// 自检：拿 bundle 里的真实测试图把整条本地管线跑一遍，逐层打印数量与名称。
@@ -1180,12 +1305,11 @@ struct YOLOSegmentationScanService: ScanService {
     private static let cachedModels: [YOLOModel] = {
         let configuration = MLModelConfiguration()
         #if targetEnvironment(simulator)
-        // The 1280 segmentation graph can leave the simulator's MPSGraph backend
-        // in an invalid state after repeated requests. CPU inference is slower but
-        // deterministic; physical devices can still use GPU/Neural Engine.
         configuration.computeUnits = .cpuOnly
         #else
-        configuration.computeUnits = .all
+        // The iPhone's MPSGraph compiler aborts inside these converted YOLO
+        // graphs. That SIGABRT cannot be caught by prediction's do/catch.
+        configuration.computeUnits = .cpuAndNeuralEngine
         #endif
         let loaded = bundledModelURLs().compactMap { modelURL -> YOLOModel? in
             guard let model = try? MLModel(contentsOf: modelURL, configuration: configuration) else {
@@ -1927,15 +2051,7 @@ private extension Array {
 
 private extension UIImage {
     var normalizedCGImage: CGImage? {
-        if imageOrientation == .up, let cgImage {
-            return cgImage
-        }
-
-        let renderer = UIGraphicsImageRenderer(size: size)
-        let image = renderer.image { _ in
-            draw(in: CGRect(origin: .zero, size: size))
-        }
-        return image.cgImage
+        recognitionCGImage()
     }
 }
 
@@ -1955,15 +2071,27 @@ struct RuleBasedPlanningService: PlanningService {
         case .sixty: maxSteps = max(5, orderedCategories.count)
         }
 
-        let categories = Array(orderedCategories.prefix(maxSteps))
-        let steps = categories.enumerated().map { index, category -> StorageStep in
-            let categoryItems = grouped[category] ?? []
-            let names = categoryItems.map(\.name).joined(separator: "、")
-            let anchor = anchorItem(for: categoryItems)
+        // A short time budget limits presentation steps, not the selected inventory.
+        // Keep the final categories together rather than silently dropping them.
+        var categoryBatches = orderedCategories.prefix(max(0, maxSteps - 1)).map { [$0] }
+        let remaining = Array(orderedCategories.dropFirst(max(0, maxSteps - 1)))
+        if !remaining.isEmpty { categoryBatches.append(remaining) }
+        let steps = categoryBatches.enumerated().map { index, categories -> StorageStep in
+            let categoryItems = categories.flatMap { grouped[$0] ?? [] }
+            let multipleCategories = categories.count > 1
+            let anchor = multipleCategories ? nil : anchorItem(for: categoryItems)
+            let instructions = categories.map { category in
+                let items = grouped[category] ?? []
+                let instruction = detail(for: category, items: items, itemNames: items.map(\.name).joined(separator: "、"), style: style, goal: normalizedGoal)
+                return multipleCategories ? "【\(category.rawValue)】\(instruction)" : instruction
+            }.joined(separator: "\n")
+            let destination = categories.map(\.suggestedZone).joined(separator: " / ")
             return StorageStep(
-                title: title(for: category, items: categoryItems, index: index),
-                detail: detail(for: category, items: categoryItems, itemNames: names, style: style, goal: normalizedGoal),
-                zone: normalizedFocusZone.isEmpty ? category.suggestedZone : "\(normalizedFocusZone) · \(category.suggestedZone)",
+                title: multipleCategories
+                    ? "依次归位：" + categories.map(\.rawValue).joined(separator: "、")
+                    : title(for: categories[0], items: categoryItems, index: index),
+                detail: instructions,
+                zone: normalizedFocusZone.isEmpty ? destination : "\(normalizedFocusZone) · \(destination)",
                 status: index == 0 ? .active : .pending,
                 arHint: anchor?.arHint,
                 arMask: anchor?.arMask,

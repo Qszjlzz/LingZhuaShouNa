@@ -42,6 +42,7 @@ final class AppViewModel: ObservableObject {
     @Published private(set) var favoriteCommunityCaseIDs: Set<UUID>
     @Published private(set) var followedCommunityAuthors: Set<String>
     @Published private(set) var scheduleItems: [ScheduleItem]
+    @Published private(set) var isPresentationMode = false
     @Published var selectedTab: AppTab = .space
     @Published var selectedSpaceID: UUID?
     @Published var scannedItems: [DetectedItem] = []
@@ -65,6 +66,9 @@ final class AppViewModel: ObservableObject {
     @Published private(set) var message: String?
 
     let dependencies: AppDependencies
+    private let defaults: UserDefaults
+    private let documentsDirectory: URL
+    private let imageGenerationReset: () -> Bool
 
     private static let communityLikesKey = "SmartPaw.community.likedCaseIDs"
     private static let communityFavoritesKey = "SmartPaw.community.favoriteCaseIDs"
@@ -78,7 +82,6 @@ final class AppViewModel: ObservableObject {
     /// 连拍时每张照片都会起一轮扫描，用递增代号区分先后，避免旧一轮的结果覆盖新一轮。
     private var scanGeneration = 0
     /// 同一批拍摄里云端识别只调用一次，标记在这里。
-    private var usedCloudRecognitionInBatch = false
     /// 扫描页的中间结果会先写入本地以便跨任务读取；用户取消时恢复进入扫描页前的快照。
     private struct PhotoScanSessionSnapshot {
         let spaceID: UUID?
@@ -89,9 +92,18 @@ final class AppViewModel: ObservableObject {
     private var photoScanSessionSnapshot: PhotoScanSessionSnapshot?
     private var photoScanSessionImageNames: Set<String> = []
 
-    init(dependencies: AppDependencies) {
+    init(
+        dependencies: AppDependencies,
+        defaults: UserDefaults = .standard,
+        documentsDirectory: URL? = nil,
+        imageGenerationReset: @escaping () -> Bool = { ImageGenerationManager.shared.reset() }
+    ) {
         self.dependencies = dependencies
-        let storedLanguage = UserDefaults.standard.string(forKey: Self.languageKey)
+        self.defaults = defaults
+        self.documentsDirectory = documentsDirectory ?? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        self.imageGenerationReset = imageGenerationReset
+        isPresentationMode = (dependencies.storageStore as? PresentationStorageStore)?.isPresentationMode ?? false
+        let storedLanguage = defaults.string(forKey: Self.languageKey)
             .flatMap(AppLanguage.init(rawValue:))
         // New installs start in Chinese so the first-run picker is readable
         // before the user makes a language choice.
@@ -148,11 +160,14 @@ final class AppViewModel: ObservableObject {
         likedCommunityCaseIDs = snapshot.likedCommunityCaseIDs
         favoriteCommunityCaseIDs = snapshot.favoriteCommunityCaseIDs
         followedCommunityAuthors = snapshot.followedCommunityAuthors
-        Self.migrateLegacyCommunityReactionsIfNeeded(
-            liked: &likedCommunityCaseIDs,
-            favorited: &favoriteCommunityCaseIDs,
-            followed: &followedCommunityAuthors
-        )
+        if !isPresentationMode {
+            Self.migrateLegacyCommunityReactionsIfNeeded(
+                defaults: defaults,
+                liked: &likedCommunityCaseIDs,
+                favorited: &favoriteCommunityCaseIDs,
+                followed: &followedCommunityAuthors
+            )
+        }
         selectedSpaceID = spaces.first?.id
         selectedExecutionZones = Set(spaces.first?.activePlan?.steps.map(\.zone) ?? [])
         message = credentialMigrationFailed
@@ -196,9 +211,9 @@ final class AppViewModel: ObservableObject {
         #if DEBUG
         // 启动时用 bundle 里的真实测试图跑一遍本地识别，结果落到文件，方便排查识别链路。
         if CommandLine.arguments.contains("-SmartPawRunSelfTest") {
+            let documents = self.documentsDirectory
             Task.detached(priority: .utility) {
                 let text = await YOLOSegmentationScanService.runSelfTest()
-                let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
                 try? text.write(to: documents.appendingPathComponent("smartpaw-selftest.txt"), atomically: true, encoding: .utf8)
             }
         }
@@ -224,6 +239,73 @@ final class AppViewModel: ObservableObject {
 
     var selectedSpace: StorageSpace {
         spaces.first(where: { $0.id == selectedSpaceID }) ?? spaces[0]
+    }
+
+    @discardableResult
+    func setPresentationMode(_ enabled: Bool) -> Bool {
+        guard let store = dependencies.storageStore as? PresentationStorageStore else {
+            message = "当前运行环境不支持切换演示档案。"
+            return false
+        }
+        guard enabled != isPresentationMode else { return true }
+        do {
+            let snapshot = try store.setPresentationMode(enabled)
+            for imageName in photoScanSessionImageNames {
+                try? FileManager.default.removeItem(at: imageDirectory.appendingPathComponent(imageName))
+            }
+            isPresentationMode = enabled
+            applyAccountSnapshot(snapshot)
+            if !enabled {
+                Self.migrateLegacyCommunityReactionsIfNeeded(
+                    defaults: defaults,
+                    liked: &likedCommunityCaseIDs,
+                    favorited: &favoriteCommunityCaseIDs,
+                    followed: &followedCommunityAuthors
+                )
+                Task { await reconcileScheduleNotifications() }
+            }
+            return true
+        } catch {
+            message = "切换档案失败，当前数据已保留：\(error.localizedDescription)"
+            return false
+        }
+    }
+
+    private func applyAccountSnapshot(_ snapshot: AppStateSnapshot) {
+        invalidateScanContext()
+        activePlanningID = nil
+        isPlanning = false
+        storageRecoveryMode = false
+        photoScanSessionSnapshot = nil
+        photoScanSessionImageNames.removeAll()
+        spaces = snapshot.spaces.isEmpty ? AppStateSnapshot.initial.spaces : snapshot.spaces
+        achievements = snapshot.achievements
+        communityCases = snapshot.communityCases
+        communityComments = snapshot.communityComments
+        likedCommunityCaseIDs = snapshot.likedCommunityCaseIDs
+        favoriteCommunityCaseIDs = snapshot.favoriteCommunityCaseIDs
+        followedCommunityAuthors = snapshot.followedCommunityAuthors
+        scheduleItems = snapshot.scheduleItems
+        var restoredSettings = snapshot.llmSettings
+        restoredSettings.apiKey = dependencies.credentialStore.loadAPIKey() ?? llmSettings.apiKey
+        if !restoredSettings.hasCloudConsent { restoredSettings.isEnabled = false }
+        llmSettingsGeneration += 1
+        llmSettings = restoredSettings
+        llmConnectionState = .idle
+        selectedSpaceID = spaces.first?.id
+        scannedItems = []
+        capturedImage = nil
+        referenceImage = nil
+        selectedStyle = .quickReset
+        selectedTimeBudget = .ten
+        planningGoal = ""
+        focusZone = ""
+        selectedPlanningTags = []
+        recommendationMode = .balanced
+        selectedExecutionZones = Set(spaces.first?.activePlan?.steps.map(\.zone) ?? [])
+        latestUnlockedAchievement = nil
+        lastScanPersisted = true
+        message = nil
     }
 
     var activePlan: StoragePlan? {
@@ -382,7 +464,6 @@ final class AppViewModel: ObservableObject {
         activeScanID = UUID()
         scannedItems = []
         isScanning = false
-        usedCloudRecognitionInBatch = false
     }
 
     /// The scan flow calls this after its confirmation request has been persisted.
@@ -464,30 +545,14 @@ final class AppViewModel: ObservableObject {
 
         do {
             var mergedItems: [DetectedItem] = []
-            // 连拍时云端多模态识别只跑一次，其余照片走本地，避免每张都等一次网络往返。
-            if !accumulate { usedCloudRecognitionInBatch = false }
-            let router = dependencies.scanService as? RecognitionRouter
-            for (_, image) in images.enumerated() {
-                let results: [DetectedItem]
-                if let router {
-                    let allowsCloud = !usedCloudRecognitionInBatch
-                    usedCloudRecognitionInBatch = true
-                    results = try await router.scanImage(image, allowsCloud: allowsCloud)
-                } else {
-                    results = try await dependencies.scanService.scanImage(image)
-                }
+            // Every image is recognized independently; different views may reveal
+            // additional possessions that are absent from the first photo.
+            for image in images {
+                let results = try await dependencies.scanService.scanImage(image)
                 guard !Task.isCancelled, scanContextID == contextID, selectedSpaceID == spaceID else { return [] }
                 // 这里不再用 activeScanID 提前退出：连拍时新一轮会把上一轮的代号顶掉，
                 // 旧写法会让前面几张的识别结果直接作废，最后方案里只剩最后一张的东西。
-                for item in results {
-                    if let index = mergedItems.firstIndex(where: {
-                        $0.name == item.name && $0.category == item.category
-                    }) {
-                        mergedItems[index].confidence = max(mergedItems[index].confidence, item.confidence)
-                    } else {
-                        mergedItems.append(item)
-                    }
-                }
+                mergedItems.append(contentsOf: results)
             }
 
             let isLatest = generation == scanGeneration
@@ -537,14 +602,13 @@ final class AppViewModel: ObservableObject {
         }
     }
 
-    /// 合并两批识别结果：同名同类保留置信度更高的那个。
-    private static func merging(_ base: [DetectedItem], with newItems: [DetectedItem]) -> [DetectedItem] {
+    /// Preserve separate instances, even when their names and categories match.
+    /// Only the same stable ID is an update; cross-photo identity needs user review.
+    static func merging(_ base: [DetectedItem], with newItems: [DetectedItem]) -> [DetectedItem] {
         var merged = base
         for item in newItems {
-            if let index = merged.firstIndex(where: {
-                $0.name == item.name && $0.category == item.category
-            }) {
-                merged[index].confidence = max(merged[index].confidence, item.confidence)
+            if let index = merged.firstIndex(where: { $0.id == item.id }) {
+                merged[index] = item
             } else {
                 merged.append(item)
             }
@@ -1066,27 +1130,44 @@ final class AppViewModel: ObservableObject {
 
     /// 老版本把点赞/收藏/关注写在 UserDefaults 里，这里搬进快照后清掉旧键，只执行一次。
     private static func migrateLegacyCommunityReactionsIfNeeded(
+        defaults: UserDefaults,
         liked: inout Set<UUID>,
         favorited: inout Set<UUID>,
         followed: inout Set<String>
     ) {
-        let legacyLiked = loadCommunityIDs(forKey: Self.communityLikesKey)
-        let legacyFavorited = loadCommunityIDs(forKey: Self.communityFavoritesKey)
-        let legacyFollowed = Set(UserDefaults.standard.stringArray(forKey: Self.communityFollowsKey) ?? [])
+        let legacyLiked = loadCommunityIDs(forKey: Self.communityLikesKey, defaults: defaults)
+        let legacyFavorited = loadCommunityIDs(forKey: Self.communityFavoritesKey, defaults: defaults)
+        let legacyFollowed = Set(defaults.stringArray(forKey: Self.communityFollowsKey) ?? [])
         guard !legacyLiked.isEmpty || !legacyFavorited.isEmpty || !legacyFollowed.isEmpty else { return }
         liked.formUnion(legacyLiked)
         favorited.formUnion(legacyFavorited)
         followed.formUnion(legacyFollowed)
-        UserDefaults.standard.removeObject(forKey: Self.communityLikesKey)
-        UserDefaults.standard.removeObject(forKey: Self.communityFavoritesKey)
-        UserDefaults.standard.removeObject(forKey: Self.communityFollowsKey)
+        defaults.removeObject(forKey: Self.communityLikesKey)
+        defaults.removeObject(forKey: Self.communityFavoritesKey)
+        defaults.removeObject(forKey: Self.communityFollowsKey)
     }
 
     /// Deletes on-device user data and credentials. No community content is uploaded.
     @discardableResult
     func resetLocalData() -> Bool {
+        if isPresentationMode {
+            let snapshot = PresentationData.snapshot(llmSettings: llmSettings)
+            do {
+                try dependencies.storageStore.resetState(snapshot)
+                applyAccountSnapshot(snapshot)
+                message = "演示数据已恢复。"
+                return true
+            } catch {
+                message = "恢复演示数据失败：\(error.localizedDescription)"
+                return false
+            }
+        }
         guard dependencies.credentialStore.deleteAPIKey() else {
             message = "API Key 无法从系统钥匙串删除，未执行数据重置。"
+            return false
+        }
+        guard imageGenerationReset() else {
+            message = "生图 API Key 无法从系统钥匙串删除，未执行数据重置。"
             return false
         }
         // Credential deletion has already succeeded even if a later file operation fails.
@@ -1129,7 +1210,7 @@ final class AppViewModel: ObservableObject {
         selectedExecutionZones = []
         latestUnlockedAchievement = nil
         for key in [Self.communityLikesKey, Self.communityFavoritesKey, Self.communityFollowsKey] {
-            UserDefaults.standard.removeObject(forKey: key)
+            defaults.removeObject(forKey: key)
         }
         let identifiers = oldScheduleIDs.map(notificationIdentifier(for:))
         UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: identifiers)
@@ -1159,7 +1240,7 @@ final class AppViewModel: ObservableObject {
     func setLanguage(_ language: AppLanguage) {
         self.language = language
         hasSelectedLanguage = true
-        UserDefaults.standard.set(language.rawValue, forKey: Self.languageKey)
+        defaults.set(language.rawValue, forKey: Self.languageKey)
     }
 
     func showMessage(_ text: String) {
@@ -1481,6 +1562,7 @@ final class AppViewModel: ObservableObject {
     }
 
     func requestNotificationAuthorization() async {
+        guard !isPresentationMode else { return }
         do {
             _ = try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound])
             await refreshNotificationAuthorizationState()
@@ -1571,6 +1653,7 @@ final class AppViewModel: ObservableObject {
     }
 
     private func reconcileScheduleNotifications() async {
+        guard !isPresentationMode else { return }
         guard notificationAuthorizationState == .authorized || notificationAuthorizationState == .provisional else { return }
         for item in scheduleItems where !item.isDone && item.dueDate > Date() {
             await scheduleNotification(for: item)
@@ -1578,12 +1661,14 @@ final class AppViewModel: ObservableObject {
     }
 
     private func scheduleNotification(for item: ScheduleItem) async {
+        guard !isPresentationMode else { return }
         guard !item.isDone, item.dueDate > Date() else {
             await cancelNotification(for: item.id)
             return
         }
         let settings = await UNUserNotificationCenter.current().notificationSettings()
-        guard settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional else { return }
+        guard !isPresentationMode,
+              settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional else { return }
         guard let current = scheduleItems.first(where: { $0.id == item.id }),
               !current.isDone,
               current.dueDate == item.dueDate,
@@ -1617,6 +1702,7 @@ final class AppViewModel: ObservableObject {
     }
 
     private func cancelNotification(for id: UUID) async {
+        guard !isPresentationMode else { return }
         let identifier = notificationIdentifier(for: id)
         UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [identifier])
         UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [identifier])
@@ -1661,8 +1747,7 @@ final class AppViewModel: ObservableObject {
     }
 
     private var imageDirectory: URL {
-        let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        return documents.appendingPathComponent("SmartPawImages", isDirectory: true)
+        documentsDirectory.appendingPathComponent(isPresentationMode ? "SmartPawPresentationImages" : "SmartPawImages", isDirectory: true)
     }
 
     private func saveImage(_ image: UIImage, prefix: String) throws -> String {
@@ -1706,8 +1791,7 @@ final class AppViewModel: ObservableObject {
         if let router = dependencies.scanService as? RecognitionRouter {
             lines.append("本次明细: \(router.diagnostics)")
         }
-        let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        let url = documents.appendingPathComponent("smartpaw-diagnostics.txt")
+        let url = documentsDirectory.appendingPathComponent("smartpaw-diagnostics.txt")
         try? (lines.joined(separator: "\n") + "\n").write(to: url, atomically: true, encoding: .utf8)
     }
 
@@ -1748,8 +1832,8 @@ final class AppViewModel: ObservableObject {
         return plan
     }
 
-    private static func loadCommunityIDs(forKey key: String) -> Set<UUID> {
-        Set((UserDefaults.standard.stringArray(forKey: key) ?? []).compactMap(UUID.init(uuidString:)))
+    private static func loadCommunityIDs(forKey key: String, defaults: UserDefaults) -> Set<UUID> {
+        Set((defaults.stringArray(forKey: key) ?? []).compactMap(UUID.init(uuidString:)))
     }
 
     private static func detectedItemFromRoomCategory(_ rawCategory: String) -> DetectedItem {

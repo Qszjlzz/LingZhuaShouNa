@@ -1,0 +1,25 @@
+{
+  "camera_used": false,
+  "edit_requests": 1,
+  "elapsed_seconds": 70.83126294612885,
+  "fidelity_status": "FAILED_VISUAL_REVIEW",
+  "input_height": 1254,
+  "input_sha256": "28653353145ceec354420008e731ea789ccbffffacb46fbe4f4134da89334aec",
+  "input_width": 1254,
+  "model": "gpt-image-2",
+  "output_decoded": true,
+  "output_height": 1254,
+  "output_sha256": "39ca5810aa58d21dc8c97de3db6e829344630934fdb9e3f76c4184433ddd6924",
+  "output_width": 1254,
+  "real_holdout": false,
+  "requested_size": "1024x1024",
+  "source_type": "synthetic_development",
+  "visual_findings": [
+    "输入黑笔2支（上1下1），输出3支（上2下1），明确新增一支。",
+    "黑色按键设备的按键排列与外形发生重绘，不能作为原物身份严格保留。",
+    "画幅比例与1254x1254尺寸保持，但供应商未采用请求的1024x1024；尺寸参数不能当实际输出尺寸。",
+    "当前单图整体保真失败，不将接口成功和图片解码通过算效果达标。"
+  ],
+  "test_bundle": "/tmp/smartpaw-ai-preview-20261023.xcresult",
+  "test_pass_scope": "一次生产edit可解码；视觉保真失败"
+}

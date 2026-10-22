@@ -60,3 +60,4 @@ WebDemo/versions/
 
 # 本地大模型配置（含密钥，绝不入库）
 Resources/llm-defaults.json
+Resources/image-generation.json

@@ -1,0 +1,94 @@
+{
+  "environment": "Chromium browser, bridge fixture, 390 and 320 CSS px. Not iPhone or cloud validation.",
+  "checks": [
+    {
+      "label": "390 selective scan import",
+      "passed": true
+    },
+    {
+      "label": "390 long press enters editing",
+      "passed": true
+    },
+    {
+      "label": "390 drag different categories creates folder without changing inventory",
+      "passed": true
+    },
+    {
+      "label": "390 rename, move out, drag into existing folder",
+      "passed": true
+    },
+    {
+      "label": "390 manual name/image and root reorder persist",
+      "passed": true
+    },
+    {
+      "label": "390 root responsive layout",
+      "viewport": 390,
+      "document": 390,
+      "offscreen": []
+    },
+    {
+      "label": "390 page reload preserves folders, image and sorting",
+      "passed": true
+    },
+    {
+      "label": "390 repeat import disabled; dissolving folder retains all items",
+      "passed": true
+    },
+    {
+      "label": "390 final layout",
+      "viewport": 390,
+      "document": 390,
+      "offscreen": []
+    },
+    {
+      "label": "390 library operations do not upload, delete or mutate native scan records",
+      "passed": true
+    },
+    {
+      "label": "320 selective scan import",
+      "passed": true
+    },
+    {
+      "label": "320 long press enters editing",
+      "passed": true
+    },
+    {
+      "label": "320 drag different categories creates folder without changing inventory",
+      "passed": true
+    },
+    {
+      "label": "320 rename, move out, drag into existing folder",
+      "passed": true
+    },
+    {
+      "label": "320 manual name/image and root reorder persist",
+      "passed": true
+    },
+    {
+      "label": "320 root responsive layout",
+      "viewport": 320,
+      "document": 320,
+      "offscreen": []
+    },
+    {
+      "label": "320 page reload preserves folders, image and sorting",
+      "passed": true
+    },
+    {
+      "label": "320 repeat import disabled; dissolving folder retains all items",
+      "passed": true
+    },
+    {
+      "label": "320 final layout",
+      "viewport": 320,
+      "document": 320,
+      "offscreen": []
+    },
+    {
+      "label": "320 library operations do not upload, delete or mutate native scan records",
+      "passed": true
+    }
+  ],
+  "errors": []
+}

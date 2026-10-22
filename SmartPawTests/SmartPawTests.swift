@@ -1,6 +1,305 @@
 import XCTest
 import UIKit
+import WebKit
+import SwiftUI
 @testable import SmartPaw
+
+final class ImageGenerationServiceTests: XCTestCase {
+    func testGeneratedPreviewCanBeRestoredAfterManagerRecreation() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("smartpaw-image-cache-test-\(UUID().uuidString)", isDirectory: true)
+        let suite = "SmartPaw.image-cache-tests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+            defaults.removePersistentDomain(forName: suite)
+        }
+        let manager = ImageGenerationManager(documentsDirectory: directory)
+        let cacheID = "space-123-plan-456"
+        let jpeg = try XCTUnwrap(UIImage.smartPawTestImage().jpegData(compressionQuality: 0.8))
+        let prompt = "preserve this room"
+        let fingerprintedID = ImageGenerationManager.fingerprintedCacheID(cacheID, imageData: jpeg, prompt: prompt)
+        let saved = try manager.persistGeneratedImage(jpeg, cacheID: fingerprintedID)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: saved.path))
+
+        let relaunchedManager = ImageGenerationManager(defaults: defaults, documentsDirectory: directory)
+        XCTAssertEqual(relaunchedManager.cachedPreview(cacheID: cacheID, imageData: jpeg, prompt: prompt)?.path, saved.path)
+        XCTAssertNil(relaunchedManager.cachedPreview(cacheID: cacheID, imageData: jpeg, prompt: "a changed goal"))
+        XCTAssertNil(relaunchedManager.cachedPreview(cacheID: cacheID, imageData: Data([1, 2, 3]), prompt: prompt))
+        XCTAssertNil(relaunchedManager.cachedPreview(cacheID: "another-space-plan", imageData: jpeg, prompt: prompt))
+    }
+
+    func testGPTImage2MultipartUsesSupportedFieldsAndJPEG() async throws {
+        let image = try XCTUnwrap(UIImage.smartPawTestImage().jpegData(compressionQuality: 0.8))
+        let fixture = try makeImageService(statusCode: 200, object: ["data": [["b64_json": image.base64EncodedString()]]]) { request in
+            XCTAssertEqual(request.httpMethod, "POST")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer test-only-key")
+            XCTAssertTrue(request.value(forHTTPHeaderField: "Content-Type")?.hasPrefix("multipart/form-data; boundary=SmartPaw-") == true)
+            let body = Self.requestBody(request)
+            let text = String(decoding: body, as: UTF8.self)
+            for field in ["model", "prompt", "n", "size", "image"] {
+                XCTAssertTrue(text.contains("name=\"\(field)\""), "Missing field \(field)")
+            }
+            XCTAssertTrue(text.contains("gpt-image-2"))
+            XCTAssertTrue(text.contains("test organization prompt"))
+            XCTAssertTrue(text.contains("filename=\"space.jpg\""))
+            XCTAssertTrue(text.contains("Content-Type: image/jpeg"))
+            XCTAssertNotNil(body.range(of: image))
+            XCTAssertFalse(text.contains("name=\"quality\""))
+            XCTAssertFalse(text.contains("name=\"response_format\""))
+        }
+        defer { fixture.cleanup() }
+        _ = try await fixture.service.editImage(fixture.request(imageData: image))
+    }
+
+    func testBase64ResponseReturnsRealImageData() async throws {
+        let image = try XCTUnwrap(UIImage.smartPawTestImage().pngData())
+        let fixture = try makeImageService(statusCode: 200, object: ["data": [["b64_json": image.base64EncodedString()]]])
+        defer { fixture.cleanup() }
+        let result = try await fixture.service.editImage(fixture.request(imageData: image))
+        XCTAssertEqual(result.imageData, image)
+        XCTAssertNotNil(UIImage(data: result.imageData))
+    }
+
+    func testHTTPSURLResponseDownloadsImageBytes() async throws {
+        let image = try XCTUnwrap(UIImage.smartPawTestImage().pngData())
+        let downloadURL = URL(string: "https://smartpaw-image-tests.invalid/\(UUID().uuidString)-download")!
+        ImageGenerationURLProtocol.register(url: downloadURL) { request in
+            XCTAssertEqual(request.httpMethod, "GET")
+            return (HTTPURLResponse(url: downloadURL, statusCode: 200, httpVersion: "HTTP/1.1", headerFields: ["Content-Type": "image/png"])!, image)
+        }
+        let endpoint = URL(string: "https://smartpaw-image-tests.invalid/\(UUID().uuidString)")!
+        let body = try JSONSerialization.data(withJSONObject: ["data": [["url": downloadURL.absoluteString]]])
+        ImageGenerationURLProtocol.register(url: endpoint) { _ in
+            (HTTPURLResponse(url: endpoint, statusCode: 200, httpVersion: "HTTP/1.1", headerFields: ["Content-Type": "application/json"])!, body)
+        }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [ImageGenerationURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        defer {
+            session.invalidateAndCancel()
+            ImageGenerationURLProtocol.unregister(url: endpoint)
+            ImageGenerationURLProtocol.unregister(url: downloadURL)
+        }
+        let service = OpenAICompatibleImageGenerationService(session: session)
+        let request = ImageGenerationRequest(imageData: image, prompt: "test", settings: ImageGenerationSettings(
+            enabled: true, provider: "test", endpoint: endpoint.absoluteString, model: "gpt-image-2",
+            size: "1024x1024", quality: "", responseFormat: "", timeoutSeconds: 30
+        ), apiKey: "test-only-key")
+        let result = try await service.editImage(request)
+        XCTAssertEqual(result.imageData, image)
+    }
+
+    func testHTTPFailuresDoNotExposeProviderText() async throws {
+        let providerSecret = "upstream-test-key-and-private-photo-prompt"
+        for statusCode in [401, 429] {
+            let fixture = try makeImageService(statusCode: statusCode, object: ["error": ["message": providerSecret]])
+            defer { fixture.cleanup() }
+            do {
+                _ = try await fixture.service.editImage(fixture.request(imageData: Data([0xFF, 0xD8, 0xFF])))
+                XCTFail("Expected HTTP failure")
+            } catch {
+                XCTAssertEqual(error as? ImageGenerationError, .requestFailed(statusCode: statusCode))
+                XCTAssertFalse(error.localizedDescription.contains(providerSecret))
+                XCTAssertTrue(error.localizedDescription.contains(statusCode == 401 ? "鉴权" : "限流"))
+            }
+        }
+    }
+
+    func testResponseShapeDiagnosticNeverIncludesProviderContent() async throws {
+        let observed = expectation(description: "safe response shape observed")
+        let fixture = try makeImageService(statusCode: 200, object: ["error": ["message": "private-key-photo-prompt"], "url": "https://private.invalid/signed-token"], responseObserver: { shape in
+            XCTAssertEqual(shape["status"], "200")
+            XCTAssertEqual(shape["has_error"], "true")
+            XCTAssertEqual(shape["has_data_array"], "false")
+            XCTAssertEqual(Set(shape.keys), Set(["status", "response_bytes", "content_type", "has_data_array", "has_error"]))
+            XCTAssertFalse(String(describing: shape).contains("private-"))
+            observed.fulfill()
+        })
+        defer { fixture.cleanup() }
+        do {
+            _ = try await fixture.service.editImage(fixture.request(imageData: Data([0xFF, 0xD8, 0xFF])))
+            XCTFail("Expected invalid response")
+        } catch { XCTAssertEqual(error as? ImageGenerationError, .invalidResponse) }
+        await fulfillment(of: [observed], timeout: 1)
+    }
+
+    func testMalformedResponseNeverReturnsOriginalImage() async throws {
+        let fixture = try makeImageService(statusCode: 200, object: ["data": [["b64_json": Data("not an image".utf8).base64EncodedString()]]])
+        defer { fixture.cleanup() }
+        do {
+            _ = try await fixture.service.editImage(fixture.request(imageData: Data([0xFF, 0xD8, 0xFF])))
+            XCTFail("Expected invalid response")
+        } catch {
+            XCTAssertEqual(error as? ImageGenerationError, .invalidResponse)
+        }
+    }
+
+    func testTimedOutRequestMapsToSafeTimeoutError() async throws {
+        let fixture = makeFailingImageService(error: URLError(.timedOut))
+        defer { fixture.cleanup() }
+        do {
+            _ = try await fixture.service.editImage(fixture.request(imageData: Data([0xFF, 0xD8, 0xFF])))
+            XCTFail("Expected timeout")
+        } catch {
+            XCTAssertEqual(error as? ImageGenerationError, .timedOut)
+            XCTAssertTrue(error.localizedDescription.contains("超时"))
+        }
+    }
+
+    func testCancelledRequestMapsToSafeCancellationError() async throws {
+        let started = expectation(description: "URLProtocol started the pending image request")
+        let fixture = makeHangingImageService { started.fulfill() }
+        defer { fixture.cleanup() }
+        let operation = Task {
+            try await fixture.service.editImage(fixture.request(imageData: Data([0xFF, 0xD8, 0xFF])))
+        }
+        await fulfillment(of: [started], timeout: 3)
+        operation.cancel()
+        do {
+            _ = try await operation.value
+            XCTFail("Expected cancellation")
+        } catch {
+            XCTAssertEqual(error as? ImageGenerationError, .cancelled)
+            XCTAssertTrue(error.localizedDescription.contains("已取消"))
+        }
+    }
+
+    func testURLCancelledRequestMapsToSafeCancellationError() async throws {
+        let fixture = makeFailingImageService(error: URLError(.cancelled))
+        defer { fixture.cleanup() }
+        do {
+            _ = try await fixture.service.editImage(fixture.request(imageData: Data([0xFF, 0xD8, 0xFF])))
+            XCTFail("Expected cancellation")
+        } catch {
+            XCTAssertEqual(error as? ImageGenerationError, .cancelled)
+        }
+    }
+
+    private func makeImageService(statusCode: Int, object: [String: Any], responseObserver: (@Sendable ([String: String]) -> Void)? = nil, inspect: ((URLRequest) -> Void)? = nil) throws -> ImageServiceFixture {
+        let url = URL(string: "https://smartpaw-image-tests.invalid/\(UUID().uuidString)")!
+        let body = try JSONSerialization.data(withJSONObject: object)
+        ImageGenerationURLProtocol.register(url: url) { request in
+            inspect?(request)
+            return (HTTPURLResponse(url: url, statusCode: statusCode, httpVersion: "HTTP/1.1", headerFields: ["Content-Type": "application/json"])!, body)
+        }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [ImageGenerationURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        return ImageServiceFixture(url: url, session: session, service: OpenAICompatibleImageGenerationService(session: session, responseObserver: responseObserver))
+    }
+
+    private func makeFailingImageService(error: Error) -> ImageServiceFixture {
+        let url = URL(string: "https://smartpaw-image-tests.invalid/\(UUID().uuidString)")!
+        ImageGenerationURLProtocol.registerFailure(url: url, error: error)
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [ImageGenerationURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        return ImageServiceFixture(url: url, session: session, service: OpenAICompatibleImageGenerationService(session: session))
+    }
+
+    private func makeHangingImageService(onStart: @escaping () -> Void) -> ImageServiceFixture {
+        let url = URL(string: "https://smartpaw-image-tests.invalid/\(UUID().uuidString)")!
+        ImageGenerationURLProtocol.registerHang(url: url, onStart: onStart)
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [ImageGenerationURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        return ImageServiceFixture(url: url, session: session, service: OpenAICompatibleImageGenerationService(session: session))
+    }
+
+    private static func requestBody(_ request: URLRequest) -> Data {
+        if let body = request.httpBody { return body }
+        guard let stream = request.httpBodyStream else { return Data() }
+        stream.open()
+        defer { stream.close() }
+        var body = Data()
+        var buffer = [UInt8](repeating: 0, count: 4096)
+        while stream.hasBytesAvailable {
+            let count = stream.read(&buffer, maxLength: buffer.count)
+            if count <= 0 { break }
+            body.append(contentsOf: buffer.prefix(count))
+        }
+        return body
+    }
+}
+
+private struct ImageServiceFixture {
+    let url: URL
+    let session: URLSession
+    let service: OpenAICompatibleImageGenerationService
+
+    func request(imageData: Data) -> ImageGenerationRequest {
+        ImageGenerationRequest(imageData: imageData, prompt: "test organization prompt", settings: ImageGenerationSettings(
+            enabled: true, provider: "test", endpoint: url.absoluteString, model: "gpt-image-2", size: "1024x1024",
+            quality: "unsupported-must-be-omitted", responseFormat: "unsupported-must-be-omitted", timeoutSeconds: 30
+        ), apiKey: "test-only-key")
+    }
+
+    func cleanup() {
+        session.invalidateAndCancel()
+        ImageGenerationURLProtocol.unregister(url: url)
+    }
+}
+
+private final class ImageGenerationURLProtocol: URLProtocol {
+    private static let registryLock = NSLock()
+    private enum StubResult {
+        case response(HTTPURLResponse, Data)
+        case failure(Error)
+        case hang(() -> Void)
+    }
+    nonisolated(unsafe) private static var handlers: [URL: (URLRequest) -> StubResult] = [:]
+
+    static func register(url: URL, handler: @escaping (URLRequest) -> (HTTPURLResponse, Data)) {
+        registryLock.lock()
+        defer { registryLock.unlock() }
+        handlers[url] = { request in
+            let (response, data) = handler(request)
+            return .response(response, data)
+        }
+    }
+
+    static func registerFailure(url: URL, error: Error) {
+        registryLock.lock()
+        defer { registryLock.unlock() }
+        handlers[url] = { _ in .failure(error) }
+    }
+
+    static func registerHang(url: URL, onStart: @escaping () -> Void) {
+        registryLock.lock()
+        defer { registryLock.unlock() }
+        handlers[url] = { _ in .hang(onStart) }
+    }
+
+    static func unregister(url: URL) {
+        registryLock.lock()
+        defer { registryLock.unlock() }
+        handlers.removeValue(forKey: url)
+    }
+
+    override class func canInit(with request: URLRequest) -> Bool { request.url?.host == "smartpaw-image-tests.invalid" }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        Self.registryLock.lock()
+        let handler = request.url.flatMap { Self.handlers[$0] }
+        Self.registryLock.unlock()
+        guard let handler else {
+            client?.urlProtocol(self, didFailWithError: URLError(.resourceUnavailable))
+            return
+        }
+        switch handler(request) {
+        case .response(let response, let data):
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: data)
+            client?.urlProtocolDidFinishLoading(self)
+        case .failure(let error):
+            client?.urlProtocol(self, didFailWithError: error)
+        case .hang(let onStart):
+            onStart()
+        }
+    }
+    override func stopLoading() {}
+}
 
 final class SmartPawTests: XCTestCase {
     func testMobileCLIPResourcesLoadAndEncodeText() async throws {
@@ -239,6 +538,394 @@ final class SmartPawTests: XCTestCase {
             XCTAssertTrue(items.allSatisfy { $0.arHint != nil }, "实时扫描候选必须带稳定的定位框。")
             print("SMARTPAW_LIVE_PHOTO \(name): \(items.map { "\($0.name)|\($0.category.rawValue)|\(Int($0.confidence * 100))%|mask:\($0.arMask?.points.count ?? 0)" }.joined(separator: "; "))")
         }
+    }
+
+    func testRepeatedPhotoRecognitionOverlappingLiveFramesSurvives() async throws {
+        let service = YOLOSegmentationScanService()
+        let image = try XCTUnwrap(UIImage(named: AppSampleAssets.messyDesk))
+        for iteration in 0..<2 {
+            async let photoItems = service.scanImage(image)
+            async let liveItems = service.scanLiveImage(image)
+            let (photo, live) = try await (photoItems, liveItems)
+            XCTAssertFalse(photo.isEmpty, "Photo inference failed on iteration \(iteration)")
+            XCTAssertFalse(live.isEmpty, "Live inference failed on iteration \(iteration)")
+            XCTAssertTrue(photo.allSatisfy { $0.confidence.isFinite })
+        }
+    }
+
+    /// Opt in via the xctestrun environment; never opens the camera in ordinary test runs.
+    /// Uses production bridge/AVFoundation/local inference, with an isolated state store.
+    /// The small HTML receiver is a bridge harness, not the React shoot-flow UI.
+    @MainActor
+    func testHardwareCameraSixCapturesThroughProductionBridge() async throws {
+        try await verifyHardwareCameraCaptures(waitAfterEachCapture: true)
+    }
+
+    @MainActor
+    func testHardwareCameraBurstQueueThroughProductionBridge() async throws {
+        try await verifyHardwareCameraCaptures(waitAfterEachCapture: false)
+    }
+
+    @MainActor
+    private func verifyHardwareCameraCaptures(waitAfterEachCapture: Bool) async throws {
+        #if targetEnvironment(simulator)
+        throw XCTSkip("Requires a connected, unlocked physical iPhone.")
+        #else
+        guard ProcessInfo.processInfo.environment["SMARTPAW_RUN_CAMERA_HARDWARE"] == "1" else {
+            throw XCTSkip("Explicit hardware-camera opt-in is required.")
+        }
+        let suite = "SmartPaw.hardware-tests.\(UUID().uuidString)"
+        let isolatedDefaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        let isolatedDocuments = FileManager.default.temporaryDirectory
+            .appendingPathComponent(suite, isDirectory: true)
+        try FileManager.default.createDirectory(at: isolatedDocuments, withIntermediateDirectories: true)
+        defer {
+            isolatedDefaults.removePersistentDomain(forName: suite)
+            try? FileManager.default.removeItem(at: isolatedDocuments)
+        }
+        let store = InMemoryStorageStore()
+        let dependencies = AppDependencies(
+            scanService: YOLOSegmentationScanService(),
+            planningService: RuleBasedPlanningService(),
+            cloudPlanningService: PassthroughCloudPlanningService(),
+            storageStore: store, credentialStore: InMemoryCredentialStore()
+        )
+        let model = AppViewModel(dependencies: dependencies, defaults: isolatedDefaults, documentsDirectory: isolatedDocuments)
+        let coordinator = CurrentFigmaMakeWebView.Coordinator(viewModel: model)
+        let configuration = WKWebViewConfiguration()
+        configuration.userContentController.add(coordinator, name: "smartpaw")
+        let webView = WKWebView(frame: CGRect(x: 0, y: 0, width: 390, height: 844), configuration: configuration)
+        coordinator.webView = webView
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let previousWindow = scene.windows.first(where: \.isKeyWindow)
+        let window = UIWindow(windowScene: scene)
+        let controller = UIViewController()
+        controller.view.addSubview(webView)
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        let previousIdleSetting = UIApplication.shared.isIdleTimerDisabled
+        UIApplication.shared.isIdleTimerDisabled = true
+        var savedImages = Set<URL>()
+        defer {
+            coordinator.stopCaptureWork()
+            configuration.userContentController.removeScriptMessageHandler(forName: "smartpaw")
+            window.isHidden = true
+            previousWindow?.makeKeyAndVisible()
+            UIApplication.shared.isIdleTimerDisabled = previousIdleSetting
+            for url in savedImages { try? FileManager.default.removeItem(at: url) }
+        }
+        webView.loadHTMLString("""
+        <html><body><h1>Real camera bridge regression</h1><div id=photos></div><script>
+        window.__hardwareResponses={};
+        window.__smartPawReceive=function(r){if(r.requestId)window.__hardwareResponses[r.requestId]=r;
+        if(r.data&&r.data.preview){var i=document.createElement('img');i.src=r.data.preview;i.width=100;document.getElementById('photos').appendChild(i);}};
+        </script></body></html>
+        """, baseURL: nil)
+        let loadDeadline = Date().addingTimeInterval(15)
+        while Date() < loadDeadline {
+            if (try? await webView.evaluateJavaScript("typeof window.__smartPawReceive === 'function'")) as? Bool == true { break }
+            try await Task.sleep(nanoseconds: 50_000_000)
+        }
+        let receiverType = try await webView.evaluateJavaScript("typeof window.__smartPawReceive") as? String
+        XCTAssertEqual(receiverType, "function")
+        _ = try await hardwareBridgeRequest(webView, command: "scan.begin")
+        let started = try await hardwareBridgeRequest(webView, command: "camera.preview.start", payload: ["x": 0, "y": 0, "width": 390, "height": 500])
+        XCTAssertEqual(started["ok"] as? Bool, true, "Real camera must start; permission/lock failures are not a pass.")
+        var captureIDs: [String] = []
+        for index in 1...6 {
+            let id = UUID().uuidString
+            captureIDs.append(id)
+            let captured = try await hardwareBridgeRequest(webView, command: "camera.capture", payload: ["captureID": id], timeout: 20)
+            let preview = try XCTUnwrap(captured["preview"] as? String)
+            XCTAssertTrue(preview.hasPrefix("data:image/jpeg;base64,"))
+            XCTAssertLessThan(preview.utf8.count, 1_000_000, "Only a thumbnail may cross the bridge.")
+            if waitAfterEachCapture {
+                _ = try await hardwareBridgeRequest(webView, command: "scan.await", payload: ["captureIDs": captureIDs], timeout: 300)
+                XCTAssertFalse(model.isScanning)
+                XCTAssertTrue(model.lastScanPersisted)
+            }
+            // The burst path must not wait on recognition before requesting the next capture.
+            let thumbnailData = try XCTUnwrap(Data(base64Encoded: String(preview.dropFirst("data:image/jpeg;base64,".count))))
+            let image = try XCTUnwrap(waitAfterEachCapture ? model.capturedImage : UIImage(data: thumbnailData))
+            let pixels = try XCTUnwrap(image.cgImage)
+            XCTAssertLessThanOrEqual(max(pixels.width, pixels.height), 2048)
+            if let url = model.imageURL(for: model.selectedSpace.beforeImageName) { savedImages.insert(url) }
+            let attachment = XCTAttachment(image: image)
+            attachment.name = "real-camera-\(index)-\(pixels.width)x\(pixels.height)"
+            attachment.lifetime = .keepAlways
+            add(attachment)
+            print("SMARTPAW_HARDWARE_CAPTURE index=\(index) pixels=\(pixels.width)x\(pixels.height) thumbnailBytes=\(preview.utf8.count) items=\(model.scannedItems.count) persisted=\(model.lastScanPersisted)")
+        }
+        let completed = try await hardwareBridgeRequest(webView, command: "scan.await", payload: ["captureIDs": captureIDs], timeout: 300)
+        XCTAssertFalse(model.isScanning)
+        XCTAssertTrue(model.lastScanPersisted)
+        for id in captureIDs {
+            let result = try await hardwareBridgeRequest(webView, command: "scan.results", payload: ["captureID": id])
+            XCTAssertEqual(result["ready"] as? Bool, true)
+        }
+        let completedItems = completed["items"] as? [[String: Any]] ?? []
+        print("SMARTPAW_HARDWARE_QUEUE captures=\(captureIDs.count) waitAfterEach=\(waitAfterEachCapture) completedItems=\(completedItems.count) persisted=\(model.lastScanPersisted)")
+        let rendered = try await webView.evaluateJavaScript("Array.from(document.images).filter(i=>i.complete&&i.naturalWidth>0).length")
+        XCTAssertEqual(rendered as? Int, 6, "WebContent must decode all six real thumbnails.")
+        if model.scannedItems.contains(where: \.isSelected) {
+            _ = try await hardwareBridgeRequest(webView, command: "plan.generate")
+            XCTAssertFalse(try XCTUnwrap(model.activePlan).steps.isEmpty)
+            let restored = AppViewModel(dependencies: dependencies, defaults: isolatedDefaults, documentsDirectory: isolatedDocuments)
+            XCTAssertEqual(restored.activePlan?.id, model.activePlan?.id)
+            print("SMARTPAW_HARDWARE_LOCAL_PLAN steps=\(model.activePlan?.steps.count ?? 0) restored=true")
+        } else {
+            print("SMARTPAW_HARDWARE_LOCAL_PLAN not_covered=no_selected_detections")
+        }
+        _ = try await hardwareBridgeRequest(webView, command: "scan.cancel")
+        XCTAssertFalse(CameraEngine.shared.isReady)
+        #endif
+    }
+
+    @MainActor
+    private func hardwareBridgeRequest(_ webView: WKWebView, command: String, payload: [String: Any] = [:], timeout: TimeInterval = 30) async throws -> [String: Any] {
+        let id = UUID().uuidString
+        let request: [String: Any] = ["requestId": id, "command": command, "payload": payload]
+        let json = String(decoding: try JSONSerialization.data(withJSONObject: request), as: UTF8.self)
+        _ = try await webView.evaluateJavaScript("window.webkit.messageHandlers.smartpaw.postMessage(\(json)); true")
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if let response = try await webView.evaluateJavaScript("window.__hardwareResponses['\(id)'] || null") as? [String: Any] {
+                guard response["status"] as? String == "success" else {
+                    throw NSError(domain: "SmartPawHardwareBridge", code: 1, userInfo: [NSLocalizedDescriptionKey: "\(command): \(response["message"] ?? response)"])
+                }
+                return response["data"] as? [String: Any] ?? [:]
+            }
+            try await Task.sleep(nanoseconds: 50_000_000)
+        }
+        throw NSError(domain: "SmartPawHardwareBridge", code: 2, userInfo: [NSLocalizedDescriptionKey: "\(command) timed out"])
+    }
+
+    @MainActor
+    func testHardwareReactPhotoRetakeDeleteAndLocalPlan() async throws {
+        #if targetEnvironment(simulator)
+        throw XCTSkip("Requires a physical iPhone and a lit scene with recognizable objects.")
+        #else
+        guard ProcessInfo.processInfo.environment["SMARTPAW_RUN_CAMERA_HARDWARE"] == "1" else {
+            throw XCTSkip("Explicit hardware-camera opt-in is required.")
+        }
+        let suite = "SmartPaw.hardware-tests.\(UUID().uuidString)"
+        let isolatedDefaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        let isolatedDocuments = FileManager.default.temporaryDirectory
+            .appendingPathComponent(suite, isDirectory: true)
+        try FileManager.default.createDirectory(at: isolatedDocuments, withIntermediateDirectories: true)
+        defer {
+            isolatedDefaults.removePersistentDomain(forName: suite)
+            try? FileManager.default.removeItem(at: isolatedDocuments)
+        }
+        let stateURL = isolatedDocuments.appendingPathComponent("hardware-state.json")
+        let credentials = InMemoryCredentialStore()
+        func isolatedDependencies() -> AppDependencies {
+            AppDependencies(
+                scanService: YOLOSegmentationScanService(), planningService: RuleBasedPlanningService(),
+                cloudPlanningService: PassthroughCloudPlanningService(),
+                storageStore: JSONStorageStore(stateURL: stateURL, credentialStore: credentials),
+                credentialStore: credentials)
+        }
+        func restoredModel(selecting spaceID: UUID? = nil) -> AppViewModel {
+            let restored = AppViewModel(dependencies: isolatedDependencies(), defaults: isolatedDefaults,
+                                        documentsDirectory: isolatedDocuments)
+            // Selection is UI state, not part of AppStateSnapshot. New models select the first space.
+            if let spaceID { restored.selectSpace(spaceID) }
+            return restored
+        }
+        func printVerifiedStage(_ message: String) throws {
+            guard (testRun?.failureCount ?? 0) == 0 else {
+                throw NSError(domain: "SmartPawHardwareUI", code: 2, userInfo: [
+                    NSLocalizedDescriptionKey: "A preceding assertion failed; stage success is not verified."
+                ])
+            }
+            print(message)
+        }
+        let model = restoredModel()
+        let testSpaceID = try XCTUnwrap(model.addSpace(name: "真机页面验收-\(UUID().uuidString.prefix(6))"))
+        XCTAssertEqual(model.selectedSpaceID, testSpaceID)
+        XCTAssertFalse(model.llmSettings.canRequest)
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let previousWindow = scene.windows.first(where: \.isKeyWindow)
+        let window = UIWindow(windowScene: scene)
+        let host = UIHostingController(rootView: CurrentFigmaMakeWebView().environmentObject(model))
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        let previousIdleSetting = UIApplication.shared.isIdleTimerDisabled
+        UIApplication.shared.isIdleTimerDisabled = true
+        var savedImages = Set<URL>()
+        var testedWebView: WKWebView?
+        defer {
+            model.cancelScanWork()
+            CameraPreviewOverlay.shared.disarm()
+            CameraEngine.shared.stop()
+            testedWebView?.configuration.userContentController.removeScriptMessageHandler(forName: "smartpaw")
+            testedWebView?.navigationDelegate = nil
+            window.isHidden = true
+            previousWindow?.makeKeyAndVisible()
+            UIApplication.shared.isIdleTimerDisabled = previousIdleSetting
+            if let url = model.imageURL(for: model.selectedSpace.beforeImageName) { savedImages.insert(url) }
+            for url in savedImages { try? FileManager.default.removeItem(at: url) }
+        }
+        func findWebView(_ view: UIView) -> WKWebView? {
+            if let webView = view as? WKWebView { return webView }
+            return view.subviews.lazy.compactMap { findWebView($0) }.first
+        }
+        let mountDeadline = Date().addingTimeInterval(20)
+        while testedWebView == nil, Date() < mountDeadline {
+            testedWebView = findWebView(host.view)
+            if testedWebView == nil { try await Task.sleep(nanoseconds: 100_000_000) }
+        }
+        let webView = try XCTUnwrap(testedWebView)
+        try await hardwareUIWait(webView, predicate: "document.body.innerText.includes('空间地图')")
+        let opened = try await webView.evaluateJavaScript("(() => { const b=Array.from(document.querySelectorAll('button')).find(b=>b.querySelector('svg.lucide-camera')); if(!b)return false;b.click();return true;})()")
+        XCTAssertEqual(opened as? Bool, true)
+        try await hardwareUIWait(webView, predicate: "document.body.innerText.includes('多张连拍')")
+        let ready = await CameraEngine.shared.waitUntilReady(timeout: 10)
+        XCTAssertTrue(ready)
+        for capture in 1...3 {
+            let shutter = try await webView.evaluateJavaScript("(() => {const b=Array.from(document.querySelectorAll('button')).find(b=>b.style.width==='72px'&&b.style.height==='72px');if(!b)return false;b.click();return true;})()")
+            XCTAssertEqual(shutter as? Bool, true)
+            try await hardwareUIWait(webView, predicate: "document.body.innerText.includes('1 / 1') && document.body.innerText.includes('重拍这张')", timeout: 25)
+            let recognitionDeadline = Date().addingTimeInterval(90)
+            while (model.isScanning || model.capturedImage == nil), Date() < recognitionDeadline {
+                try await Task.sleep(nanoseconds: 100_000_000)
+            }
+            XCTAssertFalse(model.isScanning)
+            XCTAssertNotNil(model.capturedImage)
+            if let url = model.imageURL(for: model.selectedSpace.beforeImageName) { savedImages.insert(url) }
+            try printVerifiedStage("SMARTPAW_HARDWARE_REACT capture=\(capture) preview=1/1 items=\(model.scannedItems.count)")
+            if capture == 1 {
+                try await hardwareUIClick(webView, text: "重拍这张")
+                try await hardwareUIWait(webView, predicate: "document.body.innerText.includes('重拍第 1 张')")
+            } else if capture == 2 {
+                try await hardwareUIClick(webView, text: "删除")
+                try await hardwareUIWait(webView, predicate: "document.body.innerText.includes('多张连拍') && !document.body.innerText.includes('重拍这张')")
+            }
+        }
+        // Swipe the real carousel to its plus card, add a second real photo, then delete it.
+        for (event, x) in [("mousedown", 300), ("mousemove", 100), ("mouseup", 100)] {
+            let swiped = try await webView.evaluateJavaScript("(() => {const e=Array.from(document.querySelectorAll('div')).find(e=>e.style.top==='108px'&&e.style.overflow==='hidden');if(!e)return false;e.dispatchEvent(new MouseEvent('\(event)',{bubbles:true,clientX:\(x),clientY:300}));return true;})()")
+            XCTAssertEqual(swiped as? Bool, true)
+        }
+        try await hardwareUIWait(webView, predicate: "Array.from(document.querySelectorAll('button')).some(b=>b.innerText.trim()==='重拍这张'&&b.disabled)")
+        let added = try await webView.evaluateJavaScript("(() => {const e=Array.from(document.querySelectorAll('div')).find(e=>e.style.cursor==='pointer'&&e.innerText.trim()==='添加照片');if(!e)return false;e.click();return true;})()")
+        XCTAssertEqual(added as? Bool, true)
+        try await hardwareUIWait(webView, predicate: "document.body.innerText.includes('多张连拍') && !document.body.innerText.includes('重拍这张')")
+        let addCameraReady = await CameraEngine.shared.waitUntilReady(timeout: 10)
+        XCTAssertTrue(addCameraReady)
+        _ = try await webView.evaluateJavaScript("Array.from(document.querySelectorAll('button')).find(b=>b.style.width==='72px'&&b.style.height==='72px').click();true")
+        try await hardwareUIWait(webView, predicate: "document.body.innerText.includes('2 / 2')", timeout: 25)
+        try await hardwareUIClick(webView, text: "删除")
+        try await hardwareUIWait(webView, predicate: "document.body.innerText.includes('1 / 1')")
+        try printVerifiedStage("SMARTPAW_HARDWARE_REACT carouselAdd=2/2 deleteNeighbor=1/1")
+        let photoSnapshot: UIImage? = await withCheckedContinuation { continuation in
+            webView.takeSnapshot(with: nil) { image, _ in continuation.resume(returning: image) }
+        }
+        let previewAttachment = XCTAttachment(image: try XCTUnwrap(photoSnapshot))
+        previewAttachment.name = "production-react-real-photo-preview"
+        previewAttachment.lifetime = .keepAlways
+        add(previewAttachment)
+        try await hardwareUIClick(webView, text: "提交")
+        try await hardwareUIWait(webView, predicate: "document.body.innerText.includes('确认方案，开始整理')", timeout: 120)
+        try await hardwareUIClick(webView, text: "确认方案，开始整理")
+        try await hardwareUIWait(webView, predicate: "document.body.innerText.includes('选择整理分区')")
+        try await hardwareUIClick(webView, text: "开始 →")
+        try await hardwareUIWait(webView, predicate: "document.body.innerText.includes('Step 1/')", timeout: 90)
+        XCTAssertFalse(try XCTUnwrap(model.activePlan).steps.isEmpty)
+        XCTAssertFalse(model.scannedItems.isEmpty, "A black/empty scene must not close the recognition-to-plan gate.")
+        try printVerifiedStage("SMARTPAW_HARDWARE_REACT planSteps=\(model.activePlan?.steps.count ?? 0) reachedGuide=true")
+        // Observe replies while retaining the production React request receiver.
+        _ = try await webView.evaluateJavaScript("(() => { window.__hardwareResponses={}; const receive=window.__smartPawReceive; window.__smartPawReceive=(response)=>{window.__hardwareResponses[response.requestId]=response;receive?.(response);};return true;})()")
+        let plan = try XCTUnwrap(model.activePlan)
+        let spaceID = model.selectedSpace.id
+        XCTAssertEqual(spaceID, testSpaceID)
+        let completedBefore = model.selectedSpace.completedPlans.count
+        _ = try await hardwareBridgeRequest(webView, command: "plan.pause.set", payload: [
+            "spaceID": spaceID.uuidString, "planID": plan.id.uuidString, "isPaused": true
+        ])
+        let pausedDiskModel = restoredModel(selecting: testSpaceID)
+        XCTAssertEqual(pausedDiskModel.activePlan?.id, plan.id)
+        XCTAssertEqual(pausedDiskModel.activePlan?.isPaused, true)
+        XCTAssertEqual(pausedDiskModel.activePlan?.steps.map(\.status), plan.steps.map(\.status))
+        _ = try await hardwareBridgeRequest(webView, command: "plan.pause.set", payload: [
+            "spaceID": spaceID.uuidString, "planID": plan.id.uuidString, "isPaused": false
+        ])
+        XCTAssertEqual(restoredModel(selecting: testSpaceID).activePlan?.isPaused, false)
+        try printVerifiedStage("SMARTPAW_HARDWARE_REACT pauseResumeBridge=true pausedDiskRestore=true")
+
+        // Preparation and review must not complete native placement steps.
+        try await hardwareUIClick(webView, text: "下一步")
+        try await hardwareUIWait(webView, predicate: "document.body.innerText.includes('Step 2/')")
+        try await hardwareUIClick(webView, text: "复核")
+        try await hardwareUIWait(webView, predicate: "document.body.innerText.includes('物品复核')")
+        XCTAssertEqual(model.activePlan?.steps.map(\.status), plan.steps.map(\.status))
+        try await hardwareUIClick(webView, text: "返回继续整理")
+        try await hardwareUIClick(webView, text: "下一步")
+        for (offset, _) in plan.steps.enumerated() {
+            try await hardwareUIWait(webView, predicate: "document.body.innerText.includes('Step \(offset + 3)/')")
+            try await hardwareUIClick(webView, text: offset + 1 == plan.steps.count ? "完成收纳" : "下一步")
+            let deadline = Date().addingTimeInterval(15)
+            while model.activePlan?.steps.filter({ $0.status == .done }).count != offset + 1, Date() < deadline {
+                try await Task.sleep(nanoseconds: 100_000_000)
+            }
+            XCTAssertEqual(model.activePlan?.steps.filter({ $0.status == .done }).count, offset + 1)
+        }
+        try await hardwareUIWait(webView, predicate: "document.body.innerText.includes('整理步骤已完成')")
+        XCTAssertEqual(model.selectedSpace.completedPlans.count, completedBefore)
+        XCTAssertNotNil(model.activePlan, "Completing steps alone must not archive the plan.")
+        let awaitingPhotoDiskModel = restoredModel(selecting: testSpaceID)
+        XCTAssertEqual(awaitingPhotoDiskModel.activePlan?.steps.filter({ $0.status == .done }).count, plan.steps.count)
+        XCTAssertEqual(awaitingPhotoDiskModel.selectedSpace.completedPlans.count, completedBefore)
+        try await hardwareUIClick(webView, text: "继续")
+        try await hardwareUIWait(webView, predicate: "document.body.innerText.includes('整理清单')")
+        try await hardwareUIClick(webView, text: "查看整理成果")
+        try await hardwareUIWait(webView, predicate: "!!document.querySelector('button[aria-label=\"拍摄完成照\"]')")
+        let completionCameraReady = await CameraEngine.shared.waitUntilReady(timeout: 10)
+        XCTAssertTrue(completionCameraReady)
+        _ = try await webView.evaluateJavaScript("document.querySelector('button[aria-label=\"拍摄完成照\"]').click();true")
+        try await hardwareUIWait(webView, predicate: "document.body.innerText.includes('对比整理前后')", timeout: 25)
+        XCTAssertEqual(model.selectedSpace.completedPlans.count, completedBefore)
+        XCTAssertNotNil(model.activePlan, "A staged after-photo must not archive before confirmation.")
+        XCTAssertTrue(model.selectedSpace.afterImageName.isEmpty)
+        XCTAssertEqual(restoredModel(selecting: testSpaceID).selectedSpace.completedPlans.count, completedBefore)
+        try await hardwareUIClick(webView, text: "查看成就")
+        try await hardwareUIWait(webView, predicate: "document.body.innerText.includes('空间地图')", timeout: 25)
+        XCTAssertNil(model.activePlan)
+        let completedPlan = try XCTUnwrap(model.selectedSpace.completedPlans.first)
+        XCTAssertEqual(completedPlan.id, plan.id)
+        XCTAssertNotNil(completedPlan.completedAt)
+        XCTAssertEqual(model.selectedSpace.completedPlans.count, completedBefore + 1)
+        let afterURL = try XCTUnwrap(model.imageURL(for: model.selectedSpace.afterImageName))
+        XCTAssertNotNil(UIImage(contentsOfFile: afterURL.path))
+        savedImages.insert(afterURL)
+        let finalDiskModel = restoredModel(selecting: testSpaceID)
+        XCTAssertNil(finalDiskModel.activePlan)
+        XCTAssertEqual(finalDiskModel.selectedSpace.completedPlans.first?.id, plan.id)
+        XCTAssertEqual(finalDiskModel.selectedSpace.afterImageName, model.selectedSpace.afterImageName)
+        XCTAssertTrue(finalDiskModel.selectedSpace.hasVerifiedComparison)
+        XCTAssertNotNil(finalDiskModel.imageURL(for: finalDiskModel.selectedSpace.afterImageName))
+        try printVerifiedStage("SMARTPAW_HARDWARE_REACT reviewDoesNotComplete=true placementSteps=\(plan.steps.count) unconfirmedPhotoNotArchived=true confirmedArchive=true jsonDiskRestore=true")
+
+        #endif
+    }
+
+    @MainActor
+    private func hardwareUIClick(_ webView: WKWebView, text: String) async throws {
+        let textJSON = String(decoding: try JSONEncoder().encode(text), as: UTF8.self)
+        let result = try await webView.evaluateJavaScript("(() => { const b=Array.from(document.querySelectorAll('button')).find(b=>b.innerText.trim()===\(textJSON));if(!b)return false;b.click();return true;})()")
+        XCTAssertEqual(result as? Bool, true, "Missing production UI button: \(text)")
+    }
+
+    @MainActor
+    private func hardwareUIWait(_ webView: WKWebView, predicate: String, timeout: TimeInterval = 30) async throws {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if (try? await webView.evaluateJavaScript(predicate)) as? Bool == true { return }
+            try await Task.sleep(nanoseconds: 100_000_000)
+        }
+        let page = (try? await webView.evaluateJavaScript("document.body.innerText.slice(0,2000)")) as? String ?? "unavailable"
+        throw NSError(domain: "SmartPawHardwareUI", code: 1, userInfo: [NSLocalizedDescriptionKey: "Timed out: \(predicate); page: \(page)"])
     }
 
     func testYOLOSegmentationModelRecognizesNewNonVideoImages() async throws {
@@ -1415,16 +2102,40 @@ final class SmartPawTests: XCTestCase {
     }
 
     @MainActor
-    func testResetDiscardsInFlightRecognitionAndCredentials() async {
+    func testResetDiscardsInFlightRecognitionAndCredentials() async throws {
+        let defaultsName = "SmartPawTests.Reset.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: defaultsName))
+        let documents = FileManager.default.temporaryDirectory
+            .appendingPathComponent(defaultsName, isDirectory: true)
+        let imageDirectory = documents.appendingPathComponent("SmartPawImages", isDirectory: true)
+        try FileManager.default.createDirectory(at: imageDirectory, withIntermediateDirectories: true)
+        try Data("isolated photo".utf8).write(to: imageDirectory.appendingPathComponent("before-reset.jpg"))
+        defer {
+            defaults.removePersistentDomain(forName: defaultsName)
+            try? FileManager.default.removeItem(at: documents)
+        }
         let scanner = DeferredScanService()
         let credentials = InMemoryCredentialStore(apiKey: "test-key")
         let dependencies = AppDependencies(scanService: scanner, planningService: RuleBasedPlanningService(), cloudPlanningService: PassthroughCloudPlanningService(), storageStore: seededStorageStore(), credentialStore: credentials)
-        let viewModel = AppViewModel(dependencies: dependencies)
+        var imageGenerationResetCount = 0
+        let viewModel = AppViewModel(
+            dependencies: dependencies,
+            defaults: defaults,
+            documentsDirectory: documents,
+            imageGenerationReset: {
+                imageGenerationResetCount += 1
+                return true
+            }
+        )
+        defaults.set([UUID().uuidString], forKey: "SmartPaw.community.likedCaseIDs")
         let scan = Task { await viewModel.scanImages([.smartPawTestImage()]) }
         await scanner.waitForRequest()
-        XCTAssertTrue(viewModel.resetLocalData())
+        XCTAssertTrue(viewModel.resetLocalData(), viewModel.message ?? "重置失败")
         await scanner.complete()
         _ = await scan.value
+        XCTAssertEqual(imageGenerationResetCount, 1)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: imageDirectory.path))
+        XCTAssertNil(defaults.object(forKey: "SmartPaw.community.likedCaseIDs"))
         XCTAssertTrue(viewModel.catalogItems.isEmpty)
         XCTAssertTrue(viewModel.scannedItems.isEmpty)
         XCTAssertTrue(viewModel.scheduleItems.isEmpty)

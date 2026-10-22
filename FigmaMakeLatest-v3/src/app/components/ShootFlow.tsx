@@ -1,8 +1,11 @@
-import { useState, useRef, useEffect } from "react";
-import bedArt from "../../assets/spaces/bed.png";
-import deskArt from "../../assets/spaces/desk.png";
-import kitchenArt from "../../assets/spaces/kitchen.png";
-import teatableArt from "../../assets/spaces/teatable.png";
+import { useState, useRef, useEffect, useMemo } from "react";
+import { SpaceArtwork } from "./SpaceArtwork";
+import { inferSpaceKind } from "../spaceLayout";
+import { startCameraPreviewWithRetry } from "../cameraPreviewLifecycle";
+import { PREVIEW_SCOPES, imagePreviewRequest, imagePreviewPlanKey, type PreviewScope } from "../imagePreview";
+import { refinedTunePlan } from "../tunePlan";
+import { validatedDisorderAssessment, type DisorderAssessment } from "../disorderAssessment";
+import { ScanLibraryImport } from "./ScanLibraryImport";
 // 真机演示专用：书桌场景的整理步骤图（预先生成好的成品图）
 import demoStepClear from "../../assets/demo/step-clear.jpg";
 import demoStepItems from "../../assets/demo/step-items.jpg";
@@ -80,6 +83,18 @@ export type GenPlan = {
   minutes: number;
   tier: PlanTier;
 };
+
+type ImagePreviewState = {
+  status: "idle" | "loading" | "ready" | "error";
+  planKey?: string;
+  preview?: string;
+  error?: string;
+  model?: string;
+  endpointHost?: string;
+};
+
+type ImageGenerationStatus = { configured?: boolean };
+type ImagePreviewResponse = { preview: string; model?: string; endpointHost?: string; available?: boolean; cached?: boolean };
 
 const GEN_PLANS: GenPlan[] = [
   {
@@ -239,8 +254,10 @@ export function ShootFlow({
   const [assets, setAssets] = useState<CapturedAsset[]>([]);
   // 确认过要收的物品、以及由这些物品生成并勾选的区域，后面每一步都用它。
   const [confirmedItems, setConfirmedItems] = useState<NativeItem[]>([]);
+  const [libraryState, setLibraryState] = useState<NativeState | null>(null);
   const [zoneList, setZoneList] = useState<FlowZone[]>([]);
   const photo = assets[0]?.src;
+  const [previewSourcePhoto, setPreviewSourcePhoto] = useState<string>();
   const [plans, setPlans] = useState<GenPlan[]>(GEN_PLANS);
   const [chosen, setChosen] = useState<GenPlan>(GEN_PLANS[0]);
   const [nativePlan, setNativePlan] = useState<NativePlan | null>(null);
@@ -249,13 +266,19 @@ export function ShootFlow({
   const [flowError, setFlowError] = useState<string | null>(null);
   const [processing, setProcessing] = useState(false);
   const processingGeneration = useRef(0);
+  const imagePreviewGeneration = useRef(0);
+  const [imagePreview, setImagePreview] = useState<ImagePreviewState>({ status: "idle" });
+  const [previewScope, setPreviewScope] = useState<PreviewScope>(PREVIEW_SCOPES[0]);
+  const previewPlan = step === "plandeck" ? plans[0] : chosen;
 
   useEffect(() => () => {
     // Invalidate any in-flight result before cancelling the native scan. The
     // cancel request can resolve after unmount, so late responses must not
     // update state when the flow has already been closed.
     processingGeneration.current += 1;
+    imagePreviewGeneration.current += 1;
     void nativeRequest("scan.cancel").catch(() => undefined);
+    void nativeRequest("image.preview.cancel").catch(() => undefined);
   }, []);
 
   useEffect(() => {
@@ -267,21 +290,102 @@ export function ShootFlow({
       const selected = state.spaces.find((space) => space.id === state.selectedSpaceID);
       const items = selected?.detectedItems.length ? selected.detectedItems : state.scannedItems ?? [];
       setConfirmedItems(items);
+      setLibraryState(state);
       setZoneList(buildFlowZones(items));
       setPlans(personalizePlans(items));
       setNativePlan(selected?.activePlan ?? null);
+      if (selected) {
+        void nativeRequest<{ before?: string }>("space.photos", { id: selected.id }).then((photos) => {
+          if (alive && photos.before) setAssets([{ id: `preview-${selected.id}`, kind: "photo", src: photos.before, label: "示例空间", items }]);
+        }).catch(() => undefined);
+      }
     }).catch(() => undefined);
     return () => { alive = false; };
   }, [demoStep]);
 
+  useEffect(() => {
+    if ((step !== "plandeck" && step !== "tune") || !window.webkit?.messageHandlers?.smartpaw) return;
+    let alive = true;
+    const generation = ++imagePreviewGeneration.current;
+    const planKey = imagePreviewPlanKey(previewPlan, previewScope);
+    setImagePreview({ status: "idle", planKey });
+    void nativeRequest<ImagePreviewResponse>("image.preview.restore", imagePreviewRequest(previewPlan, previewScope)).then((cached) => {
+      if (!alive || generation !== imagePreviewGeneration.current || !cached.available || !cached.preview) return;
+      setImagePreview({ status: "ready", planKey, preview: cached.preview, model: cached.model, endpointHost: cached.endpointHost });
+    }).catch(() => undefined);
+    return () => { alive = false; };
+  }, [step, previewPlan, previewScope, demoStep, photo]);
+
+  useEffect(() => {
+    if (step !== "plandeck" && step !== "tune") return;
+    let alive = true;
+    // Native generation uses the selected space's persisted before image. In a
+    // multi-shot session that can differ from assets[0], so compare with the
+    // actual source rather than the first thumbnail.
+    void nativeRequest<NativeState>("state.get").then(async (state) => {
+      if (!state.selectedSpaceID) return;
+      const photos = await nativeRequest<{ before?: string }>("space.photos", { id: state.selectedSpaceID });
+      if (alive) setPreviewSourcePhoto(photos.before);
+    }).catch(() => { if (alive) setPreviewSourcePhoto(undefined); });
+    return () => { alive = false; };
+  }, [step, photo]);
+
   // 生成方案前重新拉一次识别结果，让方案卡里的建议跟着这次拍到的物品走。
-  const refreshPlans = async () => {
+  const refreshPlans = async (): Promise<GenPlan[]> => {
     try {
       const state = await nativeRequest<NativeState>("state.get");
-      setPlans(personalizePlans(state?.scannedItems ?? []));
+      const refreshed = personalizePlans(state?.scannedItems ?? []);
+      setLibraryState(state);
+      setConfirmedItems(state.scannedItems ?? []);
+      setPlans(refreshed);
+      return refreshed;
     } catch {
       setPlans(GEN_PLANS);
+      return GEN_PLANS;
     }
+  };
+
+  const startImagePreview = (plan: GenPlan) => {
+    const generation = ++imagePreviewGeneration.current;
+    const planKey = imagePreviewPlanKey(plan, previewScope);
+    setImagePreview({ status: "loading", planKey });
+    void (async () => {
+      try {
+        const status = await nativeRequest<ImageGenerationStatus>("image.settings.get");
+        if (imagePreviewGeneration.current !== generation) return;
+        const request = imagePreviewRequest(plan, previewScope);
+        const cached = await nativeRequest<ImagePreviewResponse>("image.preview.restore", request);
+        if (imagePreviewGeneration.current !== generation) return;
+        if (cached.available && cached.preview) {
+          setImagePreview({ status: "ready", planKey, preview: cached.preview, model: cached.model, endpointHost: cached.endpointHost });
+          return;
+        }
+        if (!status.configured) throw new Error("整理效果图服务尚未配置，当前仍可继续使用本地方案。");
+        const result = await nativeRequest<ImagePreviewResponse>("image.preview.generate", request);
+        if (imagePreviewGeneration.current !== generation) return;
+        if (!result.preview) throw new Error("生图服务没有返回可显示的图片。");
+        setImagePreview({
+          status: "ready",
+          planKey,
+          preview: result.preview,
+          model: result.model,
+          endpointHost: result.endpointHost,
+        });
+      } catch (error) {
+        if (imagePreviewGeneration.current !== generation) return;
+        setImagePreview({
+          status: "error",
+          planKey,
+          error: error instanceof Error ? error.message : "整理效果图生成失败，请稍后重试。",
+        });
+      }
+    })();
+  };
+
+  const cancelImagePreview = () => {
+    imagePreviewGeneration.current += 1;
+    setImagePreview((current) => current.status === "loading" ? { status: "idle" } : current);
+    void nativeRequest("image.preview.cancel").catch(() => undefined);
   };
 
   return (
@@ -298,7 +402,7 @@ export function ShootFlow({
             // 「检查照片」页已删（设计稿没有这屏，且前面拍摄页已有类似的查看）：
             // 拍完直接进生成方案。识别等待 + 物品保存挪到后台跑，generating 动画期间正好完成。
             setGenReturn("plandeck");
-            void (async () => {
+            return (async () => {
               try {
                 // 等待本批照片的实际结果后再确认物品。
                 const awaited = await nativeRequest<{ items?: NativeItem[] }>("scan.await", { captureIDs: captured.map((asset) => asset.id) });
@@ -320,9 +424,9 @@ export function ShootFlow({
                 }
               } catch (error) {
                 if (processingGeneration.current === generation) {
-                  setConfirmedItems([]);
-                  setFlowError(error instanceof Error ? error.message : "识别未完成，可以在下一步手动补录物品。");
+                  setFlowError(error instanceof Error ? error.message : "识别未完成，请重新提交或重拍。");
                 }
+                return;
               }
               if (processingGeneration.current !== generation) return;
               if (reusePlan) {
@@ -344,8 +448,10 @@ export function ShootFlow({
                   setFlowError(error instanceof Error ? error.message : "原方案恢复失败，请选择新方案。");
                 }
               }
-              await refreshPlans().catch(() => { if (processingGeneration.current === generation) setFlowError("无法读取本机识别结果，请重试。"); });
-              if (processingGeneration.current === generation) setStep("generating");
+              await refreshPlans();
+              if (processingGeneration.current === generation) {
+                setStep("generating");
+              }
             })().finally(() => {
               if (processingGeneration.current === generation) setProcessing(false);
             });
@@ -358,10 +464,19 @@ export function ShootFlow({
       {step === "plandeck" && (
         <PlanDeckStep
           plans={plans}
-          photo={photo}
+          libraryItems={confirmedItems}
+          libraryState={libraryState}
+          photo={previewSourcePhoto || photo}
+          imagePreview={imagePreview}
+          previewScope={previewScope}
+          onPreviewScopeChange={(scope) => { cancelImagePreview(); setPreviewScope(scope); }}
+          onGeneratePreview={startImagePreview}
+          onCancelPreview={cancelImagePreview}
           onClose={onClose}
-          onStart={(p) => { setChosen(p); setFlowError(null); setStep("zones"); }}
+          onStart={(p) => { cancelImagePreview(); setChosen(p); setFlowError(null); setStep("zones"); }}
           onTune={(p) => {
+            cancelImagePreview();
+            setPreviewScope(PREVIEW_SCOPES[0]);
             setChosen(p);
             setStep("tune");
           }}
@@ -370,9 +485,14 @@ export function ShootFlow({
       {step === "tune" && (
         <TuneChatStep
           plan={chosen}
-          photo={photo}
+          photo={previewSourcePhoto || photo}
+          imagePreview={imagePreview}
+          onRefine={(refined) => { cancelImagePreview(); setChosen(refined); }}
+          onGeneratePreview={startImagePreview}
+          onCancelPreview={cancelImagePreview}
           onBack={() => setStep("plandeck")}
           onConfirm={(refined) => {
+            cancelImagePreview();
             setChosen(refined);
             setFlowError(null);
             setStep("zones");
@@ -800,19 +920,38 @@ const PEEK = (390 - CARD_W) / 2;     // 39px each side
 
 function PlanDeckStep({
   plans,
+  libraryItems = [],
+  libraryState,
   photo,
+  imagePreview,
+  previewScope,
+  onPreviewScopeChange,
+  onGeneratePreview,
+  onCancelPreview,
   onClose,
   onStart,
   onTune,
 }: {
   plans: GenPlan[];
+  libraryItems?: NativeItem[];
+  libraryState?: NativeState | null;
   photo?: string;
+  imagePreview?: ImagePreviewState;
+  previewScope: PreviewScope;
+  onPreviewScopeChange: (scope: PreviewScope) => void;
+  onGeneratePreview?: (plan: GenPlan) => void;
+  onCancelPreview?: () => void;
   onClose: () => void;
   onStart: (p: GenPlan) => void;
   onTune: (p: GenPlan) => void;
 }) {
   // 现在只定一种方案：进来就是这一个，要么微调、要么确认继续。
   const plan = plans[0];
+  const preview = imagePreview?.planKey === imagePreviewPlanKey(plan, previewScope) ? imagePreview : undefined;
+  const generatedImage = preview?.status === "ready" ? preview.preview : undefined;
+  const [showOriginal, setShowOriginal] = useState(false);
+  useEffect(() => { setShowOriginal(false); }, [generatedImage, previewScope]);
+  const previewLabel = previewScope.rect ? `${previewScope.label}整理效果` : "整体整理效果";
 
   return (
     <div
@@ -826,10 +965,10 @@ function PlanDeckStep({
       {/* ── 照片：全出血贴顶大图（约占上半屏），X / 预计时长 / 翻页箭头叠在照片上 ── */}
       <div className="relative flex-shrink-0 overflow-hidden" style={{ height: "52%" }}>
         <ImageWithFallback
-          // 展示本次整理前照片，方案不生成或替换成果图。
-          src={photo || ""}
-          alt={plan.name}
-          className="h-full w-full object-cover"
+          src={(!showOriginal && generatedImage) || photo || ""}
+          alt={!showOriginal && generatedImage ? `AI ${previewLabel}预览` : "整理前照片"}
+          className="h-full w-full object-contain"
+          style={{ backgroundColor: "#211B17" }}
         />
         <div
           className="absolute inset-0 pointer-events-none"
@@ -857,10 +996,33 @@ function PlanDeckStep({
         >
           预计{plan.minutes}min
         </span>
+        <div className="absolute bottom-0 left-0 right-0 flex items-center gap-3 px-4 py-3" style={{ backgroundColor: "rgba(20,15,12,0.76)", color: WHITE }} aria-live="polite">
+          {preview?.status === "loading" ? <Loader2 size={17} className="animate-spin flex-shrink-0" /> : generatedImage ? <Sparkles size={16} className="flex-shrink-0" /> : <ImageIcon size={16} className="flex-shrink-0" />}
+          <div className="min-w-0 flex-1">
+            <p style={{ fontSize: 12, fontWeight: 600, lineHeight: 1.5 }}>{preview?.status === "loading" ? `正在生成${previewLabel}…` : generatedImage && !showOriginal ? `AI ${previewLabel}预览` : "整理前照片"}</p>
+            {preview?.status === "error" && <p role="alert" style={{ fontSize: 11, lineHeight: 1.5, opacity: 0.88, overflowWrap: "anywhere" }}>{preview.error}</p>}
+          </div>
+          {preview?.status === "loading" && onCancelPreview ? (
+            <button onClick={onCancelPreview} type="button" title="取消生成效果图" aria-label="取消生成效果图" className="h-10 w-10 flex items-center justify-center flex-shrink-0" style={{ backgroundColor: "rgba(255,255,255,0.16)", borderRadius: 8 }}><X size={17} /></button>
+          ) : !generatedImage && onGeneratePreview ? (
+            <button onClick={() => onGeneratePreview(plan)} type="button" className="flex items-center justify-center gap-1.5 px-3 py-2.5 flex-shrink-0" style={{ backgroundColor: ORANGE, borderRadius: 8, fontSize: 11, fontWeight: 600 }}><Sparkles size={14} />{preview?.status === "error" ? "重试" : "生成效果图"}</button>
+          ) : generatedImage ? (
+            <button onClick={() => setShowOriginal((value) => !value)} type="button" className="px-3 py-2.5 flex-shrink-0" style={{ backgroundColor: "rgba(255,255,255,0.16)", borderRadius: 8, fontSize: 11, fontWeight: 600 }}>{showOriginal ? "查看效果图" : "查看原图"}</button>
+          ) : null}
+        </div>
       </div>
 
       {/* ── 内容：暖白底直接排版（橙点标题 / 总述+橙点清单 / 米灰胶囊 / 双按钮） ── */}
       <div className="flex flex-col px-6 pt-5 pb-8">
+        <fieldset className="mb-5">
+          <legend style={{ color: COFFEE, fontSize: 12, fontWeight: 700, marginBottom: 8 }}>效果图范围</legend>
+          <div className="flex gap-2 flex-wrap" role="group" aria-label="效果图范围">
+            {PREVIEW_SCOPES.map((scope) => (
+              <button key={scope.id} type="button" aria-pressed={scope.id === previewScope.id} onClick={() => onPreviewScopeChange(scope)} className="px-3 py-2" style={{ borderRadius: 999, fontSize: 11, fontWeight: 600, backgroundColor: scope.id === previewScope.id ? ORANGE : "#F0EAE0", color: scope.id === previewScope.id ? WHITE : COFFEE }}>{scope.label}</button>
+            ))}
+          </div>
+          <p className="mt-2" style={{ color: COFFEE, opacity: 0.6, fontSize: 11, lineHeight: 1.6 }}>{previewScope.rect ? "以完整原图的四等分区域为准。只整理所选区域，保留整张画面，生成后请核对区域外的物品。" : "整理整个画面。各区域效果图分别生成，点击后才会上传照片。"}</p>
+        </fieldset>
         <div className="flex items-center gap-2.5 mb-2.5">
           <span
             style={{ width: 7, height: 7, borderRadius: 999, backgroundColor: ORANGE, flexShrink: 0 }}
@@ -939,6 +1101,7 @@ function PlanDeckStep({
         >
           <Sparkles size={14} color={ORANGE} /> 微调方案
         </button>
+        {libraryState && <div className="mt-3"><ScanLibraryImport items={libraryItems} sourceSpaceID={libraryState.selectedSpaceID} sourceSpaceName={libraryState.spaces.find((space) => space.id === libraryState.selectedSpaceID)?.name} isPresentationMode={libraryState.isPresentationMode} /></div>}
       </div>
     </div>
   );
@@ -957,7 +1120,7 @@ const TUNE_CHIPS = [
   "预算低一些",
 ];
 
-function PlanPreviewCard({ plan, photo, tweaks }: { plan: GenPlan; photo?: string; tweaks: string[] }) {
+function PlanPreviewCard({ plan, photo, tweaks, generatedPreview }: { plan: GenPlan; photo?: string; tweaks: string[]; generatedPreview?: string }) {
   const [loaded, setLoaded] = useState(false);
   useEffect(() => {
     const t = setTimeout(() => setLoaded(true), 680);
@@ -1004,7 +1167,7 @@ function PlanPreviewCard({ plan, photo, tweaks }: { plan: GenPlan; photo?: strin
             transition={{ duration: 0.5 }}
             style={{ position: "absolute", inset: 0 }}
           >
-            <ImageWithFallback src={photo || plan.image} alt="" className="h-full w-full object-cover" />
+            <ImageWithFallback src={generatedPreview || photo || plan.image} alt={generatedPreview ? "当前微调方案的真实效果图" : "微调偏好对应的整理前照片"} className="h-full w-full object-cover" />
             {/* Accent colour wash */}
             <div style={{ position: "absolute", inset: 0, background: `linear-gradient(140deg, ${plan.accent}55 0%, transparent 58%)` }} />
             {/* Bottom gradient for legibility */}
@@ -1019,7 +1182,7 @@ function PlanPreviewCard({ plan, photo, tweaks }: { plan: GenPlan; photo?: strin
               }}>
                 <Sparkles size={9} color="rgba(255,255,255,0.75)" />
                 <span style={{ color: "rgba(255,255,255,0.85)", fontSize: 9.5, fontWeight: 600, letterSpacing: "0.02em" }}>
-                  整理前照片
+                  {generatedPreview ? "AI 整理效果预览" : "整理前照片"}
                 </span>
               </div>
             </div>
@@ -1029,7 +1192,7 @@ function PlanPreviewCard({ plan, photo, tweaks }: { plan: GenPlan; photo?: strin
                 backgroundColor: plan.accent, borderRadius: 999,
                 padding: "3px 9px", fontSize: 9, fontWeight: 700, color: WHITE,
               }}>
-                偏好记录
+                {generatedPreview ? "效果图已更新" : "待生成效果图"}
               </div>
             </div>
 
@@ -1083,14 +1246,23 @@ function PlanPreviewCard({ plan, photo, tweaks }: { plan: GenPlan; photo?: strin
 function TuneChatStep({
   plan,
   photo,
+  imagePreview,
+  onRefine,
+  onGeneratePreview,
+  onCancelPreview,
   onBack,
   onConfirm,
 }: {
   plan: GenPlan;
   photo?: string;
+  imagePreview: ImagePreviewState;
+  onRefine: (refined: GenPlan) => void;
+  onGeneratePreview: (refined: GenPlan) => void;
+  onCancelPreview: () => void;
   onBack: () => void;
   onConfirm: (refined: GenPlan) => void;
 }) {
+  const basePlan = useRef(plan);
   const [messages, setMessages] = useState<TuneMsg[]>([
     {
       id: "t0",
@@ -1102,6 +1274,10 @@ function TuneChatStep({
   const [sending, setSending] = useState(false);
   const [tweaks, setTweaks] = useState<string[]>([]);
   const tweaksRef = useRef<string[]>([]);
+  const sendingRef = useRef(false);
+  const [showOriginal, setShowOriginal] = useState(false);
+  const [loadedPreview, setLoadedPreview] = useState<string>();
+  const [failedPreview, setFailedPreview] = useState<string>();
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -1109,11 +1285,14 @@ function TuneChatStep({
   }, [messages]);
 
   const push = async (text: string) => {
-    if (!text.trim() || sending) return;
+    if (!text.trim() || sendingRef.current) return;
+    sendingRef.current = true;
     const newTweak = text.trim();
     tweaksRef.current = [...tweaksRef.current, newTweak];
     const snap = [...tweaksRef.current];
     setTweaks(snap);
+    onRefine(refinedTunePlan(basePlan.current, snap));
+    setShowOriginal(false);
     const previousHistory = messages.map((item) => ({ role: item.role === "ai" ? "assistant" : "user", text: item.text }));
     setMessages((m) => [...m, { id: `u${Date.now()}`, role: "user", text: newTweak }]);
     setInput("");
@@ -1133,26 +1312,34 @@ function TuneChatStep({
         tweakSnap: snap,
       }]);
     } finally {
+      sendingRef.current = false;
       setSending(false);
     }
   };
 
-  const refined: GenPlan = {
-    ...plan,
-    name: tweaks.length ? `${plan.name} · 定制` : plan.name,
-    vibe: tweaks.length ? tweaks.slice(-2).join(" · ") : plan.vibe,
-  };
+  const refined = refinedTunePlan(basePlan.current, tweaks);
+  const preview = imagePreview.planKey === imagePreviewPlanKey(refined) ? imagePreview : undefined;
+  const currentPreview = preview?.status === "ready" ? preview.preview : undefined;
+  const isGenerating = preview?.status === "loading";
+  const previewLoadError = !!currentPreview && failedPreview === currentPreview;
+  const canConfirmPreview = !!currentPreview && loadedPreview === currentPreview && !previewLoadError;
 
   return (
     <div className="h-full w-full flex flex-col" style={{ backgroundColor: LINEN }}>
 
       {/* ── Plan image hero ── */}
       <div className="relative flex-shrink-0" style={{ height: 196 }}>
-        <ImageWithFallback
-          src={photo || plan.image}
-          alt={plan.name}
-          className="h-full w-full object-cover"
-        />
+        {currentPreview && !showOriginal ? (
+          <img
+            src={currentPreview}
+            alt="当前微调方案的真实效果图"
+            className="h-full w-full object-contain"
+            onLoad={() => { setLoadedPreview(currentPreview); setFailedPreview(undefined); }}
+            onError={() => { setFailedPreview(currentPreview); setLoadedPreview(undefined); }}
+          />
+        ) : (
+          <ImageWithFallback src={photo || plan.image} alt={photo ? "整理前照片" : "方案示意"} className="h-full w-full object-contain" />
+        )}
         <div
           className="absolute inset-0 pointer-events-none"
           style={{
@@ -1173,7 +1360,7 @@ function TuneChatStep({
             <p style={{ color: WHITE, fontSize: 19, fontWeight: 700, letterSpacing: "-0.02em" }}>{plan.name}</p>
           </div>
           <p style={{ color: "rgba(255,255,255,0.62)", fontSize: 11.5, paddingLeft: 16 }}>
-            在此方案基础上微调
+            {currentPreview && !showOriginal ? "AI 整理效果预览 · 请核对物品是否保留" : photo ? "整理前照片" : "方案示意"}
           </p>
         </div>
       </div>
@@ -1225,7 +1412,7 @@ function TuneChatStep({
             {/* Visual preview card — shown after each AI response that carries tweaks */}
             {m.role === "ai" && m.tweakSnap && m.tweakSnap.length > 0 && (
               <div style={{ marginTop: 8 }}>
-                <PlanPreviewCard plan={plan} photo={photo} tweaks={m.tweakSnap} />
+                <PlanPreviewCard plan={basePlan.current} photo={photo} tweaks={m.tweakSnap} generatedPreview={JSON.stringify(m.tweakSnap) === JSON.stringify(tweaks) ? currentPreview : undefined} />
               </div>
             )}
           </div>
@@ -1304,7 +1491,8 @@ function TuneChatStep({
         </div>
 
         <button
-          onClick={() => onConfirm(refined)}
+          onClick={() => canConfirmPreview ? onConfirm(refined) : onGeneratePreview(refined)}
+          disabled={sending || isGenerating || (!!currentPreview && !canConfirmPreview && !previewLoadError)}
           className="w-full py-3.5 mt-3 flex items-center justify-center gap-2 active:scale-[0.98] transition-transform"
           style={{
             backgroundColor: ORANGE,
@@ -1313,10 +1501,11 @@ function TuneChatStep({
             fontSize: 14,
             fontWeight: 700,
             boxShadow: "0 10px 28px rgba(250,136,58,0.34)",
+            opacity: sending || isGenerating ? 0.6 : 1,
           }}
         >
-          <Check size={16} />
-          确认方案
+          {isGenerating ? <Loader2 size={16} className="animate-spin" /> : canConfirmPreview ? <Check size={16} /> : <Sparkles size={16} />}
+          {sending ? "等待回复…" : isGenerating ? "正在生成效果图…" : canConfirmPreview ? "确认效果图，继续整理" : currentPreview && !previewLoadError ? "正在加载效果图…" : preview?.status === "error" || previewLoadError ? "重试生成效果图" : "生成当前方案效果图"}
           {tweaks.length > 0 && (
             <span
               style={{
@@ -1330,6 +1519,17 @@ function TuneChatStep({
             </span>
           )}
         </button>
+        {currentPreview && !previewLoadError && (
+          <button type="button" onClick={() => setShowOriginal((value) => !value)} className="w-full py-2 mt-1" style={{ color: COFFEE, fontSize: 12 }}>
+            {showOriginal ? "查看当前效果图" : "对比整理前照片"}
+          </button>
+        )}
+        {(preview?.status === "error" || previewLoadError) && <p role="alert" className="mt-2" style={{ color: "#9A4230", fontSize: 11, lineHeight: 1.5 }}>{previewLoadError ? "效果图未能加载，请重试或先使用文字方案。" : preview?.error}</p>}
+        {isGenerating ? (
+          <button type="button" onClick={onCancelPreview} className="w-full py-2 mt-1" style={{ color: COFFEE, fontSize: 12 }}>取消生成效果图</button>
+        ) : !canConfirmPreview && (
+          <button type="button" disabled={sending} onClick={() => onConfirm(refined)} className="w-full py-2 mt-1" style={{ color: COFFEE, fontSize: 12, opacity: sending ? 0.5 : 0.7 }}>先使用文字方案继续整理</button>
+        )}
       </div>
     </div>
   );
@@ -1366,7 +1566,7 @@ function CaptureStep({
   on完成,
 }: {
   onClose: () => void;
-  on完成: (assets: CapturedAsset[]) => void;
+  on完成: (assets: CapturedAsset[]) => void | Promise<void>;
 }) {
   const [flash, setFlash] = useState(false);
   const [pressed, setPressed] = useState(false);
@@ -1403,6 +1603,9 @@ function CaptureStep({
   const [scanning, setScanning] = useState<Record<string, boolean>>({});
   // 提交只在点第一下时生效：之后按钮进 loading，避免连点触发多次提交。
   const [submitting, setSubmitting] = useState(false);
+  const submitLock = useRef(false);
+  const captureMounted = useRef(true);
+  const previewLifecycle = useRef(0);
   useEffect(() => {
     scanInit.current = nativeRequest("scan.begin").catch((error) => { setError(error instanceof Error ? error.message : "扫描初始化失败，请重试"); throw error; });
     return () => { scanInit.current = null; };
@@ -1463,31 +1666,27 @@ function CaptureStep({
   };
 
   const startPreview = async (): Promise<boolean> => {
-    for (let attempt = 0; attempt < 3; attempt++) {
-      try {
-        const res = await nativeRequest<{ ok: boolean; reason?: string }>("camera.preview.start", rectOf());
-        if (res.ok === true) {
-          setLiveFeed(true);
-          setCamReason(null);
-          return true;
-        }
-        setCamReason(res.reason ?? "unavailable");
-        if (res.reason === "denied") {
-          setLiveFeed(false);
-          return false;
-        }
-      } catch {
-        setCamReason("unavailable");
-      }
-      // 相机可能刚被别的应用占着，缓一下再试。
-      await new Promise((r) => setTimeout(r, 600));
+    const generation = previewLifecycle.current;
+    const isActive = () => captureMounted.current && previewLifecycle.current === generation;
+    const result = await startCameraPreviewWithRetry({
+      isActive,
+      start: () => nativeRequest<{ ok: boolean; reason?: string }>("camera.preview.start", rectOf()),
+      stop: () => { void nativeRequest("camera.preview.stop", {}).catch(() => undefined); },
+    });
+    if (!isActive()) return false;
+    if (result?.ok) {
+      setLiveFeed(true);
+      setCamReason(null);
+      return true;
     }
-    // 真的没起来才收回"画面已在"的乐观假设，改用深色底 + 重试提示。
+    setCamReason(result?.reason ?? "unavailable");
     setLiveFeed(false);
     return false;
   };
 
   useEffect(() => {
+    captureMounted.current = true;
+    previewLifecycle.current += 1;
     let stopped = false;
     (async () => {
       const ok = await startPreview();
@@ -1499,6 +1698,8 @@ function CaptureStep({
     window.addEventListener("resize", sync);
     return () => {
       stopped = true;
+      captureMounted.current = false;
+      previewLifecycle.current += 1;
       window.removeEventListener("resize", sync);
       void nativeRequest("camera.preview.stop", {}).catch(() => {});
     };
@@ -2057,10 +2258,15 @@ function CaptureStep({
             <span style={{ color: "#E06060", fontSize: 11, fontWeight: 500 }}>删除</span>
           </button>
           <button
-            onClick={() => {
-              if (submitting) return;
+            onClick={async () => {
+              if (submitLock.current) return;
+              submitLock.current = true;
               setSubmitting(true);
-              on完成(shots);
+              try { await on完成(shots); }
+              finally {
+                submitLock.current = false;
+                if (captureMounted.current) setSubmitting(false);
+              }
             }}
             disabled={shots.length === 0 || submitting}
             className="flex-1 flex flex-col items-center gap-1.5 py-3 rounded-2xl"
@@ -2599,6 +2805,7 @@ function ConfirmStep({ assets, onBack, onNext }: { assets: CapturedAsset[]; onBa
   const [activeSpot, setActiveSpot] = useState<string | null>(null);
   const [spotNote, setSpotNote] = useState("");
   const [diagnostics, setDiagnostics] = useState<Record<string, string>>({});
+  const [libraryState, setLibraryState] = useState<NativeState | null>(null);
 
   useEffect(() => {
     // 识别在后台跑（快门不等它），进这一步时先等它跑完，再取结果。
@@ -2607,6 +2814,7 @@ function ConfirmStep({ assets, onBack, onNext }: { assets: CapturedAsset[]; onBa
         await nativeRequest("scan.await", {});
         const state = await nativeRequest<NativeState>("state.get");
         setDiagnostics(state.scanDiagnostics ?? {});
+        setLibraryState(state);
         setItems(state.scannedItems.map((item) => ({ ...item, emoji: getEmojiForItem(item.name) })));
         setBlindSpots(state.scannedItems.filter((item) => item.confidence < 0.55).map((item, index) => ({
           id: `low-${item.id}`, label: item.name, reason: `置信度 ${Math.round(item.confidence * 100)}% — 请确认`,
@@ -2927,6 +3135,7 @@ function ConfirmStep({ assets, onBack, onNext }: { assets: CapturedAsset[]; onBa
           )}
         </div>
 
+        {!loadingItems && libraryState && <div className="mt-4"><ScanLibraryImport items={items.map((item) => ({ ...item, category: item.category || "未分类", suggestedZone: "", isSelected: true }))} sourceSpaceID={libraryState.selectedSpaceID} sourceSpaceName={libraryState.spaces.find((space) => space.id === libraryState.selectedSpaceID)?.name} isPresentationMode={libraryState.isPresentationMode} /></div>}
         <button
           onClick={() => void confirmAndContinue()}
           disabled={loadingItems || !allResolved}
@@ -4744,6 +4953,7 @@ function RewardStep({ photo, itemCount, areaCount, timeBudget, onClose, onFinish
   const [liveFeed, setLiveFeed] = useState(false);
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
+  const previewMounted = useRef(false);
   const edgeStartX = useRef<number | null>(null);
   const beginBusy = () => {
     if (busyRef.current) return false;
@@ -4805,33 +5015,25 @@ function RewardStep({ photo, itemCount, areaCount, timeBudget, onClose, onFinish
   };
 
   const startPreview = async (isActive: () => boolean = () => true): Promise<boolean> => {
-    for (let attempt = 0; attempt < 3; attempt++) {
-      if (!isActive()) return false;
-      try {
-        const res = await nativeRequest<{ ok: boolean; reason?: string }>("camera.preview.start", rectOf());
-        if (!isActive()) {
-          if (res.ok === true) void nativeRequest("camera.preview.stop", {}).catch(() => undefined);
-          return false;
-        }
-        if (res.ok === true) { setLiveFeed(true); return true; }
-        if (res.reason === "denied") { setLiveFeed(false); return false; }
-      } catch { /* 下面统一重试 */ }
-      if (!isActive()) return false;
-      await new Promise((r) => setTimeout(r, 600));
-      if (!isActive()) return false;
-    }
-    if (isActive()) setLiveFeed(false);
-    return false;
+    const result = await startCameraPreviewWithRetry({
+      isActive,
+      start: () => nativeRequest<{ ok: boolean; reason?: string }>("camera.preview.start", rectOf()),
+      stop: () => { void nativeRequest("camera.preview.stop", {}).catch(() => undefined); },
+    });
+    if (isActive()) setLiveFeed(result?.ok === true);
+    return result?.ok === true;
   };
 
   useEffect(() => {
     if (afterPhoto) return;
     let stopped = false;
-    void (async () => { const ok = await startPreview(() => !stopped); if (!stopped && !ok) setCaptureError("相机还没准备好，点一下快门再试一次"); })();
+    previewMounted.current = true;
+    void (async () => { const ok = await startPreview(() => !stopped && previewMounted.current); if (!stopped && !ok) setCaptureError("相机还没准备好，点一下快门再试一次"); })();
     const sync = () => { void nativeRequest("camera.preview.frame", rectOf()).catch(() => {}); };
     window.addEventListener("resize", sync);
     return () => {
       stopped = true;
+      previewMounted.current = false;
       window.removeEventListener("resize", sync);
       void nativeRequest("camera.preview.stop", {}).catch(() => {});
     };
@@ -4863,7 +5065,7 @@ function RewardStep({ photo, itemCount, areaCount, timeBudget, onClose, onFinish
     try {
       await new Promise((resolve) => setTimeout(resolve, 220));
       setFlash(false);
-      if (!liveFeed) { await startPreview(); }
+      if (!liveFeed) { await startPreview(() => previewMounted.current); }
       const shot = await nativeRequest<CompletionPhotoPreview>("camera.capture", { purpose: "after-preview" });
       if (!shot.preview) { setCaptureError("没有拿到照片，光线亮一点再试一次"); return; }
       setAfterPhoto(shot.preview);
@@ -6310,194 +6512,125 @@ function CornerBracket({ pos }: { pos: "tl" | "tr" | "bl" | "br" }) {
  *  KEY RULE: restores the existing tile's colour — no new tile drops.
  * ================================================================== */
 
-const CHAOS_SPOTS = [
-  { x: "20%", y: "48%" },
-  { x: "58%", y: "60%" },
-  { x: "74%", y: "36%" },
-  { x: "40%", y: "72%" },
-  { x: "84%", y: "54%" },
-];
-
 function DisorderAnalysisStep({
+  spaceID,
   spaceName,
   photo,
-  items,
   onDone,
 }: {
+  spaceID: string;
   spaceName: string;
   photo?: string;
-  items?: NativeItem[];
   onDone: () => void;
 }) {
-  const [phase, setPhase] = useState(0);
-  // 混乱度一律由这次真实拍到的识别结果算出来：物品越多、类别越杂，分数越高。
-  const scanned = items ?? [];
-  const itemCount = scanned.length;
-  const categoryCount = new Set(scanned.map((i) => i.category).filter(Boolean)).size;
-  const clutterSpots = Math.max(1, Math.min(5, categoryCount || Math.ceil(itemCount / 3) || 1));
-  const clutterScore = Math.max(
-    18,
-    Math.min(96, Math.round(26 + itemCount * 3.4 + categoryCount * 4.2)),
-  );
-  const estMinutes = Math.min(90, Math.max(10, Math.round((15 + itemCount * 4) / 5) * 5));
-  const clutterLevel = clutterScore < 40 ? "轻度杂乱" : clutterScore < 70 ? "中度混乱" : "重度混乱";
+  const [attempt, setAttempt] = useState(0);
+  const [assessment, setAssessment] = useState<DisorderAssessment | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [photoSize, setPhotoSize] = useState<{ width: number; height: number } | null>(null);
+  const requestGeneration = useRef(0);
 
   useEffect(() => {
-    const t1 = setTimeout(() => setPhase(1), 1900);
-    const t2 = setTimeout(() => setPhase(2), 3400);
-    const done = setTimeout(onDone, 5500);
-    return () => { [t1, t2, done].forEach(clearTimeout); };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    const generation = ++requestGeneration.current;
+    let alive = true;
+    setLoading(true);
+    setError(null);
+    setAssessment(null);
+    void (async () => {
+      try {
+        const state = await nativeRequest<NativeState>("state.get");
+        if (!alive || generation !== requestGeneration.current) return;
+        if (state.selectedSpaceID !== spaceID) throw new Error("空间已改变，请返回空间页后重试。");
+        const response = await nativeRequest<unknown>("space.disorder.analyze", { spaceID: state.selectedSpaceID });
+        if (!alive || generation !== requestGeneration.current) return;
+        const result = validatedDisorderAssessment(response, spaceID);
+        const current = await nativeRequest<NativeState>("state.get");
+        if (!alive || generation !== requestGeneration.current) return;
+        if (current.selectedSpaceID !== spaceID) throw new Error("空间已改变，本次评估未使用。请返回空间页重试。");
+        setAssessment(result);
+      } catch (reason) {
+        if (!alive || generation !== requestGeneration.current) return;
+        setError(reason instanceof Error ? reason.message : "照片视觉评估暂时不可用，请重试或跳过。");
+      } finally {
+        if (alive && generation === requestGeneration.current) setLoading(false);
+      }
+    })();
+    return () => {
+      alive = false;
+      requestGeneration.current += 1;
+      void nativeRequest("space.disorder.cancel", { spaceID }).catch(() => undefined);
+    };
+  }, [spaceID, attempt]);
+
+  const finish = () => {
+    requestGeneration.current += 1;
+    void nativeRequest("space.disorder.cancel", { spaceID }).catch(() => undefined);
+    onDone();
+  };
+  const levelNames = { tidy: "整齐有序", light: "轻度杂乱", moderate: "中度混乱", heavy: "重度混乱" };
+  const clutterScore = assessment?.score;
 
   return (
-    <div
-      className="h-full w-full flex flex-col relative overflow-hidden"
-      style={{ backgroundColor: "#0D0A07" }}
-    >
-      <ImageWithFallback
-        src={photo || ROOM_IMG}
-        alt=""
-        className="absolute inset-0 h-full w-full object-cover"
-        style={{ opacity: 0.46 }}
-      />
-
-      {/* Scan sweep */}
+    <div className="h-full w-full flex flex-col relative overflow-hidden" style={{ backgroundColor: "#0D0A07" }} data-testid="disorder-analysis">
+      {photo && <ImageWithFallback src={photo} alt="本次评估的最新拍摄照片" className="absolute inset-0 h-full w-full object-cover" style={{ opacity: 0.46 }} onLoad={event => { const image = event.currentTarget; if (!image.dataset.originalUrl && image.naturalWidth > 0 && image.naturalHeight > 0) setPhotoSize({ width: image.naturalWidth, height: image.naturalHeight }); }} />}
       <AnimatePresence>
-        {phase < 2 && (
-          <motion.div
-            className="absolute inset-0 pointer-events-none"
-            exit={{ opacity: 0, transition: { duration: 0.4 } }}
-          >
+        {loading && (
+          <motion.div className="absolute inset-0 pointer-events-none" exit={{ opacity: 0, transition: { duration: 0.4 } }}>
             <motion.div
-              style={{
-                position: "absolute", left: 0, right: 0, height: 2,
-                background: `linear-gradient(90deg, transparent, ${ORANGE}, transparent)`,
-                boxShadow: `0 0 14px 4px ${ORANGE}40`,
-              }}
-              animate={{ top: ["0%", "100%", "0%"] }}
-              transition={{ duration: 3.4, repeat: Infinity, ease: "linear" }}
+              style={{ position: "absolute", left: 0, right: 0, height: 2, background: "linear-gradient(90deg, transparent, " + ORANGE + ", transparent)", boxShadow: "0 0 14px 4px " + ORANGE + "40" }}
+              animate={{ top: ["0%", "100%", "0%"] }} transition={{ duration: 3.4, repeat: Infinity, ease: "linear" }}
             />
-            <div
-              style={{
-                position: "absolute", inset: 0,
-                backgroundImage: `
-                  linear-gradient(rgba(250,136,58,0.06) 1px, transparent 1px),
-                  linear-gradient(90deg, rgba(250,136,58,0.06) 1px, transparent 1px)`,
-                backgroundSize: "44px 44px",
-              }}
-            />
+            <div style={{ position: "absolute", inset: 0, backgroundImage: "linear-gradient(rgba(250,136,58,0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(250,136,58,0.06) 1px, transparent 1px)", backgroundSize: "44px 44px" }} />
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* Hotspot markers */}
-      {phase >= 1 && CHAOS_SPOTS.slice(0, clutterSpots).map((s, i) => (
-        <motion.div
-          key={i}
-          initial={{ opacity: 0, scale: 0 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ delay: i * 0.2, type: "spring", stiffness: 360, damping: 22 }}
-          style={{
-            position: "absolute", left: s.x, top: s.y,
-            transform: "translate(-50%, -50%)", zIndex: 10,
-          }}
-        >
-          <div style={{ position: "relative", width: 30, height: 30 }}>
-            <motion.div
-              animate={{ scale: [1, 1.65], opacity: [0.45, 0] }}
-              transition={{ duration: 1.3, repeat: Infinity, ease: "easeOut" }}
-              style={{ position: "absolute", inset: 0, borderRadius: "50%", backgroundColor: "#E25A4A" }}
-            />
-            <div style={{
-              position: "absolute", inset: 4, borderRadius: "50%",
-              backgroundColor: "#E25A4A",
-              display: "flex", alignItems: "center", justifyContent: "center",
-            }}>
-              <X size={11} color={WHITE} strokeWidth={2.5} />
-            </div>
-          </div>
-        </motion.div>
-      ))}
-
-      {/* Status label */}
+      {/* The SVG uses the same cover transform as the actual photo, including cropping. */}
+      {photo && photoSize && assessment && <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox={"0 0 " + photoSize.width + " " + photoSize.height} preserveAspectRatio="xMidYMid slice" style={{ zIndex: 10 }} aria-label="照片中的待整理区域">
+        {assessment.clutterRegions.map((region, index) => <motion.rect key={index}
+          data-testid="disorder-region" aria-label={region.label}
+          initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: index * 0.12 }}
+          x={region.x * photoSize.width} y={region.y * photoSize.height} width={region.width * photoSize.width} height={region.height * photoSize.height}
+          rx={10} fill="rgba(226,90,74,0.10)" stroke="#E25A4A" strokeWidth={2} vectorEffect="non-scaling-stroke"><title>{region.label}</title></motion.rect>)}
+      </svg>}
       <div style={{ position: "absolute", top: 60, left: 24, right: 24, zIndex: 12 }}>
-        <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 12, fontWeight: 600, letterSpacing: "0.06em" }}>
-          {spaceName}
-        </p>
+        <p style={{ color: "rgba(255,255,255,0.65)", fontSize: 12, fontWeight: 600, letterSpacing: "0.06em" }}>{spaceName} · 本次最新照片</p>
         <AnimatePresence mode="wait">
-          <motion.p
-            key={phase}
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.3 }}
-            style={{ color: WHITE, fontSize: 22, fontWeight: 700, marginTop: 6, letterSpacing: "-0.02em" }}
-          >
-            {phase === 0 && "正在扫描空间状态…"}
-            {phase === 1 && `检测到 ${clutterSpots} 处混乱区域`}
-            {phase >= 2 && "分析完成"}
+          <motion.p key={loading ? "loading" : assessment ? "ready" : "error"} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.3 }}
+            style={{ color: WHITE, fontSize: 22, fontWeight: 700, marginTop: 6, letterSpacing: "-0.02em" }}>
+            {loading ? "正在分析照片中的空间状态…" : assessment ? "视觉评估完成" : "暂时无法完成视觉评估"}
           </motion.p>
         </AnimatePresence>
+        {loading && <p style={{ color: "rgba(255,255,255,0.7)", fontSize: 12, lineHeight: 1.7, marginTop: 10 }}>根据堆积遮挡、通行空间和可用台面判断，物品多不代表混乱。</p>}
       </div>
-
-      {/* Results panel */}
       <AnimatePresence>
-        {phase >= 2 && (
-          <motion.div
-            initial={{ y: "100%" }}
-            animate={{ y: 0 }}
-            transition={{ type: "spring", stiffness: 290, damping: 28 }}
-            style={{
-              position: "absolute", left: 0, right: 0, bottom: 0,
-              backgroundColor: WHITE,
-              borderTopLeftRadius: 32, borderTopRightRadius: 32,
-              padding: "26px 24px 52px",
-              zIndex: 20,
-            }}
-          >
-            <p style={{ color: COFFEE, opacity: 0.45, fontSize: 12, fontWeight: 600 }}>空间混乱度评估</p>
-            <div className="flex items-end gap-3 mt-2.5 mb-5">
-              <p style={{ color: COFFEE, fontSize: 40, fontWeight: 800, letterSpacing: "-0.05em", lineHeight: 1 }}>{clutterScore}%</p>
-              <p style={{ color: "#ECC079", fontSize: 17, fontWeight: 700, marginBottom: 6 }}>{clutterLevel}</p>
-            </div>
-            <div style={{ height: 6, backgroundColor: SOFT, borderRadius: 999, overflow: "hidden", marginBottom: 18 }}>
-              <motion.div
-                initial={{ width: 0 }}
-                animate={{ width: `${clutterScore}%` }}
-                transition={{ duration: 1.0, ease: [0.22, 1, 0.36, 1] }}
-                style={{ height: "100%", borderRadius: 999, backgroundColor: "#ECC079" }}
-              />
-            </div>
-            <div className="space-y-2.5">
-              {[
-                { icon: "📦", text: `发现 ${clutterSpots} 处物品堆积区` },
-                { icon: "⏱️", text: `预计整理约需 ${estMinutes} 分钟` },
-                { icon: "💡", text: "建议重新规划收纳动线" },
-              ].map((item, i) => (
-                <motion.div
-                  key={i}
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.28 + i * 0.14 }}
-                  className="flex items-center gap-3"
-                >
-                  <span style={{ fontSize: 15 }}>{item.icon}</span>
-                  <p style={{ color: COFFEE, opacity: 0.68, fontSize: 13 }}>{item.text}</p>
-                </motion.div>
-              ))}
-            </div>
-            <motion.p
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 1.1 }}
-              style={{ color: COFFEE, opacity: 0.35, fontSize: 11.5, marginTop: 18, textAlign: "center" }}
-            >
-              即将进入方案选择…
-            </motion.p>
+        {!loading && (
+          <motion.div initial={{ y: "100%" }} animate={{ y: 0 }} transition={{ type: "spring", stiffness: 290, damping: 28 }}
+            style={{ position: "absolute", left: 0, right: 0, bottom: 0, maxHeight: "67%", overflowY: "auto", backgroundColor: WHITE, borderTopLeftRadius: 32, borderTopRightRadius: 32, padding: "22px 24px 30px", zIndex: 20 }}>
+            {assessment ? <>
+              <p style={{ color: COFFEE, opacity: 0.5, fontSize: 12, fontWeight: 600 }}>空间混乱度 · 主观视觉指数</p>
+              <div className="flex items-end gap-3 mt-2.5 mb-4">
+                <p data-testid="disorder-score" style={{ color: COFFEE, fontSize: 40, fontWeight: 800, letterSpacing: "-0.05em", lineHeight: 1 }}>{clutterScore}<span style={{ fontSize: 16, fontWeight: 500, marginLeft: 4 }}>/100</span></p>
+                <p style={{ color: "#B58945", fontSize: 17, fontWeight: 700, marginBottom: 4 }}>{levelNames[assessment.level]}</p>
+              </div>
+              <div style={{ height: 6, backgroundColor: SOFT, borderRadius: 999, overflow: "hidden", marginBottom: 16 }}>
+                <motion.div initial={{ width: 0 }} animate={{ width: clutterScore + "%" }} transition={{ duration: 1.0, ease: [0.22, 1, 0.36, 1] }} style={{ height: "100%", borderRadius: 999, backgroundColor: "#ECC079" }} />
+              </div>
+              <div className="space-y-2.5">
+                {assessment.evidence.map((detail, index) => <motion.div key={index} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: index * 0.1 }} className="flex items-start gap-2"><span style={{ color: ORANGE, fontSize: 13 }}>·</span><p style={{ color: COFFEE, opacity: 0.75, fontSize: 12, lineHeight: 1.65 }}>{detail}</p></motion.div>)}
+              </div>
+              <p style={{ color: COFFEE, opacity: 0.55, fontSize: 12, marginTop: 13 }}>预计整理约 {assessment.estimatedMinutes} 分钟 · 仅供参考</p>
+              <p style={{ color: COFFEE, opacity: 0.4, fontSize: 10.5, lineHeight: 1.65, marginTop: 8 }}>基于这张照片的主观判断，不代表识别准确率，也不覆盖照片外的空间。</p>
+              <button onClick={finish} className="w-full py-3.5 mt-4" style={{ backgroundColor: ORANGE, color: WHITE, borderRadius: 999, fontSize: 13, fontWeight: 700 }}>继续选择整理方式</button>
+            </> : <>
+              <p role="alert" style={{ color: "#9A4230", fontSize: 13, lineHeight: 1.7 }}>{error || "照片视觉评估暂时不可用。"}</p>
+              <p style={{ color: COFFEE, opacity: 0.5, fontSize: 12, lineHeight: 1.7, marginTop: 10 }}>本次没有可用评分；你可以重试，或跳过评估继续整理。</p>
+              <button onClick={() => setAttempt(value => value + 1)} className="w-full py-3.5 mt-4" style={{ backgroundColor: ORANGE, color: WHITE, borderRadius: 999, fontSize: 13, fontWeight: 700 }}>重试照片评估</button>
+              <button onClick={finish} className="w-full py-3 mt-1" style={{ color: COFFEE, opacity: 0.65, fontSize: 12 }}>跳过评估，继续整理</button>
+            </>}
           </motion.div>
         )}
       </AnimatePresence>
+      {loading && <div style={{ position: "absolute", bottom: 44, left: 24, right: 24, zIndex: 20, textAlign: "center" }}><Loader2 size={24} className="animate-spin mx-auto" color={ORANGE} /><button onClick={finish} className="mt-4 px-5 py-3" style={{ color: WHITE, fontSize: 12, border: "1px solid rgba(255,255,255,.25)", borderRadius: 999 }}>取消评估，继续整理</button></div>}
     </div>
   );
 }
@@ -6622,7 +6755,11 @@ function ProofCaptureStep({
     (async () => {
       try {
         const res = await nativeRequest<{ ok: boolean }>("camera.preview.start", rectOf());
-        if (!stopped) setLiveFeed(res.ok === true);
+        if (stopped) {
+          if (res.ok === true) void nativeRequest("camera.preview.stop", {}).catch(() => undefined);
+        } else {
+          setLiveFeed(res.ok === true);
+        }
       } catch {
         if (!stopped) setLiveFeed(false);
       }
@@ -6849,13 +6986,6 @@ function ProofCaptureStep({
   );
 }
 
-const SPACE_ART: Record<string, string> = {
-  床: bedArt,
-  桌面: deskArt,
-  厨房: kitchenArt,
-  茶几: teatableArt,
-};
-
 function RelightCompleteStep({
   spaceName,
   spaceVivid,
@@ -6908,9 +7038,10 @@ function RelightCompleteStep({
               display: "flex", alignItems: "center", justifyContent: "center",
             }}
           >
-            <img
-              src={SPACE_ART[spaceName] ?? kitchenArt}
-              alt={spaceName}
+            <SpaceArtwork
+              kind={inferSpaceKind(spaceName)}
+              color={spaceVivid}
+              label={spaceName}
               style={{
                 maxWidth: "100%", maxHeight: "100%",
                 filter: "drop-shadow(0 10px 22px rgba(90,70,55,0.18))",
@@ -7016,16 +7147,108 @@ export function RelightFlow({ spaceId, spaceName, spaceVivid, onClose, onComplet
   const [nativePlan, setNativePlan] = useState<NativePlan | null>(null);
   const [flowError, setFlowError] = useState<string | null>(null);
   const [processing, setProcessing] = useState(false);
+  const [previewSourcePhoto, setPreviewSourcePhoto] = useState<string>();
+  const [restoringSpace, setRestoringSpace] = useState(true);
+  const [imagePreview, setImagePreview] = useState<ImagePreviewState>({ status: "idle" });
+  const [previewScope, setPreviewScope] = useState<PreviewScope>(PREVIEW_SCOPES[0]);
+  const imagePreviewGeneration = useRef(0);
   const flowGeneration = useRef(0);
   useEffect(() => () => {
     flowGeneration.current += 1;
+    imagePreviewGeneration.current += 1;
     void nativeRequest("scan.cancel").catch(() => undefined);
+    void nativeRequest("image.preview.cancel").catch(() => undefined);
   }, []);
-  // 方案卡也跟着这次真实拍到的物品走，和主线用同一套算法。
-  const relightPlans = personalizePlans(relightItems);
+  // Keep preview restoration keyed to stable plan data, not each render.
+  const relightPlans = useMemo(() => personalizePlans(relightItems), [relightItems]);
+  const previewPlan = step === "plandeck" ? relightPlans[0] : chosen;
+
+  useEffect(() => {
+    let alive = true;
+    void nativeRequest<NativeState>("state.get").then(async (state) => {
+      const space = state.spaces.find((candidate) => candidate.id === spaceId);
+      if (!space || !alive) return;
+      const items = space.detectedItems;
+      setRelightItems(items);
+      const original = space.activePlan ?? space.completedPlans[0];
+      if (original) {
+        const base = personalizePlans(items).find((plan) => plan.id === (original.style === "隐藏清爽" ? "efficient" : original.style === "温暖可见" ? "living" : "breathe")) ?? GEN_PLANS[0];
+        setChosen({ ...base, name: "原方案", vibe: original.summary, minutes: original.timeBudget });
+      }
+      const photos = await nativeRequest<{ before?: string }>("space.photos", { id: spaceId });
+      if (alive) setPreviewSourcePhoto(photos.before);
+    }).catch(() => undefined).finally(() => { if (alive) setRestoringSpace(false); });
+    return () => { alive = false; };
+  }, [spaceId]);
+
+  useEffect(() => {
+    if (step !== "plandeck" && step !== "tune") return;
+    let alive = true;
+    const generation = ++imagePreviewGeneration.current;
+    const planKey = imagePreviewPlanKey(previewPlan, previewScope);
+    setImagePreview({ status: "idle", planKey });
+    void (async () => {
+      // Native preview commands use the selected space. Never restore an image
+      // belonging to another space while relighting this older one.
+      const state = await nativeRequest<NativeState>("state.get");
+      if (!alive || generation !== imagePreviewGeneration.current || state.selectedSpaceID !== spaceId) return;
+      const photos = await nativeRequest<{ before?: string }>("space.photos", { id: spaceId });
+      if (alive && generation === imagePreviewGeneration.current) setPreviewSourcePhoto(photos.before);
+      const cached = await nativeRequest<ImagePreviewResponse>("image.preview.restore", imagePreviewRequest(previewPlan, previewScope));
+      if (!alive || generation !== imagePreviewGeneration.current || !cached.available || !cached.preview) return;
+      const current = await nativeRequest<NativeState>("state.get");
+      if (!alive || generation !== imagePreviewGeneration.current || current.selectedSpaceID !== spaceId) return;
+      setImagePreview({ status: "ready", planKey, preview: cached.preview, model: cached.model, endpointHost: cached.endpointHost });
+    })().catch(() => undefined);
+    return () => { alive = false; };
+  }, [step, previewPlan, previewScope, spaceId, relightAssets]);
+
+  const startImagePreview = (plan: GenPlan) => {
+    const generation = ++imagePreviewGeneration.current;
+    const planKey = imagePreviewPlanKey(plan, previewScope);
+    setImagePreview({ status: "loading", planKey });
+    void (async () => {
+      try {
+        const state = await nativeRequest<NativeState>("state.get");
+        if (generation !== imagePreviewGeneration.current) return;
+        if (state.selectedSpaceID !== spaceId) throw new Error("空间已改变，请返回空间页重试。");
+        const status = await nativeRequest<ImageGenerationStatus>("image.settings.get");
+        if (generation !== imagePreviewGeneration.current) return;
+        const request = imagePreviewRequest(plan, previewScope);
+        const cached = await nativeRequest<ImagePreviewResponse>("image.preview.restore", request);
+        if (generation !== imagePreviewGeneration.current) return;
+        const current = await nativeRequest<NativeState>("state.get");
+        if (generation !== imagePreviewGeneration.current) return;
+        if (current.selectedSpaceID !== spaceId) throw new Error("空间已改变，请返回空间页重试。");
+        if (cached.available && cached.preview) {
+          setImagePreview({ status: "ready", planKey, preview: cached.preview, model: cached.model, endpointHost: cached.endpointHost });
+          return;
+        }
+        if (!status.configured) throw new Error("整理效果图服务尚未配置，当前仍可继续使用本地方案。");
+        // Upload consent stays in the existing native generation command.
+        const result = await nativeRequest<ImagePreviewResponse>("image.preview.generate", request);
+        if (generation !== imagePreviewGeneration.current) return;
+        const latest = await nativeRequest<NativeState>("state.get");
+        if (generation !== imagePreviewGeneration.current) return;
+        if (latest.selectedSpaceID !== spaceId) throw new Error("空间已改变，请返回空间页重试。");
+        if (!result.preview) throw new Error("生图服务没有返回可显示的图片。");
+        setImagePreview({ status: "ready", planKey, preview: result.preview, model: result.model, endpointHost: result.endpointHost });
+      } catch (error) {
+        if (generation !== imagePreviewGeneration.current) return;
+        setImagePreview({ status: "error", planKey, error: error instanceof Error ? error.message : "整理效果图生成失败，请稍后重试。" });
+      }
+    })();
+  };
+
+  const cancelImagePreview = () => {
+    imagePreviewGeneration.current += 1;
+    setImagePreview((current) => current.status === "loading" ? { status: "idle" } : current);
+    void nativeRequest("image.preview.cancel").catch(() => undefined);
+  };
 
   return (
     <div className="absolute inset-0 z-50" style={{ backgroundColor: LINEN }}>
+      {restoringSpace && (step === "tune" || step === "plandeck") && <div className="absolute inset-0 z-[80] flex items-center justify-center gap-2" style={{ backgroundColor: LINEN, color: COFFEE, fontSize: 13 }}><Loader2 size={18} className="animate-spin" />正在恢复空间方案…</div>}
       {processing && <div className="absolute inset-0 z-[90] flex flex-col items-center justify-center gap-3" style={{ backgroundColor: "rgba(20,15,12,0.72)" }}><Loader2 size={26} color={WHITE} className="animate-spin" /><p style={{ color: WHITE, fontSize: 13, fontWeight: 600 }}>正在处理本批照片…</p><button onClick={onClose} style={{ color: WHITE, fontSize: 12 }}>取消并返回</button></div>}
       {flowError && <button onClick={() => setFlowError(null)} className="absolute top-3 left-5 right-5 z-[80] px-4 py-3 text-left" style={{ backgroundColor: "#FFF4F1", color: "#9A4230", borderRadius: 14, fontSize: 12 }}>{flowError} · 点击关闭</button>}
       {step === "capture" && (
@@ -7035,7 +7258,7 @@ export function RelightFlow({ spaceId, spaceName, spaceVivid, onClose, onComplet
             setRelightAssets(assets);
             const generation = ++flowGeneration.current;
             setProcessing(true);
-            void (async () => {
+            return (async () => {
               try {
                 const result = await nativeRequest<{ items?: NativeItem[] }>("scan.await", { captureIDs: assets.map((asset) => asset.id) });
                 if (flowGeneration.current !== generation) return;
@@ -7051,8 +7274,8 @@ export function RelightFlow({ spaceId, spaceName, spaceVivid, onClose, onComplet
                 }
               } catch (error) {
                 if (flowGeneration.current !== generation) return;
-                setRelightItems([]);
-                setFlowError(error instanceof Error ? error.message : "识别未完成，请在分区页手动补录。");
+                setFlowError(error instanceof Error ? error.message : "识别未完成，请重新提交或重拍。");
+                return;
               }
               if (flowGeneration.current === generation) setStep("analyzing");
             })().finally(() => { if (flowGeneration.current === generation) setProcessing(false); });
@@ -7061,9 +7284,9 @@ export function RelightFlow({ spaceId, spaceName, spaceVivid, onClose, onComplet
       )}
       {step === "analyzing" && (
         <DisorderAnalysisStep
+          spaceID={spaceId}
           spaceName={spaceName}
-          photo={relightAssets[0]?.src}
-          items={relightItems}
+          photo={relightAssets.filter(asset => asset.kind === "photo").at(-1)?.src}
           onDone={() => setStep("choice")}
         />
       )}
@@ -7071,23 +7294,34 @@ export function RelightFlow({ spaceId, spaceName, spaceVivid, onClose, onComplet
         <RelightChoiceStep
           spaceName={spaceName}
           spaceVivid={spaceVivid}
-          onTune={() => { setRelightMode("tune"); setStep("tune"); }}
-          onNew={() => { setRelightMode("new"); setStep("plandeck"); }}
+          onTune={() => { cancelImagePreview(); setPreviewScope(PREVIEW_SCOPES[0]); setRelightMode("tune"); setStep("tune"); }}
+          onNew={() => { cancelImagePreview(); setRelightMode("new"); setStep("plandeck"); }}
         />
       )}
-      {step === "tune" && (
+      {step === "tune" && !restoringSpace && (
         <TuneChatStep
           plan={chosen}
-          onBack={() => setStep("choice")}
-          onConfirm={(refined) => { setChosen(refined); setStep("zones"); }}
+          photo={previewSourcePhoto || relightAssets[0]?.src}
+          imagePreview={imagePreview}
+          onRefine={(refined) => { cancelImagePreview(); setChosen(refined); }}
+          onGeneratePreview={startImagePreview}
+          onCancelPreview={cancelImagePreview}
+          onBack={() => { cancelImagePreview(); setStep("choice"); }}
+          onConfirm={(refined) => { cancelImagePreview(); setChosen(refined); setFlowError(null); setStep("zones"); }}
         />
       )}
       {step === "plandeck" && (
         <PlanDeckStep
           plans={relightPlans}
-          onClose={() => setStep("choice")}
-          onStart={(p) => { setChosen(p); setStep("zones"); }}
-          onTune={(p) => { setChosen(p); setStep("tune"); }}
+          photo={previewSourcePhoto || relightAssets[0]?.src}
+          imagePreview={imagePreview}
+          previewScope={previewScope}
+          onPreviewScopeChange={(scope) => { cancelImagePreview(); setPreviewScope(scope); }}
+          onGeneratePreview={startImagePreview}
+          onCancelPreview={cancelImagePreview}
+          onClose={() => { cancelImagePreview(); setStep("choice"); }}
+          onStart={(p) => { cancelImagePreview(); setChosen(p); setFlowError(null); setStep("zones"); }}
+          onTune={(p) => { cancelImagePreview(); setPreviewScope(PREVIEW_SCOPES[0]); setChosen(p); setStep("tune"); }}
         />
       )}
       {step === "zones" && (

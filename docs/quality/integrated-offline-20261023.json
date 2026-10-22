@@ -1,0 +1,48 @@
+{
+  "scope": "Full offline simulator regression before reset isolation and local still-instance fix",
+  "camera_used": false,
+  "network_requests": 0,
+  "passed_tests": 118,
+  "failed_tests": 7,
+  "skipped_tests": 5,
+  "assertion_failures": 20,
+  "local_xcresult": "/tmp/smartpaw-integrated-offline-20261023.xcresult",
+  "failed_tests_detail": [
+    {
+      "test": "testBundledCoreMLSegmentationModelIsUsableInScanPipeline()",
+      "summary": "XCTAssertFalse failed"
+    },
+    {
+      "test": "testResetDiscardsInFlightRecognitionAndCredentials()",
+      "summary": "XCTAssertTrue failed"
+    },
+    {
+      "test": "testVisionScanServiceBuildsBaselineForIndependentPhotos()",
+      "summary": "XCTAssertFalse failed - external-messy-desk-note.png 需要形成真实照片识别候选。"
+    },
+    {
+      "test": "testVisionScanServiceScansBundledIndependentPhotoWithARHints()",
+      "summary": "XCTAssertFalse failed - 独立真实照片至少应形成可确认的识别候选，而不是依赖假图。"
+    },
+    {
+      "test": "testYOLOSegmentationEvaluationDatasetReportsScenarioHitRate()",
+      "summary": "XCTAssertFalse failed - external-trash-room-imweb should produce at least one candidate item."
+    },
+    {
+      "test": "testYOLOSegmentationModelRecognizesNewNonVideoImages()",
+      "summary": "XCTAssertGreaterThanOrEqual failed: (\"4\") is less than (\"8\")"
+    },
+    {
+      "test": "testYOLOSegmentationObjectLevelEvaluationReportsTargetRecallAndLocalization()",
+      "summary": "XCTAssertEqual failed: (\"11\") is not equal to (\"16\") - 对象级评测中的每个明确标注目标都必须匹配名称、类别和位置；新增真实样本后请先修复漏检，或用人工复核后的证据更新其参考标注。"
+    }
+  ],
+  "status": "FAILED_BASELINE_NOT_RELEASE_ACCEPTANCE",
+  "object_benchmark": {
+    "annotated_targets": 16,
+    "matched_targets": 11,
+    "recall": 0.6875,
+    "mean_iou_matched": 0.643,
+    "independent_frozen_holdout": false
+  }
+}

@@ -1,0 +1,56 @@
+{
+  "date": "2026-10-22",
+  "sources": [
+    {
+      "id": "xctest",
+      "url": "https://developer.apple.com/documentation/xctest",
+      "fetched_url": "https://developer.apple.com/tutorials/data/documentation/xctest.json",
+      "http_status": 200,
+      "bytes": 29814,
+      "sha256": "75cc1cb4a3ebac5235c31629086465605338cd2bdae618d3f8de5d6b8a0fc347",
+      "read": true
+    },
+    {
+      "id": "xcuiautomation",
+      "url": "https://developer.apple.com/documentation/xcuiautomation",
+      "fetched_url": "https://developer.apple.com/tutorials/data/documentation/xcuiautomation.json",
+      "http_status": 200,
+      "bytes": 38535,
+      "sha256": "b249b1ba3a8c47696017108762ae82cbae292b53e3117124e06af86eac025725",
+      "read": true
+    },
+    {
+      "id": "testflight",
+      "url": "https://developer.apple.com/help/app-store-connect/test-a-beta-version/testflight-overview/",
+      "fetched_url": "https://developer.apple.com/help/app-store-connect/test-a-beta-version/testflight-overview/",
+      "http_status": 200,
+      "bytes": 369612,
+      "sha256": "ac078feaba6fe314e8bd4250bdcf7a7a8e45a8f58b41984153964db2e5443825",
+      "read": true
+    },
+    {
+      "id": "metrickit",
+      "url": "https://developer.apple.com/documentation/metrickit",
+      "fetched_url": "https://developer.apple.com/tutorials/data/documentation/metrickit.json",
+      "http_status": 200,
+      "bytes": 50519,
+      "sha256": "98867a374e903e57d79d4b795a26ca83c36f0fa8cba4b2a9f077d7b1c99c5f00",
+      "read": true
+    },
+    {
+      "id": "quicktime",
+      "url": "https://support.apple.com/zh-cn/guide/quicktime-player/qtp356b55534/mac",
+      "fetched_url": "https://support.apple.com/zh-cn/guide/quicktime-player/qtp356b55534/mac",
+      "http_status": 200,
+      "bytes": 559882,
+      "sha256": "408e6083bfb5f924feca152a2e85fb7f19b7377ab4c84d44b5fd348a7557143e",
+      "read": true
+    }
+  ],
+  "not_used_as_evidence": [
+    {
+      "url": "https://developers.openai.com/api/docs/guides/evaluation-best-practices/",
+      "observed": "proxy timeout and direct HTTP 403; article not retrieved"
+    }
+  ]
+}

@@ -1,0 +1,1 @@
+run_id,sample_id,prediction_id,pipeline,stage,class_id,label,confidence,bbox_x,bbox_y,bbox_width,bbox_height,mask_file,physical_region_id,elapsed_ms,error,device,os_version,app_build,commit,web_hash,model_versions,settings_hash

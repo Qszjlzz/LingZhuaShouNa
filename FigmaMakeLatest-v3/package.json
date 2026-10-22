@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "build": "vite build",
-    "test:guide": "node --test tests/guideProgress.test.mjs"
+    "test:guide": "node --test tests/guideProgress.test.mjs",
+    "test:spatial": "node --test tests/spaceLayout.test.mjs"
   },
   "dependencies": {
     "@emotion/react": "11.14.0",

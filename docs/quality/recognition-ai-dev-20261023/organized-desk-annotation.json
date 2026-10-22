@@ -1,0 +1,99 @@
+{
+  "source_type": "synthetic_development",
+  "real_holdout": false,
+  "image_sha256": "28653353145ceec354420008e731ea789ccbffffacb46fbe4f4134da89334aec",
+  "annotation_status": "independent_model_visual_review_not_expert_ground_truth",
+  "coordinates": "approximate normalized visible extents, not segmentation masks",
+  "clear_targets": [
+    {
+      "name": "笔记本电脑",
+      "category": "电子产品",
+      "minimum_visible_count": 1
+    },
+    {
+      "name": "平板电脑",
+      "category": "电子产品",
+      "minimum_visible_count": 1
+    },
+    {
+      "name": "手机",
+      "category": "电子产品",
+      "minimum_visible_count": 1
+    },
+    {
+      "name": "黑色按键设备（遥控器/计算器歧义）",
+      "category": "电子产品",
+      "minimum_visible_count": 1,
+      "identity_ambiguous": true
+    },
+    {
+      "name": "眼镜",
+      "category": "收纳工具",
+      "minimum_visible_count": 1
+    },
+    {
+      "name": "圆珠笔",
+      "category": "文具",
+      "minimum_visible_count": 2
+    },
+    {
+      "name": "铅笔",
+      "category": "文具",
+      "minimum_visible_count": 2
+    },
+    {
+      "name": "打开的书",
+      "category": "书籍",
+      "minimum_visible_count": 1
+    },
+    {
+      "name": "棕色笔记本",
+      "category": "书籍",
+      "minimum_visible_count": 1
+    },
+    {
+      "name": "螺旋笔记本",
+      "category": "书籍",
+      "minimum_visible_count": 1
+    },
+    {
+      "name": "周计划表",
+      "category": "书籍",
+      "minimum_visible_count": 1
+    },
+    {
+      "name": "便签组",
+      "category": "文具",
+      "minimum_visible_count": 3
+    },
+    {
+      "name": "长尾夹",
+      "category": "文具",
+      "minimum_visible_count": 1
+    }
+  ],
+  "ambiguous_targets": [
+    {
+      "name": "右下叠放笔记本",
+      "reason": "边缘重叠，确切本数不可可靠确定，不按提示词虚构数量"
+    },
+    {
+      "name": "左侧黑色封套或笔记本",
+      "reason": "形态可见，具体用途不确定"
+    },
+    {
+      "name": "下方黑帽透明小件",
+      "reason": "可能为橡皮/修正用品等，细分类别不可靠"
+    },
+    {
+      "name": "左侧便签下小夹子",
+      "reason": "部分遮挡，形状由生成图扭曲，数量不确定"
+    }
+  ],
+  "excluded": [
+    "桌面背景",
+    "电脑内置键盘/触控板不重复列为独立外设",
+    "不可见书页与封套内物品"
+  ],
+  "evaluation_note": "清晰目标用于逐项漏检诊断；不从这些组级标注计算precision/recall，不计50图真实验收，不代表训练已完成。"
+}

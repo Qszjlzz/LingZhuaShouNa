@@ -1,0 +1,126 @@
+{
+  "error": "AssertionError [ERR_ASSERTION]: {\"tile\":{\"x\":194,\"y\":271.5,\"width\":138,\"height\":138,\"top\":271.5,\"right\":332,\"bottom\":409.5,\"left\":194},\"board\":{\"x\":16,\"y\":127.5,\"width\":288,\"height\":408,\"top\":127.5,\"right\":304,\"bottom\":535.5,\"left\":16}}\n    at file:///private/tmp/smartpaw-catalog-spatial-qa.mjs:18:387\n    at runNextTicks (node:internal/process/task_queues:65:5)\n    at process.processImmediate (node:internal/timers:472:9)",
+  "checks": [
+    {
+      "label": "390 spatial initial",
+      "viewport": 390,
+      "document": 390,
+      "body": 390,
+      "offscreen": []
+    },
+    {
+      "label": "390 map tile containment",
+      "tile": {
+        "x": 194,
+        "y": 271.5,
+        "width": 138,
+        "height": 138,
+        "top": 271.5,
+        "right": 332,
+        "bottom": 409.5,
+        "left": 194
+      },
+      "board": {
+        "x": 16,
+        "y": 127.5,
+        "width": 358,
+        "height": 408,
+        "top": 127.5,
+        "right": 374,
+        "bottom": 535.5,
+        "left": 16
+      }
+    },
+    {
+      "label": "390 light tap opens details",
+      "passed": true
+    },
+    {
+      "label": "390 artwork cancel preserves original",
+      "passed": true
+    },
+    {
+      "label": "390 spatial editor",
+      "viewport": 390,
+      "document": 390,
+      "body": 390,
+      "offscreen": []
+    },
+    {
+      "label": "390 artwork save and reload persists",
+      "passed": true
+    },
+    {
+      "label": "390 drag moves tile without opening details; reload preserves it",
+      "passed": true
+    },
+    {
+      "label": "390 classification",
+      "viewport": 390,
+      "document": 390,
+      "body": 390,
+      "offscreen": []
+    },
+    {
+      "label": "390 books",
+      "viewport": 390,
+      "document": 390,
+      "body": 390,
+      "offscreen": []
+    },
+    {
+      "label": "390 category and item search, no match feedback",
+      "passed": true
+    },
+    {
+      "label": "390 add empty group and revisit persists",
+      "passed": true
+    },
+    {
+      "label": "390 delete empty/populated groups preserves items and reassigns to ungrouped",
+      "passed": true
+    },
+    {
+      "label": "390 add item",
+      "viewport": 390,
+      "document": 390,
+      "body": 390,
+      "offscreen": []
+    },
+    {
+      "label": "390 item delete/add calls bridge and updates contents",
+      "passed": true
+    },
+    {
+      "label": "320 spatial initial",
+      "viewport": 320,
+      "document": 320,
+      "body": 320,
+      "offscreen": []
+    },
+    {
+      "label": "320 map tile containment",
+      "tile": {
+        "x": 194,
+        "y": 271.5,
+        "width": 138,
+        "height": 138,
+        "top": 271.5,
+        "right": 332,
+        "bottom": 409.5,
+        "left": 194
+      },
+      "board": {
+        "x": 16,
+        "y": 127.5,
+        "width": 288,
+        "height": 408,
+        "top": 127.5,
+        "right": 304,
+        "bottom": 535.5,
+        "left": 16
+      }
+    }
+  ],
+  "errors": []
+}

@@ -153,6 +153,7 @@ final class MobileCLIPFeatureExtractor: @unchecked Sendable {
 
     private let model: MLModel?
     private let targetImageSize: CGSize
+    private let inferenceQueue = DispatchQueue(label: "smartpaw.mobileclip.image.inference", qos: .userInitiated)
 
     private init(bundle: Bundle = .main) {
         let modelURL = [
@@ -169,7 +170,7 @@ final class MobileCLIPFeatureExtractor: @unchecked Sendable {
             #if targetEnvironment(simulator)
             configuration.computeUnits = .cpuOnly
             #else
-            configuration.computeUnits = .all
+            configuration.computeUnits = .cpuAndNeuralEngine
             #endif
             model = try? MLModel(contentsOf: modelURL, configuration: configuration)
         } else {
@@ -188,31 +189,36 @@ final class MobileCLIPFeatureExtractor: @unchecked Sendable {
     var isAvailable: Bool { model != nil }
 
     func extractImageFeature(from image: UIImage) async throws -> [Float] {
-        guard let model else { throw MobileCLIPError.imageEncoderMissing }
-        guard let pixelBuffer = image.centerCroppedPixelBuffer(size: targetImageSize) else {
-            throw MobileCLIPError.invalidEmbedding
+        guard model != nil else { throw MobileCLIPError.imageEncoderMissing }
+        let targetSize = targetImageSize
+        return try await withCheckedThrowingContinuation { continuation in
+            inferenceQueue.async { [self] in
+                continuation.resume(with: Result {
+                    try autoreleasepool {
+                        guard let model = self.model,
+                              let pixelBuffer = image.centerCroppedPixelBuffer(size: targetSize),
+                              let inputName = model.modelDescription.inputDescriptionsByName.first(where: {
+                                $0.value.type == .image
+                              })?.key
+                        else { throw MobileCLIPError.invalidEmbedding }
+
+                        let input = try MLDictionaryFeatureProvider(dictionary: [inputName: pixelBuffer])
+                        let output = try model.prediction(from: input)
+                        let preferredOutputNames = ["final_emb_1", "embedding", "image_embedding"]
+                        let outputName = preferredOutputNames.first(where: { output.featureNames.contains($0) })
+                            ?? output.featureNames.first(where: { output.featureValue(for: $0)?.multiArrayValue?.count == 512 })
+                        guard let outputName,
+                              let feature = output.featureValue(for: outputName)?.multiArrayValue,
+                              feature.count == 512
+                        else { throw MobileCLIPError.invalidEmbedding }
+
+                        let embedding = (0..<feature.count).map { feature[$0].floatValue }
+                        guard let normalized = Self.normalized(embedding) else { throw MobileCLIPError.invalidEmbedding }
+                        return normalized
+                    }
+                })
+            }
         }
-
-        return try await Task.detached(priority: .userInitiated) {
-            guard let inputName = model.modelDescription.inputDescriptionsByName.first(where: {
-                $0.value.type == .image
-            })?.key
-            else { throw MobileCLIPError.invalidEmbedding }
-
-            let input = try MLDictionaryFeatureProvider(dictionary: [inputName: pixelBuffer])
-            let output = try model.prediction(from: input)
-            let preferredOutputNames = ["final_emb_1", "embedding", "image_embedding"]
-            let outputName = preferredOutputNames.first(where: { output.featureNames.contains($0) })
-                ?? output.featureNames.first(where: { output.featureValue(for: $0)?.multiArrayValue?.count == 512 })
-            guard let outputName,
-                  let feature = output.featureValue(for: outputName)?.multiArrayValue,
-                  feature.count == 512
-            else { throw MobileCLIPError.invalidEmbedding }
-
-            let embedding = (0..<feature.count).map { feature[$0].floatValue }
-            guard let normalized = Self.normalized(embedding) else { throw MobileCLIPError.invalidEmbedding }
-            return normalized
-        }.value
     }
 
     private static func normalized(_ vector: [Float]) -> [Float]? {
@@ -331,11 +337,15 @@ struct SemanticRecognitionScanService: ScanService {
         guard extractor.isAvailable, vectorDB.isAvailable else {
             return detectedItems.map { ($0, []) }
         }
+        guard let cgImage = image.recognitionCGImage() else {
+            return detectedItems.map { ($0, []) }
+        }
+        let semanticImage = UIImage(cgImage: cgImage)
 
         let ordered = await withTaskGroup(of: (Int, DetectedItem, [(String, Float)]).self, returning: [(DetectedItem, [(String, Float)])].self) { group in
             for (index, item) in detectedItems.prefix(10).enumerated() {
                 group.addTask {
-                    let result = await semanticItem(for: item, in: image)
+                    let result = await semanticItem(for: item, in: semanticImage)
                     return (index, result.0, result.1)
                 }
             }
@@ -403,7 +413,7 @@ struct SemanticRecognitionScanService: ScanService {
     }
 }
 
-private extension UIImage {
+extension UIImage {
     func cropped(to rect: CGRect) -> UIImage? {
         guard let normalizedCGImage = normalizedCGImageForRecognition else { return nil }
         let bounds = CGRect(origin: .zero, size: CGSize(width: normalizedCGImage.width, height: normalizedCGImage.height))
@@ -458,8 +468,6 @@ private extension UIImage {
     }
 
     var normalizedCGImageForRecognition: CGImage? {
-        if imageOrientation == .up, let cgImage { return cgImage }
-        let renderer = UIGraphicsImageRenderer(size: size)
-        return renderer.image { _ in draw(in: CGRect(origin: .zero, size: size)) }.cgImage
+        recognitionCGImage()
     }
 }

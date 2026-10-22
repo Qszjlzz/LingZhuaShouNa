@@ -1,0 +1,11 @@
+{
+  "enabled": false,
+  "provider": "beeapi",
+  "endpoint": "https://beeapi.dev/v1/images/edits",
+  "apiKey": "",
+  "model": "gpt-image-2",
+  "size": "1024x1024",
+  "quality": "standard",
+  "responseFormat": "b64_json",
+  "timeoutSeconds": 120
+}

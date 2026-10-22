@@ -1,0 +1,25 @@
+{
+  "camera_used": false,
+  "edit_requests": 1,
+  "elapsed_seconds": 54.345077991485596,
+  "fidelity_status": "FAILED_VISUAL_REVIEW",
+  "input_height": 1254,
+  "input_sha256": "28653353145ceec354420008e731ea789ccbffffacb46fbe4f4134da89334aec",
+  "input_width": 1254,
+  "model": "gpt-image-2",
+  "output_decoded": true,
+  "output_height": 1254,
+  "output_sha256": "32573dead5b7c33c68132eb753a2dcee3fa0fe3da3efe0d230601c96c87a81ee",
+  "output_width": 1254,
+  "real_holdout": false,
+  "requested_size": "1024x1024",
+  "source_type": "synthetic_development",
+  "visual_findings": [
+    "黑笔总数本次保持2支；上一输出3支的问题未在本次复现，但不代表整体保真通过。",
+    "原图线圈本上的大号金属夹只有1个；输出上方新增1个，线圈本上仍保留1个，变成2个。",
+    "计算器机身与按键外观仍被重绘；原来手机下方摊开的书未保持可核对的打开状态。",
+    "画幅仍为1254x1254；布局更规整，但存在新增与身份变化，因此不通过。"
+  ],
+  "provider_shape_evidence": "diagnostic-v3-generation-response-shape.json",
+  "local_xcresult": "/tmp/smartpaw-ai-disorder-edit-diagnostic-v3-20261023.xcresult"
+}
